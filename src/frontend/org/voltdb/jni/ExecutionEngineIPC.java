@@ -29,6 +29,7 @@ import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -59,7 +60,25 @@ import org.voltdb.types.TimestampType;
 import org.voltdb.utils.CompressionService;
 import org.voltdb.utils.SerializationHelper;
 
+
+import io.aeron.Aeron;
+import io.aeron.Publication;
+import io.aeron.Subscription;
+import io.aeron.driver.MediaDriver;
+import io.aeron.driver.ThreadingMode;
+import org.agrona.concurrent.AgentRunner;
+import org.agrona.concurrent.BusySpinIdleStrategy;
+import org.agrona.concurrent.IdleStrategy;
+import org.agrona.concurrent.SleepingIdleStrategy;
+import org.agrona.concurrent.ShutdownSignalBarrier;
+import org.agrona.concurrent.UnsafeBuffer;
+import org.agrona.DirectBuffer;
+import io.aeron.logbuffer.FragmentHandler;
+import io.aeron.logbuffer.Header;
+
 import com.google_voltpatches.common.base.Charsets;
+
+import java.util.Arrays;
 
 /* Serializes data over a connection that presumably is being read
  * by a voltdb execution engine. The serialization is currently a
@@ -161,6 +180,178 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         int m_id;
     }
 
+    static MediaDriver.Context mediaDriverCtx = null;
+    static Aeron.Context aeronCtx = null; 
+    static Aeron aeron = null;
+    static MediaDriver mediaDriver = null;
+    static final String aeronDirectory = "/dev/shm/voltdb_frontend_aeron";
+    static final String aeronChannel = "aeron:ipc";
+    static final String frontendChannelName = "VoltDBFrontend";
+    static final String backendChannelName = "VoltDBBackend";
+    final IdleStrategy sleepIdle = new SleepingIdleStrategy();
+    final IdleStrategy spinIdle = new BusySpinIdleStrategy();
+    static final int maxStreamIdForFrontend = 30;
+    static final AtomicInteger streamIdCounter = new AtomicInteger(0);
+    static {
+        mediaDriverCtx = new MediaDriver.Context()
+        .dirDeleteOnStart(true)
+        .threadingMode(ThreadingMode.SHARED)
+        .dirDeleteOnShutdown(true)
+        .sharedIdleStrategy(new BusySpinIdleStrategy()).aeronDirectoryName(aeronDirectory);
+        mediaDriver = MediaDriver.launchEmbedded(mediaDriverCtx);
+        System.out.println("Media Driver lunched in " + aeronDirectory);
+        aeronCtx = new Aeron.Context()
+        .aeronDirectoryName(mediaDriver.aeronDirectoryName());
+        aeron = Aeron.connect(aeronCtx);
+
+        System.out.println("Aeron connected to " + aeronDirectory);
+    }
+    public static void fill(ByteBuffer buf, byte b) {
+        final int offset = buf.arrayOffset();
+        Arrays.fill(buf.array(), offset + buf.position(), offset + buf.limit(), b);
+        buf.position(buf.limit());
+        buf.flip();
+    }
+    private class AeronConnnection {
+        
+        private int streamId = -1;
+        private int subStreamId = -1;
+        private Publication pub;
+        private Subscription sub;
+        BBContainer readBufferOrigin =  org.voltcore.utils.DBBPool.allocateDirect(1024 * 1024 * 40);
+        ByteBuffer readBuffer;
+        Poller subscriptionPoller;
+
+        public void pingpongTest() {
+            System.out.printf("ping pong test for pub/sub pair (%d/%d) started\n", streamId, subStreamId);
+            
+            for (int i = 0; i < 10000; ++i) {
+                ByteBuffer correctBuffer = ByteBuffer.allocate((i + 1) * 4);
+                fill(correctBuffer, (byte)(i % 26 + 97));
+                ByteBuffer buffer = ByteBuffer.allocate((i + 1) * 4);
+                buffer.clear();
+                int sz = read(buffer);
+                if (sz != (i + 1) * 4) {
+                    System.out.printf("read %d bytes, want %d bytes\n", sz, (i + 1) * 4);
+                    System.exit(-1);
+                }
+                
+                buffer.flip();
+                int pos = buffer.position();
+                int limit = buffer.limit();
+                if (correctBuffer.compareTo(buffer) != 0) {
+                    System.out.printf("Correct: %s, got %s", Arrays.toString(correctBuffer.array()), Arrays.toString(buffer.array()));
+                    System.exit(-1);
+                }
+                buffer.position(pos);
+                buffer.limit(limit);
+                //System.out.printf("buffer pos %d limit %d for pub/sub pair (%d/%d)\n", buffer.position(), buffer.limit(), streamId, subStreamId);
+                write(buffer);
+                //System.out.printf("Round %d passed for pub/sub pair (%d/%d)\n", i, streamId, subStreamId);
+            }
+            System.out.printf("ping pong test for pub/sub pair (%d/%d) finished\n", streamId, subStreamId);
+        }
+
+        public AeronConnnection() {
+            streamId = streamIdCounter.incrementAndGet() - 1;
+            pub = aeron.addPublication(aeronChannel, streamId);
+            System.out.printf("Aeron publication in %s connecting to stream %d\n", aeronChannel, streamId);
+            while (pub.isConnected() == false) {
+                sleepIdle.idle();
+            }
+            System.out.printf("Aeron publication in %s connected to stream %d\n", aeronChannel, streamId);
+            subStreamId = maxStreamIdForFrontend + streamId;
+
+            sub = aeron.addSubscription(aeronChannel, subStreamId);
+            System.out.printf("Aeron subscription in %s connecting to stream %d\n", aeronChannel, subStreamId);
+            while (sub.isConnected() == false) {
+                sleepIdle.idle();
+            }
+            System.out.printf("Aeron subscription in %s connected to stream %d\n", aeronChannel, subStreamId);
+            // sub = aeron.addSubscription(backendChannelName, streamId);
+            // while (sub.isConnected() == false) {
+            //     sleepIdle.idle();
+            // }
+            // System.out.printf("Aeron subscription in {} connected to stream {}", backendChannelName, streamId);
+            readBuffer = readBufferOrigin.b();
+            readBuffer.clear();
+            readBuffer.limit(0);
+            subscriptionPoller = new Poller(sub, readBuffer);
+        }
+
+        class Poller implements io.aeron.logbuffer.FragmentHandler {
+            private Subscription sub;
+            private ByteBuffer readBuffer;
+            public Poller(Subscription sub, ByteBuffer readBuffer) {
+                this.sub = sub;
+                this.readBuffer = readBuffer;
+            }
+
+            public void poll() {
+                sub.poll(this::onFragment, 1);
+            }
+
+            public void onFragment(org.agrona.DirectBuffer buffer, int offset, int length, io.aeron.logbuffer.Header header)
+            {
+                int totalSpace = readBuffer.capacity() - readBuffer.limit();
+                if (totalSpace < length) {
+                    readBuffer.compact(); // move rest of the bytes between [position, limit) to the beginning, set position to remaining
+                    assert readBuffer.remaining() >= length;
+                    buffer.getBytes(offset, readBuffer, length); // read the message into readBuffer at position
+                    readBuffer.flip(); // limit = position, position = 0, ready for read
+                } else {
+                    // readable area [position, limit)
+                    int readPos = readBuffer.position(); // remember the read position
+                    // move position to the end of readable area for write
+                    readBuffer.position(readBuffer.limit());
+                    // extend limit to accomodate incoming bytes.
+                    readBuffer.limit(readBuffer.limit() + length);
+                    buffer.getBytes(offset, readBuffer, length);
+                    readBuffer.position(readPos); // reset position to read position
+                }
+            }
+        }
+
+        private void fillReadBuffer() {
+            subscriptionPoller.poll();
+        }
+
+        private int fillBuffer(ByteBuffer buffer) {
+            int transferSize = buffer.remaining();
+            int oldLimit = readBuffer.limit();
+            readBuffer.limit(readBuffer.position() + transferSize);
+            buffer.put(readBuffer);
+            readBuffer.limit(oldLimit);
+            return transferSize;
+        }
+
+        public int read(ByteBuffer buffer) {
+            assert(buffer.remaining() < readBuffer.capacity());
+            if (buffer.remaining() <= readBuffer.remaining()) {
+                return fillBuffer(buffer);
+            } else {
+                fillReadBuffer();
+                while (buffer.remaining() > readBuffer.remaining()) {
+                    spinIdle.idle();
+                    fillReadBuffer();
+                }
+                return fillBuffer(buffer);
+            }
+        }
+
+        UnsafeBuffer writeBuffer = new UnsafeBuffer();
+        public void write(ByteBuffer buffer) {
+            writeBuffer.wrap(buffer, buffer.position(), buffer.remaining());
+            while (true) {
+                long res = pub.offer(writeBuffer);
+                if (res >= 0) {
+                    buffer.position(buffer.limit());
+                    return;
+                }
+            }
+        }
+    }
+
     /**
      * One connection per ExecutionEngineIPC. This connection also interfaces
      * with Valgrind to report any problems that Valgrind may find including
@@ -171,7 +362,10 @@ public class ExecutionEngineIPC extends ExecutionEngine {
     private class Connection {
         private Socket m_socket = null;
         private SocketChannel m_socketChannel = null;
+        private AeronConnnection m_aeron_conn = null;
         Connection(BackendTarget target, int port) {
+            m_aeron_conn = new AeronConnnection();
+            m_aeron_conn.pingpongTest();
             boolean connected = false;
             int retries = 0;
             while (!connected) {
