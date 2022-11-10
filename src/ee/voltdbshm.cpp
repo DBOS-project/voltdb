@@ -25,7 +25,7 @@
 #include <signal.h>
 #include <sys/socket.h>
 #include <netinet/tcp.h> // for TCP_NODELAY
-#include <Aeron.h>
+#define DISABLE_BOUNDS_CHECKS
 #include <Image.h>
 #include <vector>
 #include <memory>
@@ -44,6 +44,15 @@
 #include "common/SynchronizedThreadLock.h"
 #include "common/types.h"
 
+#include <Aeron.h>
+#include "concurrent/BusySpinIdleStrategy.h"
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <unistd.h>
+#include <string.h>
+
 // Please don't make this different from the JNI result buffer size.
 // This determines the size of the EE results buffer and it's nice
 // if IPC and JNI are matched.
@@ -58,6 +67,123 @@ class Pool;
 class StreamBlock;
 class Table;
 }
+
+class AeronConnectionPair;
+
+#define RING_BUFFER_CAP (256*1024)
+struct MetaData {
+    uint64_t read_pos;
+    char pad_1[64 - sizeof(read_pos)];
+    uint64_t write_pos;
+    char pad_2[4096 - sizeof(write_pos) - sizeof(pad_1) - sizeof(read_pos)];
+};
+class RingByteBuffer {
+public:
+
+    static constexpr int kReadPosOffset = 0;
+    static constexpr int kWritePosOffset = 64;
+    static constexpr int kDataStartOffset = sizeof(MetaData);
+    static_assert(sizeof(MetaData) == 4096, "sizeof(MetaData) != 4096");
+    char * byte_array;
+    uint64_t capacity; // including metadata
+    uint64_t effective_capacity; // capacity excluding metadata
+    aeron::concurrent::AtomicBuffer metadata_buffer;
+    aeron::concurrent::AtomicBuffer data_buffer;
+
+    uint64_t read_pos_cached = 0;
+    uint64_t write_pos_cached = 0;
+    void clear() {
+        memset(byte_array, 0, capacity);
+    }
+    RingByteBuffer(char * byte_array, long capacity) :
+         byte_array(byte_array), capacity(capacity) {
+        effective_capacity = capacity - sizeof(MetaData);
+        assert(capacity >= sizeof(Metadata));
+        metadata_buffer = aeron::concurrent::AtomicBuffer((unsigned char *)byte_array, sizeof(MetaData));
+        data_buffer = aeron::concurrent::AtomicBuffer((unsigned char *)byte_array + sizeof(MetaData), effective_capacity);
+    }
+
+    std::size_t get_read_pos() {
+        return metadata_buffer.getInt64(kReadPosOffset);
+    }
+
+    inline std::size_t get_write_pos() {
+        return metadata_buffer.getInt64(kWritePosOffset);
+    }
+
+    inline void set_read_pos(std::size_t new_read_pos) {
+        return metadata_buffer.putInt64(kReadPosOffset, new_read_pos);
+    }
+    
+    inline void set_write_pos(std::size_t new_write_pos) {
+        return metadata_buffer.putInt64(kWritePosOffset, new_write_pos);
+    }
+
+    // inline std::size_t writable_bytes() {
+    //     std::size_t read_pos = get_read_pos();
+    //     std::size_t write_pos = get_write_pos();
+    //     assert(write_pos - read_pos <= effective_capacity);
+    //     return effective_capacity - (write_pos - read_pos);
+    // }
+
+    // inline std::size_t empty() {
+    //     return readable_bytes() == 0;
+    // }
+
+    // inline std::size_t readable_bytes() {
+    //     return get_write_pos() - get_read_pos();
+    // }
+
+    bool read_bytes(void * buf, std::size_t n) {
+        //assert(readble_bytes() >= n);
+        std::size_t read_pos = get_read_pos();
+        if (write_pos_cached - read_pos < n) {
+            write_pos_cached = get_write_pos();
+            if (write_pos_cached - read_pos < n) {
+                return false;
+            }
+        }
+        
+        std::size_t real_read_pos = read_pos % effective_capacity;
+
+        if (real_read_pos + n <= effective_capacity) {
+            data_buffer.getBytes(real_read_pos, (uint8_t*)buf, n);
+        } else {
+            std::size_t first_part_length = effective_capacity - real_read_pos;
+            std::size_t second_part_length = real_read_pos + n - effective_capacity;
+            data_buffer.getBytes(real_read_pos, (uint8_t*)buf, first_part_length);
+            data_buffer.getBytes(0, (uint8_t*)buf + first_part_length, second_part_length);
+            assert(first_part_length + second_part_length == n);
+        }
+
+        set_read_pos(read_pos + n);
+        return true;
+    }
+
+    bool write_bytes(const void * buf, std::size_t n) {
+        //assert(writable_bytes() >= n);
+        std::size_t write_pos = get_write_pos();
+        if (effective_capacity - (write_pos - read_pos_cached) < n) {
+            read_pos_cached = get_read_pos();
+            if (effective_capacity - (write_pos - read_pos_cached) < n) {
+                return false;
+            }
+        }
+
+        std::size_t real_write_pos = write_pos % effective_capacity;
+
+        if (real_write_pos + n <= effective_capacity) {
+            data_buffer.putBytes(real_write_pos, (const uint8_t*)buf, n);
+        } else {
+            std::size_t first_part_length = effective_capacity - real_write_pos;
+            std::size_t second_part_length = real_write_pos + n - effective_capacity;
+            data_buffer.putBytes(real_write_pos, (const uint8_t*)buf, first_part_length);
+            data_buffer.putBytes(0, (const uint8_t*)buf + first_part_length, second_part_length);
+        }
+        set_write_pos(write_pos + n);
+        return true;
+    }
+};
 
 class VoltDBSHM : public voltdb::Topend {
 public:
@@ -90,7 +216,7 @@ public:
         kErrorCode_callJavaUserDefinedAggregateCoordinatorEnd = 118  // Notify the frontend to call a Java user-defined aggregate function coordinator end method.
     };
 
-    VoltDBSHM(int fd);
+    VoltDBSHM(AeronConnectionPair * cp);
 
     ~VoltDBSHM();
 
@@ -271,7 +397,7 @@ private:
     voltdb::VoltDBEngine *m_engine;
     long int m_counter;
 
-    int m_fd;
+    AeronConnectionPair * m_cp;
     char *m_perFragmentStatsBuffer;
     char *m_reusedResultBuffer;
     char *m_exceptionBuffer;
@@ -519,118 +645,113 @@ static bool staticDebugVerbose = false;
 static constexpr std::size_t bufferSize = 1024 * 1024;
 class AeronConnectionPair {
 public:
-    std::shared_ptr<aeron::Subscription> sub;
-    std::shared_ptr<aeron::Publication> pub;
-    uint8_t write_buf[bufferSize];
-    aeron::concurrent::AtomicBuffer writeBuffer;
-    uint8_t read_buf[bufferSize];
-    std::size_t read_pos;
-    std::size_t read_limit;
-    aeron::concurrent::AtomicBuffer readBuffer;
-    aeron::fragment_handler_t fragment_handler;
+    //std::shared_ptr<aeron::Subscription> sub;
+    //std::shared_ptr<aeron::Publication> pub;
+    RingByteBuffer * outgoing_ringbuffer;
+    RingByteBuffer * incoming_ringbuffer;
+    //uint8_t write_buf[bufferSize];
+    //aeron::concurrent::AtomicBuffer writeBuffer;
+    //uint8_t read_buf[bufferSize];
+    //std::size_t read_pos;
+    //std::size_t read_limit;
+    //aeron::concurrent::AtomicBuffer readBuffer;
+    //aeron::fragment_handler_t fragment_handler;
 
-    AeronConnectionPair(std::shared_ptr<aeron::Subscription> sub, std::shared_ptr<aeron::Publication> pub): sub(sub), pub(pub) {
-        writeBuffer = aeron::concurrent::AtomicBuffer(write_buf, sizeof(write_buf));
-        readBuffer = aeron::concurrent::AtomicBuffer(read_buf, sizeof(read_buf));
-        read_pos = 0;
-        read_limit = 0;
+    AeronConnectionPair(RingByteBuffer * outgoing_ringbuffer, RingByteBuffer * incoming_ringbuffer): outgoing_ringbuffer(outgoing_ringbuffer), incoming_ringbuffer(incoming_ringbuffer) {
+        // writeBuffer = aeron::concurrent::AtomicBuffer(write_buf, sizeof(write_buf));
+        // readBuffer = aeron::concurrent::AtomicBuffer(read_buf, sizeof(read_buf));
+        // read_pos = 0;
+        // read_limit = 0;
 
-        fragment_handler = [&, this](const aeron::concurrent::AtomicBuffer &buffer, 
-                                     aeron::util::index_t offset, 
-                                     aeron::util::index_t length, const aeron::Header &header)
-            {
-                assert(length < bufferSize);
-                while (length > this->read_buffer_left_space()) {
-                    if (this->read_pos == 0) {
-                        printf("\n\nCannot take in %d bytes to a read buffer with %lu bytes of capacity. \n\n", length, this->read_buffer_left_space());
-                        fflush(stdout);
-                        exit(-1);
-                    }
-                    this->compact_read_buffer();
-                }
-                append_incoming_bytes(buffer.buffer() + offset, length);
-            };
+        // fragment_handler = [&, this](const aeron::concurrent::AtomicBuffer &buffer, 
+        //                              aeron::util::index_t offset, 
+        //                              aeron::util::index_t length, const aeron::Header &header)
+        //     {
+        //         assert(length < bufferSize);
+        //         while (length > this->read_buffer_left_space()) {
+        //             if (this->read_pos == 0) {
+        //                 printf("\n\nCannot take in %d bytes to a read buffer with %lu bytes of capacity. \n\n", length, this->read_buffer_left_space());
+        //                 fflush(stdout);
+        //                 exit(-1);
+        //             }
+        //             this->compact_read_buffer();
+        //         }
+        //         append_incoming_bytes(buffer.buffer() + offset, length);
+        //     };
     }
 
-    void poll_from_subscription()   {
-        sub->poll(fragment_handler, 1);
-    }
+    // int poll_from_subscription()   {
+    //     return sub->poll(fragment_handler, 1);
+    // }
 
-    std::size_t available_incoming_bytes() {
-        assert(read_limit >= read_pos);
-        assert(bufferSize >= read_limit);
-        return read_limit - read_pos;
-    }
+    // std::size_t available_incoming_bytes() {
+    //     // assert(read_limit >= read_pos);
+    //     // assert(bufferSize >= read_limit);
+    //     // return read_limit - read_pos;
+    //     return incoming_ringbuffer->readable_bytes();
+    // }
 
-    std::size_t read_buffer_left_space() {
-        return bufferSize - read_limit;
-    }
-
-    void append_incoming_bytes(const unsigned char * buf, size_t sz) {
-        assert(sz >= 0);
-        assert(read_buffer_left_space() >= sz);
-        memcpy(read_buf + read_limit, buf, sz);
-        read_limit += sz;
-    }
-
-    void compact_read_buffer() {
-        // move bytes in [read_pos, read_limit) to the beginning of the read buffer
-        // set read_limit = read_limit - read_pos, read_pos = 0
-        memmove(read_buf, read_buf + read_pos, available_incoming_bytes());
-        read_limit = read_limit - read_pos;
-        read_pos = 0;
-    }
-
-    void consume_incoming_bytes(unsigned char * buf, size_t sz) {
-        assert(sz >= 0);
-        assert(available_incoming_bytes() >= sz);
-        memcpy(buf, read_buf + read_pos, sz);
-        read_pos += sz;
-    }
 };
 
-static void writeOrDie(int fd, const unsigned char *data, ssize_t sz) {
-    ssize_t written = 0;
-    ssize_t last = 0;
-    while (written < sz) {
-        if (staticDebugVerbose) {
-            std::cout << "Trying to write " << (sz - written) << " bytes" << std::endl;
-        }
-        last = write(fd, data + written, sz - written);
-        if (last < 0) {
-            printf("\n\nIPC write to JNI returned -1. Exiting\n\n");
-            fflush(stdout);
-            exit(-1);
-        }
-        if (staticDebugVerbose) {
-            std::cout << "Wrote " << last << " bytes" << std::endl;
-        }
-        written += last;
-    }
-}
+// static void writeOrDie(int fd, const unsigned char *data, ssize_t sz) {
+//     ssize_t written = 0;
+//     ssize_t last = 0;
+//     while (written < sz) {
+//         if (staticDebugVerbose) {
+//             std::cout << "Trying to write " << (sz - written) << " bytes" << std::endl;
+//         }
+//         last = write(fd, data + written, sz - written);
+//         if (last < 0) {
+//             printf("\n\nIPC write to JNI returned -1. Exiting\n\n");
+//             fflush(stdout);
+//             exit(-1);
+//         }
+//         if (staticDebugVerbose) {
+//             std::cout << "Wrote " << last << " bytes" << std::endl;
+//         }
+//         written += last;
+//     }
+// }
+thread_local aeron::concurrent::BusySpinIdleStrategy idleStrategy;
 static void writeOrDie(AeronConnectionPair * cp, const unsigned char *data, ssize_t sz) {
-    cp->writeBuffer.putBytes(0, data, sz);
+    // cp->writeBuffer.putBytes(0, data, sz);
 
-    std::int64_t result = cp->pub->offer(cp->writeBuffer, 0, sz);
-    while (result <= 0) {
-        if (aeron::NOT_CONNECTED == result || aeron::PUBLICATION_CLOSED == result) {
-            printf("\n\nIPC write to aeron::pub encounters connection problem: %ld. Exiting\n\n", result);
-            fflush(stdout);
-            exit(-1);
-        }
-        result = cp->pub->offer(cp->writeBuffer, 0, sz);
+    // std::int64_t result = cp->pub->offer(cp->writeBuffer, 0, sz);
+    // while (result <= 0) {
+    //     if (aeron::NOT_CONNECTED == result || aeron::PUBLICATION_CLOSED == result) {
+    //         printf("\n\nIPC write to aeron::pub encounters connection problem: %ld. Exiting\n\n", result);
+    //         fflush(stdout);
+    //         exit(-1);
+    //     }
+    //     result = cp->pub->offer(cp->writeBuffer, 0, sz);
+    // }
+    // while (cp->outgoing_ringbuffer->writable_bytes() < sz) {
+    //     idleStrategy.idle(0);
+    // }
+    while (cp->outgoing_ringbuffer->write_bytes(data, sz) == false)
+    {
+        idleStrategy.idle(0);
     }
 }
 
-static ssize_t read(AeronConnectionPair * cp, unsigned char *buf, size_t sz) {
-    if (cp->available_incoming_bytes() >= sz) {
-        cp->consume_incoming_bytes(buf, sz);
-    } else {
-        // poll more data from subscription
-        while (cp->available_incoming_bytes() < sz) {
-            cp->poll_from_subscription();
-        }
-        cp->consume_incoming_bytes(buf, sz);
+
+static ssize_t read(AeronConnectionPair * cp, void *buf, size_t sz) {
+    // if (cp->available_incoming_bytes() >= sz) {
+    //     cp->consume_incoming_bytes((unsigned char *)buf, sz);
+    // } else {
+    //     // poll more data from subscription
+    //     while (cp->available_incoming_bytes() < sz) {
+    //         auto work = cp->poll_from_subscription();
+    //         idleStrategy.idle(work);
+    //     }
+    //     cp->consume_incoming_bytes((unsigned char *)buf, sz);
+    // }
+    // while (cp->incoming_ringbuffer->readable_bytes() < sz) {
+    //     idleStrategy.idle(0);
+    // }
+    while (cp->incoming_ringbuffer->read_bytes(buf, sz) == false)
+    {
+        idleStrategy.idle(0);
     }
     return sz;
 }
@@ -645,10 +766,10 @@ void deserializeParameterSetCommon(int cnt, ReferenceSerializeInputBE &serialize
     }
 }
 
-VoltDBSHM::VoltDBSHM(int fd)
+VoltDBSHM::VoltDBSHM(AeronConnectionPair * cp)
     : m_engine(NULL)
     , m_counter(0)
-    , m_fd(fd)
+    , m_cp(cp)
     , m_perFragmentStatsBuffer(NULL)
     , m_reusedResultBuffer(NULL)
     , m_exceptionBuffer(NULL)
@@ -811,9 +932,9 @@ bool VoltDBSHM::execute(struct ipc_command *cmd) {
             char msg[5];
             msg[0] = result;
             *reinterpret_cast<int32_t*>(&msg[1]) = 0;//exception length 0
-            writeOrDie(m_fd, (unsigned char*)msg, sizeof(int8_t) + sizeof(int32_t));
+            writeOrDie(m_cp, (unsigned char*)msg, sizeof(int8_t) + sizeof(int32_t));
         } else {
-            writeOrDie(m_fd, (unsigned char*)&result, sizeof(int8_t));
+            writeOrDie(m_cp, (unsigned char*)&result, sizeof(int8_t));
         }
     }
     return m_terminate;
@@ -1114,7 +1235,7 @@ void VoltDBSHM::executePlanFragments(struct ipc_command *cmd) {
     if (errors == 0) {
         // write the results array back across the wire
         const int32_t size = m_engine->getResultsSize();
-        writeOrDie(m_fd, m_engine->getResultsBuffer(), size);
+        writeOrDie(m_cp, m_engine->getResultsBuffer(), size);
     } else {
         sendException(kErrorCode_Error);
     }
@@ -1128,12 +1249,12 @@ void VoltDBSHM::setViewsEnabled(struct ipc_command *cmd) {
 
 void VoltDBSHM::sendPerFragmentStatsBuffer() {
     int8_t statusCode = static_cast<int8_t>(kErrorCode_pushPerFragmentStatsBuffer);
-    writeOrDie(m_fd, (unsigned char*)&statusCode, sizeof(int8_t));
+    writeOrDie(m_cp, (unsigned char*)&statusCode, sizeof(int8_t));
     // write the per-fragment stats back across the wire
     char *perFragmentStatsBuffer = m_engine->getPerFragmentStatsBuffer();
     int32_t perFragmentStatsBufferSizeToSend = htonl(m_engine->getPerFragmentStatsSize());
-    writeOrDie(m_fd, (unsigned char*)&perFragmentStatsBufferSizeToSend, sizeof(int32_t));
-    writeOrDie(m_fd, (unsigned char*)perFragmentStatsBuffer, m_engine->getPerFragmentStatsSize());
+    writeOrDie(m_cp, (unsigned char*)&perFragmentStatsBufferSizeToSend, sizeof(int32_t));
+    writeOrDie(m_cp, (unsigned char*)perFragmentStatsBuffer, m_engine->getPerFragmentStatsSize());
 }
 
 void checkBytesRead(ssize_t byteCountExpected, ssize_t byteCountRead, std::string description) {
@@ -1149,32 +1270,32 @@ void checkBytesRead(ssize_t byteCountExpected, ssize_t byteCountRead, std::strin
 int VoltDBSHM::callJavaUserDefinedHelper(int kErrorCode) {
     // Send a special status code indicating that a UDF invocation request is coming on the wire.
     int8_t statusCode = static_cast<int8_t>(kErrorCode);
-    writeOrDie(m_fd, (unsigned char*)&statusCode, sizeof(int8_t));
+    writeOrDie(m_cp, (unsigned char*)&statusCode, sizeof(int8_t));
 
     // Get the UDF buffer size.
     int32_t* udfBufferInInt32 = reinterpret_cast<int32_t*>(m_udfBuffer);
     int32_t udfBufferSizeToSend = ntohl(*udfBufferInInt32);
     // Send the whole UDF buffer to the wire.
     // Note that the number of bytes we sent includes the bytes for storing the buffer size.
-    writeOrDie(m_fd, (unsigned char*)m_udfBuffer, sizeof(udfBufferSizeToSend) + udfBufferSizeToSend);
+    writeOrDie(m_cp, (unsigned char*)m_udfBuffer, sizeof(udfBufferSizeToSend) + udfBufferSizeToSend);
 
     // Wait for the UDF result.
 
     int32_t retval, udfBufferSizeToRecv;
     // read buffer length
-    ssize_t bytes = read(m_fd, &udfBufferSizeToRecv, sizeof(int32_t));
+    ssize_t bytes = read(m_cp, &udfBufferSizeToRecv, sizeof(int32_t));
     checkBytesRead(sizeof(int32_t), bytes, "UDF return value buffer size");
     // The buffer size should exclude the size of the buffer size value
     // and the returning status code value (2 * sizeof(int32_t)).
     udfBufferSizeToRecv = ntohl(udfBufferSizeToRecv) - 2 * sizeof(int32_t);
 
     // read return value, 0 means success, failure otherwise.
-    bytes = read(m_fd, &retval, sizeof(int32_t));
+    bytes = read(m_cp, &retval, sizeof(int32_t));
     checkBytesRead(sizeof(int32_t), bytes, "UDF execution return code");
     retval = ntohl(retval);
 
     // read buffer content, includes the return value of the UDF.
-    bytes = read(m_fd, m_udfBuffer, udfBufferSizeToRecv);
+    bytes = read(m_cp, m_udfBuffer, udfBufferSizeToRecv);
     checkBytesRead(udfBufferSizeToRecv, bytes, "UDF return value buffer content");
     return retval;
 }
@@ -1211,12 +1332,12 @@ bool VoltDBSHM::sendResponseOrException(uint8_t errorCode) {
         sendException(errorCode);
         return true;
     }
-    writeOrDie(m_fd, (unsigned char*)&errorCode, sizeof(int8_t));
+    writeOrDie(m_cp, (unsigned char*)&errorCode, sizeof(int8_t));
     return false;
 }
 
 void VoltDBSHM::sendException(int8_t errorCode) {
-    writeOrDie(m_fd, (unsigned char*)&errorCode, sizeof(int8_t));
+    writeOrDie(m_cp, (unsigned char*)&errorCode, sizeof(int8_t));
 
     const void* exceptionData =
       m_engine->getExceptionOutputSerializer()->data();
@@ -1228,7 +1349,7 @@ void VoltDBSHM::sendException(int8_t errorCode) {
     fflush(stdout);
 
     const std::size_t expectedSize = exceptionLength + sizeof(int32_t);
-    writeOrDie(m_fd, (const unsigned char*)exceptionData, expectedSize);
+    writeOrDie(m_cp, (const unsigned char*)exceptionData, expectedSize);
 }
 
 int8_t VoltDBSHM::loadTable(struct ipc_command *cmd) {
@@ -1322,11 +1443,11 @@ char *VoltDBSHM::retrieveDependency(int32_t dependencyId, size_t *dependencySz) 
     // tell java to send the dependency over the socket
     message[0] = static_cast<int8_t>(kErrorCode_RetrieveDependency);
     *reinterpret_cast<int32_t*>(&message[1]) = htonl(dependencyId);
-    writeOrDie(m_fd, (unsigned char*)message, sizeof(int8_t) + sizeof(int32_t));
+    writeOrDie(m_cp, (unsigned char*)message, sizeof(int8_t) + sizeof(int32_t));
 
     // read java's response code
     int8_t responseCode;
-    ssize_t bytes = read(m_fd, &responseCode, sizeof(int8_t));
+    ssize_t bytes = read(m_cp, &responseCode, sizeof(int8_t));
     if (bytes != sizeof(int8_t)) {
         printf("Error - blocking read failed. %jd read %jd attempted",
                 (intmax_t)bytes, (intmax_t)sizeof(int8_t));
@@ -1348,7 +1469,7 @@ char *VoltDBSHM::retrieveDependency(int32_t dependencyId, size_t *dependencySz) 
 
     // start reading the dependency. its length is first
     int32_t dependencyLength;
-    bytes = read(m_fd, &dependencyLength, sizeof(int32_t));
+    bytes = read(m_cp, &dependencyLength, sizeof(int32_t));
     if (bytes != sizeof(int32_t)) {
         printf("Error - blocking read failed. %jd read %jd attempted",
                 (intmax_t)bytes, (intmax_t)sizeof(int32_t));
@@ -1363,7 +1484,7 @@ char *VoltDBSHM::retrieveDependency(int32_t dependencyId, size_t *dependencySz) 
     char *dependencyData = new char[dependencyLength];
     while (bytes != dependencyLength) {
         ssize_t oldBytes = bytes;
-        bytes += read(m_fd, dependencyData + bytes, dependencyLength - bytes);
+        bytes += read(m_cp, dependencyData + bytes, dependencyLength - bytes);
         if (oldBytes == bytes) {
             break;
         }
@@ -1387,9 +1508,9 @@ char *VoltDBSHM::retrieveDependency(int32_t dependencyId, size_t *dependencySz) 
 //   Reads a 4-byte integer from fd that is the length of the following string
 //   Reads the bytes for the string
 //   Returns those bytes as an std::string
-static std::string readLengthPrefixedBytesToStdString(int fd) {
+static std::string readLengthPrefixedBytesToStdString(AeronConnectionPair * cp) {
     int32_t length;
-    ssize_t numBytesRead = read(fd, &length, sizeof(int32_t));
+    ssize_t numBytesRead = read(cp, &length, sizeof(int32_t));
     checkBytesRead(sizeof(int32_t), numBytesRead, "plan bytes length");
     length = static_cast<int32_t>(ntohl(length) - sizeof(int32_t));
     vassert(length > 0);
@@ -1398,7 +1519,7 @@ static std::string readLengthPrefixedBytesToStdString(int fd) {
     numBytesRead = 0;
     while (numBytesRead != length) {
         ssize_t oldBytes = numBytesRead;
-        numBytesRead += read(fd, bytes.get() + numBytesRead, length - numBytesRead);
+        numBytesRead += read(cp, bytes.get() + numBytesRead, length - numBytesRead);
         if (oldBytes == numBytesRead) {
             break;
         }
@@ -1431,17 +1552,17 @@ std::string VoltDBSHM::decodeBase64AndDecompress(const std::string& base64Data) 
 
     ::memcpy(&message[offset], base64Data.c_str(), base64Data.size());
 
-    writeOrDie(m_fd, message, messageSize);
+    writeOrDie(m_cp, message, messageSize);
 
-    return readLengthPrefixedBytesToStdString(m_fd);
+    return readLengthPrefixedBytesToStdString(m_cp);
 }
 
 std::string VoltDBSHM::planForFragmentId(int64_t fragmentId) {
     char message[sizeof(int8_t) + sizeof(int64_t)];
     message[0] = static_cast<int8_t>(kErrorCode_needPlan);
     *reinterpret_cast<int64_t*>(&message[1]) = htonll(fragmentId);
-    writeOrDie(m_fd, (unsigned char*)message, sizeof(int8_t) + sizeof(int64_t));
-    return readLengthPrefixedBytesToStdString(m_fd);
+    writeOrDie(m_cp, (unsigned char*)message, sizeof(int8_t) + sizeof(int64_t));
+    return readLengthPrefixedBytesToStdString(m_cp);
 }
 
 static bool progressUpdateDisabled = true;
@@ -1485,13 +1606,13 @@ int64_t VoltDBSHM::fragmentProgressUpdate(
     if (staticDebugVerbose) {
         std::cout << "Writing progress update " << (int)*message << std::endl;
     }
-    writeOrDie(m_fd, (unsigned char*)message, offset);
+    writeOrDie(m_cp, (unsigned char*)message, offset);
     if (staticDebugVerbose) {
         std::cout << "Wrote progress update" << std::endl;
     }
 
     int64_t nextStep;
-    ssize_t bytes = read(m_fd, &nextStep, sizeof(nextStep));
+    ssize_t bytes = read(m_cp, &nextStep, sizeof(nextStep));
     if (bytes != sizeof(nextStep)) {
         printf("Error - blocking read after progress update failed. %jd read %jd attempted",
                 (intmax_t)bytes, (intmax_t)sizeof(nextStep));
@@ -1563,7 +1684,7 @@ void VoltDBSHM::crashVoltDB(voltdb::FatalException e) {
         position += traceLength;
     }
 
-    writeOrDie(m_fd,  (unsigned char*)m_reusedResultBuffer, 5 + messageLength);
+    writeOrDie(m_cp,  (unsigned char*)m_reusedResultBuffer, 5 + messageLength);
     exit(-1);
 }
 
@@ -1597,17 +1718,17 @@ void VoltDBSHM::getStats(struct ipc_command *cmd) {
         // write the results array back across the wire
         const int8_t successResult = kErrorCode_Success;
         if (result == 0 || result == 1) {
-            writeOrDie(m_fd, (const unsigned char*)&successResult, sizeof(int8_t));
+            writeOrDie(m_cp, (const unsigned char*)&successResult, sizeof(int8_t));
 
             if (result == 1) {
                 const int32_t size = m_engine->getResultsSize();
                 // write the dependency tables back across the wire
                 // the result set includes the total serialization size
-                writeOrDie(m_fd, m_engine->getResultsBuffer(), size);
+                writeOrDie(m_cp, m_engine->getResultsBuffer(), size);
             }
             else {
                 int32_t zero = 0;
-                writeOrDie(m_fd, (const unsigned char*)&zero, sizeof(int32_t));
+                writeOrDie(m_cp, (const unsigned char*)&zero, sizeof(int32_t));
             }
         } else {
             sendException(kErrorCode_Error);
@@ -1729,7 +1850,7 @@ void VoltDBSHM::tableStreamSerializeMore(struct ipc_command *cmd) {
             outputSize = offset;
         }
         // Ship it.
-        writeOrDie(m_fd, (unsigned char*)m_tupleBuffer, outputSize);
+        writeOrDie(m_cp, (unsigned char*)m_tupleBuffer, outputSize);
 
     } catch (const FatalException &e) {
         crashVoltDB(e);
@@ -1743,7 +1864,7 @@ void VoltDBSHM::tableHashCode( struct ipc_command *cmd) {
     char response[9];
     response[0] = kErrorCode_Success;
     *reinterpret_cast<int64_t*>(&response[1]) = htonll(tableHashCode);
-    writeOrDie(m_fd, (unsigned char*)response, 9);
+    writeOrDie(m_cp, (unsigned char*)response, 9);
 }
 
 void VoltDBSHM::setExportStreamPositions(struct ipc_command *cmd) {
@@ -1758,7 +1879,7 @@ void VoltDBSHM::setExportStreamPositions(struct ipc_command *cmd) {
                                        tableSignature);
 
     uint8_t success = 0;
-    writeOrDie(m_fd, (unsigned char*)&success, sizeof(success));
+    writeOrDie(m_cp, (unsigned char*)&success, sizeof(success));
 }
 
 void VoltDBSHM::deleteMigratedRows(struct ipc_command *cmd) {
@@ -1774,7 +1895,7 @@ void VoltDBSHM::deleteMigratedRows(struct ipc_command *cmd) {
                                                static_cast<int64_t>(ntohll(migrate_msg->undoToken)));
     char response[1];
     response[0] = result ? 1 : 0;
-    writeOrDie(m_fd, (unsigned char*)response, sizeof(int8_t));
+    writeOrDie(m_cp, (unsigned char*)response, sizeof(int8_t));
 }
 
 void VoltDBSHM::storeTopicsGroup(struct ipc_command *cmd) {
@@ -1812,9 +1933,9 @@ void VoltDBSHM::fetchTopicsGroups(struct ipc_command *cmd) {
         }
 
         response = result > 0;
-        writeOrDie(m_fd, &response, sizeof(uint8_t));
+        writeOrDie(m_cp, &response, sizeof(uint8_t));
         const int32_t size = m_engine->getResultsSize();
-        writeOrDie(m_fd, m_engine->getResultsBuffer(), size);
+        writeOrDie(m_cp, m_engine->getResultsBuffer(), size);
     } catch (const FatalException &e) {
         crashVoltDB(e);
     }
@@ -1835,7 +1956,7 @@ void VoltDBSHM::commitTopicsGroupOffsets(struct ipc_command *cmd) {
             return;
         }
         const int32_t size = m_engine->getResultsSize();
-        writeOrDie(m_fd, m_engine->getResultsBuffer(), size);
+        writeOrDie(m_cp, m_engine->getResultsBuffer(), size);
     } catch (const FatalException &e) {
         crashVoltDB(e);
     }
@@ -1856,7 +1977,7 @@ void VoltDBSHM::fetchTopicsGroupOffsets(struct ipc_command *cmd) {
             return;
         }
         const int32_t size = m_engine->getResultsSize();
-        writeOrDie(m_fd, m_engine->getResultsBuffer(), size);
+        writeOrDie(m_cp, m_engine->getResultsBuffer(), size);
     } catch (const FatalException &e) {
         crashVoltDB(e);
     }
@@ -1887,14 +2008,14 @@ void VoltDBSHM::getUSOForExportTable(struct ipc_command *cmd) {
     // write offset across bigendian.
     int64_t ackOffsetI64 = static_cast<int64_t>(ackOffset);
     ackOffsetI64 = htonll(ackOffsetI64);
-    writeOrDie(m_fd, (unsigned char*)&ackOffsetI64, sizeof(ackOffsetI64));
+    writeOrDie(m_cp, (unsigned char*)&ackOffsetI64, sizeof(ackOffsetI64));
 
     // write the poll data. It is at least 4 bytes of length prefix.
     seqNo = htonll(seqNo);
-    writeOrDie(m_fd, (unsigned char*)&seqNo, sizeof(seqNo));
+    writeOrDie(m_cp, (unsigned char*)&seqNo, sizeof(seqNo));
 
     genId = htonll(genId);
-    writeOrDie(m_fd, (unsigned char*)&genId, sizeof(genId));
+    writeOrDie(m_cp, (unsigned char*)&genId, sizeof(genId));
 }
 
 void VoltDBSHM::hashinate(struct ipc_command* cmd) {
@@ -1924,7 +2045,7 @@ void VoltDBSHM::hashinate(struct ipc_command* cmd) {
     char response[5];
     response[0] = kErrorCode_Success;
     *reinterpret_cast<int32_t*>(&response[1]) = htonl(retval);
-    writeOrDie(m_fd, (unsigned char*)response, 5);
+    writeOrDie(m_cp, (unsigned char*)response, 5);
 }
 
 void VoltDBSHM::updateHashinator(struct ipc_command *cmd) {
@@ -1968,7 +2089,7 @@ void VoltDBSHM::threadLocalPoolAllocations() {
     char response[9];
     response[0] = kErrorCode_Success;
     *reinterpret_cast<std::size_t*>(&response[1]) = htonll(poolAllocations);
-    writeOrDie(m_fd, (unsigned char*)response, 9);
+    writeOrDie(m_cp, (unsigned char*)response, 9);
 }
 
 void VoltDBSHM::pushExportBuffer(
@@ -1999,16 +2120,16 @@ void VoltDBSHM::pushExportBuffer(
     index += 40;
     if (block != NULL) {
         *reinterpret_cast<int32_t*>(&m_reusedResultBuffer[index]) = htonl(block->rawLength());
-        writeOrDie(m_fd, (unsigned char*)m_reusedResultBuffer, index + 4);
+        writeOrDie(m_cp, (unsigned char*)m_reusedResultBuffer, index + 4);
         // Memset the first 8 bytes to initialize the MAGIC_HEADER_SPACE_FOR_JAVA
         ::memset(block->rawPtr(), 0, 8);
-        writeOrDie(m_fd, (unsigned char*)block->rawPtr(), block->rawLength());
+        writeOrDie(m_cp, (unsigned char*)block->rawPtr(), block->rawLength());
         // Need the delete in the if statement for valgrind
         delete [] block->rawPtr();
         delete block;
     } else {
         *reinterpret_cast<int32_t*>(&m_reusedResultBuffer[index]) = htonl(0);
-        writeOrDie(m_fd, (unsigned char*)m_reusedResultBuffer, index + 4);
+        writeOrDie(m_cp, (unsigned char*)m_reusedResultBuffer, index + 4);
     }
 }
 
@@ -2022,7 +2143,7 @@ void VoltDBSHM::executeTask(struct ipc_command *cmd) {
         m_reusedResultBuffer[0] = kErrorCode_Success;
         m_engine->executeTask(taskId, input);
         int32_t responseLength = m_engine->getResultsSize();
-        writeOrDie(m_fd, m_engine->getResultsBuffer(), responseLength);
+        writeOrDie(m_cp, m_engine->getResultsBuffer(), responseLength);
     } catch (const FatalException& e) {
         crashVoltDB(e);
     }
@@ -2042,7 +2163,7 @@ void VoltDBSHM::applyBinaryLog(struct ipc_command *cmd) {
         char response[9];
         response[0] = kErrorCode_Success;
         *reinterpret_cast<int64_t*>(&response[1]) = htonll(rows);
-        writeOrDie(m_fd, (unsigned char*)response, 9);
+        writeOrDie(m_cp, (unsigned char*)response, 9);
     } catch (const FatalException& e) {
         crashVoltDB(e);
     }
@@ -2158,14 +2279,74 @@ struct VoltDBSHMDeleter {
     }
 };
 
+
+void ping(AeronConnectionPair * cp) {
+    // pingpong test
+    unsigned char buffer[150000];  
+    unsigned char correct_buffer[150000];
+    memset(buffer, 0, sizeof(buffer));
+    uint32_t times = 5000;
+    std::size_t length = 1024;
+    auto start = std::chrono::high_resolution_clock::now();
+    for (uint32_t i = 0; i < times; ++i) {
+        memset(buffer, i % 26 + 97, length);
+        memset(correct_buffer, i % 26 + 97, length);
+        writeOrDie(cp, buffer, length);
+        ssize_t sz = read(cp, buffer, length);
+        if (sz != length) {
+            printf("expect to read %lu bytes, got %ld bytes\n", length, sz);
+            fflush(stdout);
+            exit(1);
+        }
+        if (memcmp(correct_buffer, buffer, length) != 0) {
+            printf("expect to read %s, got %s\n", correct_buffer, buffer);
+            fflush(stdout);
+            exit(1);
+        }
+        //printf("Round %d passed\n", i);
+    }
+    auto finish = std::chrono::high_resolution_clock::now();
+    auto time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(finish-start).count();
+
+    printf("ping pong test for ping finished and succeeded, latency %f us\n", time_ns / 1000 / (times + 0.0));
+}
+
+void pong(AeronConnectionPair * cp) {
+    // pingpong test
+    unsigned char buffer[150000];  
+    unsigned char correct_buffer[150000];
+    memset(buffer, 0, sizeof(buffer));
+    uint32_t times = 5000;
+    std::size_t length = 1024;
+    for (uint32_t i = 0; i < times; ++i) {
+        memset(buffer, i % 26 + 97, length);
+        memset(correct_buffer, i % 26 + 97, length);
+        ssize_t sz = read(cp, buffer, length);
+        if (sz != length) {
+            printf("expect to read %lu bytes, got %ld bytes\n", length, sz);
+            fflush(stdout);
+            exit(1);
+        }
+        if (memcmp(correct_buffer, buffer, length) != 0) {
+            printf("expect to read %s, got %s\n", correct_buffer, buffer);
+            fflush(stdout);
+            exit(1);
+        }
+        writeOrDie(cp, buffer, length);
+        //printf("Round %d passed\n", i);
+    }
+    printf("ping pong test for pong finished and succeeded\n");
+}
+
 void eethread2(int eeid, AeronConnectionPair * cp) {
     // pingpong test
     printf("ee %d started, ping pong test\n", eeid);
-    unsigned char buffer[1024 * 1024];  
-    unsigned char correct_buffer[1024 * 1024];
+    unsigned char buffer[150000];  
+    unsigned char correct_buffer[150000];
     memset(buffer, 0, sizeof(buffer));
-    for (uint32_t i = 0; i < 10000; ++i) {
-        std::size_t length = (i + 1) * 4;
+    uint32_t times = 1000;
+    std::size_t length = 128000;
+    for (uint32_t i = 0; i < times; ++i) {
         memset(buffer, i % 26 + 97, length);
         memset(correct_buffer, i % 26 + 97, length);
         writeOrDie(cp, buffer, length);
@@ -2183,14 +2364,7 @@ void eethread2(int eeid, AeronConnectionPair * cp) {
         //printf("Round %d passed\n", i);
     }
     printf("ping pong test for ee %d finished and succeeded\n", eeid);
-}
 
-void *eethread(void *ptr) {
-    // copy and free the file descriptor ptr allocated by the select thread
-    int *fdPtr = static_cast<int*>(ptr);
-    int fd = *fdPtr;
-    delete fdPtr;
-    fdPtr = NULL;
 
     /* max message size that can be read from java */
     int max_ipc_message_size = (1024 * 1024 * 2);
@@ -2201,7 +2375,7 @@ void *eethread(void *ptr) {
     memset(data.get(), 0, max_ipc_message_size);
 
     // instantiate voltdbSHM to interface to EE.
-    std::unique_ptr<VoltDBSHM, VoltDBSHMDeleter> voltipc(new VoltDBSHM(fd));
+    std::unique_ptr<VoltDBSHM, VoltDBSHMDeleter> voltipc(new VoltDBSHM(cp));
 
     // loop until the terminate/shutdown command is seen
     bool terminated = false;
@@ -2210,15 +2384,13 @@ void *eethread(void *ptr) {
 
         // read the header
         while (bytesread < 4) {
-            std::size_t b = read(fd, data.get() + bytesread, 4 - bytesread);
+            std::size_t b = read(cp, data.get() + bytesread, 4 - bytesread);
             if (b == 0) {
                 printf("client eof\n");
-                close(fd);
-                return NULL;
+                return;
             } else if (b == -1) {
                 printf("client error\n");
-                close(fd);
-                return NULL;
+                return;
             }
             bytesread += b;
         }
@@ -2237,15 +2409,13 @@ void *eethread(void *ptr) {
         }
 
         while (bytesread < msg_size) {
-            std::size_t b = read(fd, data.get() + bytesread, msg_size - bytesread);
+            std::size_t b = read(cp, data.get() + bytesread, msg_size - bytesread);
             if (b == 0) {
                 printf("client eof\n");
-                close(fd);
-                return NULL;
+                return;
             } else if (b == -1) {
                 printf("client error\n");
-                close(fd);
-                return NULL;
+                return;
             }
             bytesread += b;
         }
@@ -2272,8 +2442,6 @@ void *eethread(void *ptr) {
         terminated = voltipc->execute(cmd);
     }
 
-    close(fd);
-    return NULL;
 }
 
 int main(int argc, char **argv) {
@@ -2313,93 +2481,160 @@ int main(int argc, char **argv) {
     fflush(stdout);
 
     const std::string aeronChannel = "aeron:ipc";
-    const std::string aeronDirectory = "/dev/shm/voltdb_frontend_aeron";
-    aeron::Context context;
-    context.aeronDir(aeronDirectory);
-    context.newPublicationHandler(
-    [](const std::string &channel, std::int32_t streamId, std::int32_t sessionId, std::int64_t correlationId)
-        {
-            printf("Publication: %s %ld %d\n", channel.c_str(), correlationId, streamId);
-            fflush(stdout);
-        });
-    context.newSubscriptionHandler(
-        [](const std::string &channel, std::int32_t streamId, std::int64_t correlationId)
-        {
-            printf("Subscription: %s %ld %d\n", channel.c_str(), correlationId, streamId);
-            fflush(stdout);
-        });
-    context.availableImageHandler(
-        [](aeron::Image &image)
-        {
-            printf("Available image correlationId=%ld  sessionId=%d at position=%ld from %s\n", image.correlationId(), image.sessionId(), image.position(), image.sourceIdentity().c_str());
-            fflush(stdout);
-        });
-    context.unavailableImageHandler(
-        [](aeron::Image &image)
-        {
-            printf("Unavailable image correlationId=%ld  sessionId=%d at position=%ld from %s\n", image.correlationId(), image.sessionId(), image.position(), image.sourceIdentity().c_str());
-            fflush(stdout);
-        });
+    // const std::string aeronDirectory = "/dev/shm/voltdb_frontend_aeron";
+    // const std::string aeronDirectory = "/dev/shm/voltdb_frontend_aeron";
+    // aeron::Context context;
+    // context.aeronDir(aeronDirectory);
+    // context.newPublicationHandler(
+    // [](const std::string &channel, std::int32_t streamId, std::int32_t sessionId, std::int64_t correlationId)
+    //     {
+    //         printf("Publication: %s %ld %d\n", channel.c_str(), correlationId, streamId);
+    //         fflush(stdout);
+    //     });
+    // context.newSubscriptionHandler(
+    //     [](const std::string &channel, std::int32_t streamId, std::int64_t correlationId)
+    //     {
+    //         printf("Subscription: %s %ld %d\n", channel.c_str(), correlationId, streamId);
+    //         fflush(stdout);
+    //     });
+    // context.availableImageHandler(
+    //     [](aeron::Image &image)
+    //     {
+    //         printf("Available image correlationId=%ld  sessionId=%d at position=%ld from %s\n", image.correlationId(), image.sessionId(), image.position(), image.sourceIdentity().c_str());
+    //         fflush(stdout);
+    //     });
+    // context.unavailableImageHandler(
+    //     [](aeron::Image &image)
+    //     {
+    //         printf("Unavailable image correlationId=%ld  sessionId=%d at position=%ld from %s\n", image.correlationId(), image.sessionId(), image.position(), image.sourceIdentity().c_str());
+    //         fflush(stdout);
+    //     });
 
-    std::shared_ptr<aeron::Aeron> aeron = aeron::Aeron::connect(context);
+    // std::shared_ptr<aeron::Aeron> aeron = aeron::Aeron::connect(context);
 
-    std::vector<std::shared_ptr<aeron::Subscription>> subscriptions;
-    std::vector<std::shared_ptr<aeron::Publication>> publications;
+    //std::vector<std::shared_ptr<aeron::Subscription>> subscriptions;
+    //std::vector<std::shared_ptr<aeron::Publication>> publications;
     std::vector<std::shared_ptr<AeronConnectionPair>> aeronConns;
 
-    for (int ee = 0; ee < eecount; ee++) {
-        int streamId = ee;
-        std::int64_t id = aeron->addSubscription(aeronChannel, streamId);
-        std::shared_ptr<aeron::Subscription> subscription = aeron->findSubscription(id);
-        // wait for the subscription to be valid
-        while (!subscription)
-        {
-            std::this_thread::yield();
-            subscription = aeron->findSubscription(id);
-        }
-        const std::int64_t channelStatus = subscription->channelStatus();
-        printf("Subscription channel status (id=%d) %s\n", 
-                      subscription->channelStatusId(), 
-                      (channelStatus == aeron::ChannelEndpointStatus::CHANNEL_ENDPOINT_ACTIVE ?
-                      "ACTIVE" : std::to_string(channelStatus).c_str()));
-        subscriptions.push_back(subscription);
+    {
+        char * buf1 = new char[RING_BUFFER_CAP];
+        char * buf2 = new char[RING_BUFFER_CAP];
+        auto outgoing_ringbuffer = new RingByteBuffer((char*)buf1, RING_BUFFER_CAP);
+        outgoing_ringbuffer->clear();
+
+        auto incoming_ringbuffer_2 = new RingByteBuffer((char*)buf1, RING_BUFFER_CAP);
+
+        auto incoming_ringbuffer = new RingByteBuffer((char*)buf2, RING_BUFFER_CAP);
+        incoming_ringbuffer->clear();
+        auto outgoing_ringbuffer_2 = new RingByteBuffer((char*)buf2, RING_BUFFER_CAP);
+
+        std::thread t3(ping, new AeronConnectionPair(outgoing_ringbuffer, incoming_ringbuffer));
+        std::thread t4(pong, new AeronConnectionPair(outgoing_ringbuffer_2, incoming_ringbuffer_2));
+        t3.join();
+        t4.join();
+
     }
 
-    printf("All %d subscriptions connected to backend.\n", eecount);
+    // {
+    //     std::string outgoing_shared_memory_file = "/dev/shm/volt_backend_pingpong_out";
+    //     remove(outgoing_shared_memory_file.c_str());
+    //     int fd = open(outgoing_shared_memory_file.c_str(), O_CREAT|O_RDWR);
+    //     if (fd < 0) {
+    //         printf("Failed to open %s : %s\n", outgoing_shared_memory_file.c_str(), strerror(errno));
+    //         fflush(stdout);
+    //         exit(1);
+    //     }
+    //     posix_fallocate(fd, 0, RING_BUFFER_CAP);
+    //     void * addr1 = mmap(nullptr, RING_BUFFER_CAP, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    //     if (addr1 == MAP_FAILED) {
+    //         printf("Failed to mmap %s : %s\n", outgoing_shared_memory_file.c_str(), strerror(errno));
+    //         fflush(stdout);
+    //         exit(1);
+    //     }
+    //     close(fd);
+    //     auto outgoing_ringbuffer = new RingByteBuffer((char*)addr1, RING_BUFFER_CAP);
+    //     outgoing_ringbuffer->clear();
 
-    printf("Starting %d publications from backend.\n", eecount);
+    //     auto incoming_ringbuffer_2 = new RingByteBuffer((char*)addr1, RING_BUFFER_CAP);
+
+    //     std::string incoming_shared_memory_file = "/dev/shm/volt_backend_pingpong_in";
+    //     remove(incoming_shared_memory_file.c_str());
+    //     fd = open(incoming_shared_memory_file.c_str(), O_CREAT|O_RDWR);
+    //     if (fd < 0) {
+    //         printf("Failed to open %s : %s\n", incoming_shared_memory_file.c_str(), strerror(errno));
+    //         fflush(stdout);
+    //         exit(1);
+    //     }
+    //     posix_fallocate(fd, 0, RING_BUFFER_CAP);
+    //     auto addr2 = mmap(nullptr, RING_BUFFER_CAP, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    //     if (addr2 == MAP_FAILED) {
+    //         printf("Failed to mmap %s : %s\n", incoming_shared_memory_file.c_str(), strerror(errno));
+    //         fflush(stdout);
+    //         exit(1);
+    //     }
+    //     close(fd);
+    //     auto incoming_ringbuffer = new RingByteBuffer((char*)addr2, RING_BUFFER_CAP);
+    //     incoming_ringbuffer->clear();
+    //     auto outgoing_ringbuffer_2 = new RingByteBuffer((char*)addr2, RING_BUFFER_CAP);
+    //     std::thread t1(ping, new AeronConnectionPair(outgoing_ringbuffer, incoming_ringbuffer));
+    //     std::thread t2(pong, new AeronConnectionPair(outgoing_ringbuffer_2, incoming_ringbuffer_2));
+    //     t1.join();
+    //     t2.join();
+
+        
+    //     //exit(0);
+    // }
+
+    
+
+    for (int ee = 0; ee < eecount; ee++) {
+        std::string outgoing_shared_memory_file = "/dev/shm/volt_backend_out_" + std::to_string(ee);
+        int fd = open(outgoing_shared_memory_file.c_str(), O_CREAT|O_RDWR);
+        if (fd < 0) {
+            printf("Failed to open %s : %s\n", outgoing_shared_memory_file.c_str(), strerror(errno));
+            fflush(stdout);
+            exit(1);
+        }
+        void * addr1 = mmap(nullptr, RING_BUFFER_CAP, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        if (addr1 == MAP_FAILED) {
+            printf("Failed to mmap %s : %s\n", outgoing_shared_memory_file.c_str(), strerror(errno));
+            fflush(stdout);
+            exit(1);
+        }
+        close(fd);
+        auto outgoing_ringbuffer = new RingByteBuffer((char*)addr1, RING_BUFFER_CAP);
+
+        std::string incoming_shared_memory_file = "/dev/shm/volt_frontend_out_" + std::to_string(ee);
+        fd = open(incoming_shared_memory_file.c_str(), O_CREAT|O_RDWR);
+        if (fd < 0) {
+            printf("Failed to open %s : %s\n", incoming_shared_memory_file.c_str(), strerror(errno));
+            fflush(stdout);
+            exit(1);
+        }
+        auto addr2 = mmap(nullptr, RING_BUFFER_CAP, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        if (addr2 == MAP_FAILED) {
+            printf("Failed to mmap %s : %s\n", incoming_shared_memory_file.c_str(), strerror(errno));
+            fflush(stdout);
+            exit(1);
+        }
+        close(fd);
+        auto incoming_ringbuffer = new RingByteBuffer((char*)addr2, RING_BUFFER_CAP);
+
+        aeronConns.push_back(std::make_shared<AeronConnectionPair>(outgoing_ringbuffer, incoming_ringbuffer));
+        printf("%p for %s, %p for %s\n", addr1, outgoing_shared_memory_file.c_str(), addr2, incoming_shared_memory_file.c_str());
+    }
+
+    //printf("All %d subscriptions connected to backend.\n", eecount);
+
+    //printf("Starting %d publications from backend.\n", eecount);
     fflush(stdout);
 
-    // add the subscription to start the process
-    const static int backendPublicationStartStreamId = 30;
-
-    for (int pubStreamId = backendPublicationStartStreamId; pubStreamId < backendPublicationStartStreamId + eecount; ++pubStreamId) {
-        std::int64_t id = aeron->addPublication(aeronChannel, pubStreamId);
-        std::shared_ptr<aeron::Publication> publication = aeron->findPublication(id);
-        // wait for the publication to be valid
-        while (!publication)
-        {
-            std::this_thread::yield();
-            publication = aeron->findPublication(id);
-        }
-        const std::int64_t channelStatus = publication->channelStatus();
-
-        printf("Publication channel status (id=%d) %s\n", 
-                      publication->channelStatusId(), 
-                      (channelStatus == aeron::ChannelEndpointStatus::CHANNEL_ENDPOINT_ACTIVE ?
-                      "ACTIVE" : std::to_string(channelStatus).c_str()));
-        fflush(stdout);
-        while (!publication->isConnected());
-        publications.push_back(publication);
-    }
-
-    printf("All %d publications have been connected by frontend.\n", eecount);
+    //printf("All %d publications have been connected by frontend.\n", eecount);
     g_cleanUpCountdownLatch = eecount;
 
     std::vector<std::thread> threads;
     for (int ee = 0; ee < eecount; ee++) {
-        aeronConns.push_back(std::make_shared<AeronConnectionPair>(subscriptions[ee], publications[ee]));
-        threads.emplace_back(std::thread(eethread2, ee, aeronConns.back().get()));
+        threads.emplace_back(std::thread(eethread2, ee, aeronConns[ee].get()));
     }
     // // connect to each Site from Java over a new socket
     // for (int ee = 0; ee < eecount; ee++) {

@@ -17,6 +17,7 @@
 
 package org.voltdb.jni;
 
+import java.io.File;
 import java.io.ByteArrayOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
@@ -69,12 +70,14 @@ import io.aeron.driver.ThreadingMode;
 import org.agrona.concurrent.AgentRunner;
 import org.agrona.concurrent.BusySpinIdleStrategy;
 import org.agrona.concurrent.IdleStrategy;
+import org.agrona.concurrent.NoOpIdleStrategy;
 import org.agrona.concurrent.SleepingIdleStrategy;
 import org.agrona.concurrent.ShutdownSignalBarrier;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.DirectBuffer;
 import io.aeron.logbuffer.FragmentHandler;
 import io.aeron.logbuffer.Header;
+import org.voltdb.jni.RingByteBuffer;
 
 import com.google_voltpatches.common.base.Charsets;
 
@@ -191,13 +194,19 @@ public class ExecutionEngineIPC extends ExecutionEngine {
     final IdleStrategy sleepIdle = new SleepingIdleStrategy();
     final IdleStrategy spinIdle = new BusySpinIdleStrategy();
     static final int maxStreamIdForFrontend = 30;
+    static final int kRingBufferCapacity = 256 * 1024;
     static final AtomicInteger streamIdCounter = new AtomicInteger(0);
     static {
         mediaDriverCtx = new MediaDriver.Context()
         .dirDeleteOnStart(true)
         .threadingMode(ThreadingMode.SHARED)
         .dirDeleteOnShutdown(true)
-        .sharedIdleStrategy(new BusySpinIdleStrategy()).aeronDirectoryName(aeronDirectory);
+        .termBufferSparseFile(false)
+        .useWindowsHighResTimer(true)
+        .threadingMode(ThreadingMode.DEDICATED)
+        .conductorIdleStrategy(BusySpinIdleStrategy.INSTANCE)
+        .receiverIdleStrategy(NoOpIdleStrategy.INSTANCE)
+        .senderIdleStrategy(NoOpIdleStrategy.INSTANCE).aeronDirectoryName(aeronDirectory);
         mediaDriver = MediaDriver.launchEmbedded(mediaDriverCtx);
         System.out.println("Media Driver lunched in " + aeronDirectory);
         aeronCtx = new Aeron.Context()
@@ -216,58 +225,71 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         
         private int streamId = -1;
         private int subStreamId = -1;
-        private Publication pub;
-        private Subscription sub;
+        //private Publication pub;
+        private String outgoingRingBufferFile;
+        private String incomingRingBufferFile;
+        private RingByteBuffer outgoingRingBuffer;
+        private RingByteBuffer incomingRingBuffer;
+        //private Subscription sub;
         BBContainer readBufferOrigin =  org.voltcore.utils.DBBPool.allocateDirect(1024 * 1024 * 40);
         ByteBuffer readBuffer;
         Poller subscriptionPoller;
 
         public void pingpongTest() {
             System.out.printf("ping pong test for pub/sub pair (%d/%d) started\n", streamId, subStreamId);
-            
-            for (int i = 0; i < 10000; ++i) {
-                ByteBuffer correctBuffer = ByteBuffer.allocate((i + 1) * 4);
-                fill(correctBuffer, (byte)(i % 26 + 97));
-                ByteBuffer buffer = ByteBuffer.allocate((i + 1) * 4);
+            long t0 = System.nanoTime();
+            long times = 1000;
+            int length = 128000;
+            ByteBuffer correctBuffer = ByteBuffer.allocate(length);
+            ByteBuffer buffer = ByteBuffer.allocate(length);
+            for (int i = 0; i < times; ++i) {
+                //correctBuffer.clear();
+                //fill(correctBuffer, (byte)(i % 26 + 97));
                 buffer.clear();
                 int sz = read(buffer);
-                if (sz != (i + 1) * 4) {
-                    System.out.printf("read %d bytes, want %d bytes\n", sz, (i + 1) * 4);
+                if (sz != length) {
+                    System.out.printf("read %d bytes, want %d bytes\n", sz, length);
                     System.exit(-1);
                 }
                 
                 buffer.flip();
                 int pos = buffer.position();
                 int limit = buffer.limit();
-                if (correctBuffer.compareTo(buffer) != 0) {
-                    System.out.printf("Correct: %s, got %s", Arrays.toString(correctBuffer.array()), Arrays.toString(buffer.array()));
-                    System.exit(-1);
-                }
+                // if (correctBuffer.compareTo(buffer) != 0) {
+                //     System.out.printf("Correct: %s, got %s", Arrays.toString(correctBuffer.array()), Arrays.toString(buffer.array()));
+                //     System.exit(-1);
+                // }
                 buffer.position(pos);
                 buffer.limit(limit);
                 //System.out.printf("buffer pos %d limit %d for pub/sub pair (%d/%d)\n", buffer.position(), buffer.limit(), streamId, subStreamId);
                 write(buffer);
                 //System.out.printf("Round %d passed for pub/sub pair (%d/%d)\n", i, streamId, subStreamId);
+                if (i == 0) {
+                    t0 = System.nanoTime();
+                }
             }
-            System.out.printf("ping pong test for pub/sub pair (%d/%d) finished\n", streamId, subStreamId);
+            long t1 = System.nanoTime();
+            System.out.printf("ping pong test for pub/sub pair (%d/%d) finished, took %dus, avg RTT %fus\n", streamId, subStreamId, (t1 - t0) / 1000, (t1 - t0 - 0.0) / 1000 / times);
         }
 
         public AeronConnnection() {
             streamId = streamIdCounter.incrementAndGet() - 1;
-            pub = aeron.addPublication(aeronChannel, streamId);
-            System.out.printf("Aeron publication in %s connecting to stream %d\n", aeronChannel, streamId);
-            while (pub.isConnected() == false) {
-                sleepIdle.idle();
-            }
-            System.out.printf("Aeron publication in %s connected to stream %d\n", aeronChannel, streamId);
+            outgoingRingBufferFile = "/dev/shm/volt_frontend_out_" + streamId;
+            // pub = aeron.addExclusivePublication(aeronChannel, streamId);
+            // System.out.printf("Aeron publication in %s connecting to stream %d\n", aeronChannel, streamId);
+            // while (pub.isConnected() == false) {
+            //     sleepIdle.idle();
+            // }
+            // System.out.printf("Aeron publication in %s connected to stream %d\n", aeronChannel, streamId);
             subStreamId = maxStreamIdForFrontend + streamId;
+            incomingRingBufferFile = "/dev/shm/volt_backend_out_" + streamId;
 
-            sub = aeron.addSubscription(aeronChannel, subStreamId);
-            System.out.printf("Aeron subscription in %s connecting to stream %d\n", aeronChannel, subStreamId);
-            while (sub.isConnected() == false) {
-                sleepIdle.idle();
-            }
-            System.out.printf("Aeron subscription in %s connected to stream %d\n", aeronChannel, subStreamId);
+            // sub = aeron.addSubscription(aeronChannel, subStreamId);
+            // System.out.printf("Aeron subscription in %s connecting to stream %d\n", aeronChannel, subStreamId);
+            // while (sub.isConnected() == false) {
+            //     sleepIdle.idle();
+            // }
+            // System.out.printf("Aeron subscription in %s connected to stream %d\n", aeronChannel, subStreamId);
             // sub = aeron.addSubscription(backendChannelName, streamId);
             // while (sub.isConnected() == false) {
             //     sleepIdle.idle();
@@ -276,7 +298,17 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             readBuffer = readBufferOrigin.b();
             readBuffer.clear();
             readBuffer.limit(0);
-            subscriptionPoller = new Poller(sub, readBuffer);
+            //subscriptionPoller = new Poller(sub, readBuffer);
+
+            File f1 = new File(outgoingRingBufferFile);
+            org.agrona.IoUtil.delete(f1, true);
+            outgoingRingBuffer = new RingByteBuffer(org.agrona.IoUtil.mapNewFile(f1, kRingBufferCapacity), kRingBufferCapacity);
+            
+            File f2 = new File(incomingRingBufferFile);
+            org.agrona.IoUtil.delete(f2, true);
+            incomingRingBuffer = new RingByteBuffer(org.agrona.IoUtil.mapNewFile(f2, kRingBufferCapacity), kRingBufferCapacity);
+
+            System.out.printf("Opened mapped files %s/%s\n", outgoingRingBufferFile, incomingRingBufferFile);
         }
 
         class Poller implements io.aeron.logbuffer.FragmentHandler {
@@ -313,7 +345,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         }
 
         private void fillReadBuffer() {
-            subscriptionPoller.poll();
+            //subscriptionPoller.poll();
         }
 
         private int fillBuffer(ByteBuffer buffer) {
@@ -327,27 +359,20 @@ public class ExecutionEngineIPC extends ExecutionEngine {
 
         public int read(ByteBuffer buffer) {
             assert(buffer.remaining() < readBuffer.capacity());
-            if (buffer.remaining() <= readBuffer.remaining()) {
-                return fillBuffer(buffer);
-            } else {
-                fillReadBuffer();
-                while (buffer.remaining() > readBuffer.remaining()) {
-                    spinIdle.idle();
-                    fillReadBuffer();
-                }
-                return fillBuffer(buffer);
+            // if (buffer.remaining() <= readBuffer.remaining()) {
+            //     return fillBuffer(buffer);
+            // } else {
+            int transferSize = buffer.remaining();
+            while (incomingRingBuffer.readBytes(buffer) == false) {
+                spinIdle.idle();
             }
+            return transferSize;
         }
 
-        UnsafeBuffer writeBuffer = new UnsafeBuffer();
+        //UnsafeBuffer writeBuffer = new UnsafeBuffer();
         public void write(ByteBuffer buffer) {
-            writeBuffer.wrap(buffer, buffer.position(), buffer.remaining());
-            while (true) {
-                long res = pub.offer(writeBuffer);
-                if (res >= 0) {
-                    buffer.position(buffer.limit());
-                    return;
-                }
+            while(outgoingRingBuffer.writeBytes(buffer) == false) {
+                spinIdle.idle();
             }
         }
     }
@@ -360,62 +385,68 @@ public class ExecutionEngineIPC extends ExecutionEngine {
      * error.
      **/
     private class Connection {
-        private Socket m_socket = null;
-        private SocketChannel m_socketChannel = null;
+        //private Socket m_socket = null;
+        //private SocketChannel m_socketChannel = null;
         private AeronConnnection m_aeron_conn = null;
         Connection(BackendTarget target, int port) {
             m_aeron_conn = new AeronConnnection();
             m_aeron_conn.pingpongTest();
             boolean connected = false;
             int retries = 0;
-            while (!connected) {
-                try {
-                    System.out.println("Connecting to localhost:" + port);
-                    m_socketChannel = SocketChannel.open(new InetSocketAddress(
-                            "localhost", port));
-                    m_socketChannel.configureBlocking(true);
-                    m_socket = m_socketChannel.socket();
-                    m_socket.setTcpNoDelay(true);
-                    connected = true;
-                } catch (final Exception e) {
-                    System.out.println(e.getMessage());
-                    if (retries++ <= 10) {
-                        if (retries > 1) {
-                            System.out.printf("Failed to connect to IPC EE on port %d. Retry #%d of 10\n", port, retries-1);
-                            try {
-                                Thread.sleep(10000);
-                            }
-                            catch (InterruptedException e1) {}
-                        }
-                    }
-                    else {
-                        System.out.printf("Failed to initialize IPC EE connection on port %d. Quitting.\n", port);
-                        System.exit(-1);
-                    }
-                }
-                if (!connected && retries == 1 && target == BackendTarget.NATIVE_EE_IPC) {
-                    System.out.println("Ready to connect to voltdbipc process on port " + port);
-                    System.out.println("Press Enter after you have started the EE process to initiate the connection to the EE");
-                    try {
-                        System.in.read();
-                    } catch (final IOException e1) {
-                        e1.printStackTrace();
-                    }
-                }
-            }
+            // while (!connected) {
+            //     try {
+            //         System.out.println("Connecting to localhost:" + port);
+            //         m_socketChannel = SocketChannel.open(new InetSocketAddress(
+            //                 "localhost", port));
+            //         m_socketChannel.configureBlocking(true);
+            //         m_socket = m_socketChannel.socket();
+            //         m_socket.setTcpNoDelay(true);
+            //         connected = true;
+            //     } catch (final Exception e) {
+            //         System.out.println(e.getMessage());
+            //         if (retries++ <= 10) {
+            //             if (retries > 1) {
+            //                 System.out.printf("Failed to connect to IPC EE on port %d. Retry #%d of 10\n", port, retries-1);
+            //                 try {
+            //                     Thread.sleep(10000);
+            //                 }
+            //                 catch (InterruptedException e1) {}
+            //             }
+            //         }
+            //         else {
+            //             System.out.printf("Failed to initialize IPC EE connection on port %d. Quitting.\n", port);
+            //             System.exit(-1);
+            //         }
+            //     }
+            //     if (!connected && retries == 1 && target == BackendTarget.NATIVE_EE_IPC) {
+            //         System.out.println("Ready to connect to voltdbipc process on port " + port);
+            //         System.out.println("Press Enter after you have started the EE process to initiate the connection to the EE");
+            //         try {
+            //             System.in.read();
+            //         } catch (final IOException e1) {
+            //             e1.printStackTrace();
+            //         }
+            //     }
+            // }
             System.out.println("Created IPC connection for site.");
         }
 
         /* Close the socket indicating to the EE it should terminate */
         public void close() throws InterruptedException {
-            if (m_socketChannel != null) {
-                try {
-                    m_socketChannel.close();
-                } catch (final IOException e) {
-                    throw new RuntimeException(e);
-                }
-                m_socketChannel = null;
-                m_socket = null;
+            // if (m_socketChannel != null) {
+            //     try {
+            //         m_socketChannel.close();
+            //     } catch (final IOException e) {
+            //         throw new RuntimeException(e);
+            //     }
+            //     m_socketChannel = null;
+            //     m_socket = null;
+            // }
+        }
+
+        void write(ByteBuffer bytes) throws IOException {
+            while (bytes.hasRemaining()) {
+                m_aeron_conn.write(bytes);
             }
         }
 
@@ -434,7 +465,8 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             m_dataNetwork.limit(4 + amt);
             m_dataNetwork.rewind();
             while (m_dataNetwork.hasRemaining()) {
-                m_socketChannel.write(m_dataNetwork);
+                m_aeron_conn.write(m_dataNetwork);
+                //m_socketChannel.write(m_dataNetwork);
             }
         }
 
@@ -514,7 +546,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         ByteBuffer getBytes(int size) throws IOException {
             ByteBuffer header = ByteBuffer.allocate(size);
             while (header.hasRemaining()) {
-                final int read = m_socket.getChannel().read(header);
+                final int read = m_aeron_conn.read(header);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -527,7 +559,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             int bufferSize = m_connection.readInt();
             final ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
             while (buffer.hasRemaining()) {
-                int read = m_socketChannel.read(buffer);
+                int read = m_aeron_conn.read(buffer);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -701,11 +733,11 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             int status = kErrorCode_RetrieveDependency;
 
             while (true) {
-                status = m_socket.getInputStream().read();
+                status = m_connection.readByte();
                 if (status == kErrorCode_RetrieveDependency) {
                     final ByteBuffer dependencyIdBuffer = ByteBuffer.allocate(4);
                     while (dependencyIdBuffer.hasRemaining()) {
-                        final int read = m_socketChannel.read(dependencyIdBuffer);
+                        final int read = m_aeron_conn.read(dependencyIdBuffer);
                         if (read == -1) {
                             throw new IOException("Unable to read enough bytes for dependencyId in order to " +
                             " satisfy IPC backend request for a dependency table");
@@ -777,7 +809,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
                 else if (status == kErrorCode_CrashVoltDB) {
                     ByteBuffer lengthBuffer = ByteBuffer.allocate(4);
                     while (lengthBuffer.hasRemaining()) {
-                        final int read = m_socket.getChannel().read(lengthBuffer);
+                        final int read = m_aeron_conn.read(lengthBuffer);
                         if (read == -1) {
                             throw new EOFException();
                         }
@@ -785,7 +817,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
                     lengthBuffer.flip();
                     ByteBuffer messageBuffer = ByteBuffer.allocate(lengthBuffer.getInt());
                     while (messageBuffer.hasRemaining()) {
-                        final int read = m_socket.getChannel().read(messageBuffer);
+                        final int read = m_aeron_conn.read(messageBuffer);
                         if (read == -1) {
                             throw new EOFException();
                         }
@@ -854,7 +886,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
 
             //resultTablesLengthBytes.order(ByteOrder.LITTLE_ENDIAN);
             while (resultTablesLengthBytes.hasRemaining()) {
-                int read = m_socketChannel.read(resultTablesLengthBytes);
+                int read = m_aeron_conn.read(resultTablesLengthBytes);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -866,7 +898,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             // check the dirty-ness of the batch
             final ByteBuffer dirtyBytes = ByteBuffer.allocate(1);
             while (dirtyBytes.hasRemaining()) {
-                int read = m_socketChannel.read(dirtyBytes);
+                int read = m_aeron_conn.read(dirtyBytes);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -886,7 +918,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
                     .allocate(resultTablesLength);
             //resultTablesBuffer.order(ByteOrder.LITTLE_ENDIAN);
             while (resultTablesBuffer.hasRemaining()) {
-                int read = m_socketChannel.read(resultTablesBuffer);
+                int read = m_aeron_conn.read(resultTablesBuffer);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -905,7 +937,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             // check the dirty-ness of the batch
             final ByteBuffer dirtyBytes = ByteBuffer.allocate(1);
             while (dirtyBytes.hasRemaining()) {
-                int read = m_socketChannel.read(dirtyBytes);
+                int read = m_aeron_conn.read(dirtyBytes);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -917,7 +949,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             final ByteBuffer drBufferSizeBytes = ByteBuffer.allocate(4);
             //resultTablesLengthBytes.order(ByteOrder.LITTLE_ENDIAN);
             while (drBufferSizeBytes.hasRemaining()) {
-                int read = m_socketChannel.read(drBufferSizeBytes);
+                int read = m_aeron_conn.read(drBufferSizeBytes);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -928,7 +960,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             final ByteBuffer resultTablesLengthBytes = ByteBuffer.allocate(4);
             //resultTablesLengthBytes.order(ByteOrder.LITTLE_ENDIAN);
             while (resultTablesLengthBytes.hasRemaining()) {
-                int read = m_socketChannel.read(resultTablesLengthBytes);
+                int read = m_aeron_conn.read(resultTablesLengthBytes);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -946,7 +978,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             resultTablesBuffer.putInt(drBufferSize);
             resultTablesBuffer.putInt(resultTablesLength);
             while (resultTablesBuffer.hasRemaining()) {
-                int read = m_socketChannel.read(resultTablesBuffer);
+                int read = m_aeron_conn.read(resultTablesBuffer);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -963,7 +995,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
 
             //resultTablesLengthBytes.order(ByteOrder.LITTLE_ENDIAN);
             while (longBytes.hasRemaining()) {
-                int read = m_socketChannel.read(longBytes);
+                int read = m_aeron_conn.read(longBytes);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -982,7 +1014,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
 
             //resultTablesLengthBytes.order(ByteOrder.LITTLE_ENDIAN);
             while (intBytes.hasRemaining()) {
-                int read = m_socketChannel.read(intBytes);
+                int read = m_aeron_conn.read(intBytes);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -1001,7 +1033,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
 
             //resultTablesLengthBytes.order(ByteOrder.LITTLE_ENDIAN);
             while (shortBytes.hasRemaining()) {
-                int read = m_socketChannel.read(shortBytes);
+                int read = m_aeron_conn.read(shortBytes);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -1013,6 +1045,19 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         }
 
         /**
+         * Write a single byte to the wire.
+         */
+        public void writeByte(byte b) throws IOException {
+            final ByteBuffer bytes = ByteBuffer.allocate(1);
+
+            //resultTablesLengthBytes.order(ByteOrder.LITTLE_ENDIAN);
+            bytes.put(b);
+            bytes.flip();
+
+            m_aeron_conn.write(bytes);
+        }
+
+        /**
          * Read and deserialize a byte from the wire.
          */
         public byte readByte() throws IOException {
@@ -1020,7 +1065,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
 
             //resultTablesLengthBytes.order(ByteOrder.LITTLE_ENDIAN);
             while (bytes.hasRemaining()) {
-                int read = m_socketChannel.read(bytes);
+                int read = m_aeron_conn.read(bytes);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -1039,7 +1084,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
 
             //resultTablesLengthBytes.order(ByteOrder.LITTLE_ENDIAN);
             while (stringBytes.hasRemaining()) {
-                int read = m_socketChannel.read(stringBytes);
+                int read = m_aeron_conn.read(stringBytes);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -1053,7 +1098,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         public void throwException(final int errorCode) throws IOException {
             final ByteBuffer lengthBuffer = ByteBuffer.allocate(4);
             while (lengthBuffer.hasRemaining()) {
-                int read = m_socketChannel.read(lengthBuffer);
+                int read = m_aeron_conn.read(lengthBuffer);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -1066,7 +1111,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
                 final ByteBuffer exceptionBuffer = ByteBuffer.allocate(exceptionLength + 4);
                 exceptionBuffer.putInt(exceptionLength);
                 while(exceptionBuffer.hasRemaining()) {
-                    int read = m_socketChannel.read(exceptionBuffer);
+                    int read = m_aeron_conn.read(exceptionBuffer);
                     if (read == -1) {
                         throw new EOFException();
                     }
@@ -1251,6 +1296,10 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         }
         checkErrorCode(result);
         updateHashinator(hashinatorConfig);
+
+        synchronized(printLockObject) {
+            System.out.println("Done initializing an IPC EE " + this + " for hostId " + hostId + " siteId " + siteId + " from thread " + Thread.currentThread().getId());
+        }
     }
 
     /** write the catalog as a UTF-8 byte string via connection */
@@ -1341,6 +1390,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         checkErrorCode(result);
     }
 
+    private final FastSerializer fser = new FastSerializer();
     private void sendPlanFragmentsInvocation(final Commands cmd,
             final int numFragmentIds,
             final long[] planFragmentIds,
@@ -1355,8 +1405,9 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             final long uniqueId,
             final long undoToken)
     {
+        fser.clear();
         // big endian, not direct
-        final FastSerializer fser = new FastSerializer();
+         //= new FastSerializer();
         try {
             for (int i = 0; i < numFragmentIds; ++i) {
                 Object params = parameterSets[i];
@@ -1375,7 +1426,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
                 }
             }
         } catch (final Exception exception) { // ParameterSet serialization can throw RuntimeExceptions
-            fser.discard();
+            //fser.discard();
             throw new RuntimeException(exception);
         }
 
@@ -1407,7 +1458,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             verifyDataCapacity(m_data.position()+fser.size());
         } while (m_data.position() == 0);
         m_data.put(fser.getBuffer());
-        fser.discard();
+        //fser.discard();
 
         try {
             m_data.flip();
@@ -1613,7 +1664,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
     private ByteBuffer readMessage() throws IOException {
         final ByteBuffer messageLengthBuffer = ByteBuffer.allocate(4);
         while (messageLengthBuffer.hasRemaining()) {
-            int read = m_connection.m_socketChannel.read(messageLengthBuffer);
+            int read = m_connection.m_aeron_conn.read(messageLengthBuffer);
             if (read == -1) {
                 throw new EOFException("End of file reading statistics(1)");
             }
@@ -1625,7 +1676,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         }
         final ByteBuffer messageBuffer = ByteBuffer.allocate(length);
         while (messageBuffer.hasRemaining()) {
-            int read = m_connection.m_socketChannel.read(messageBuffer);
+            int read = m_connection.m_aeron_conn.read(messageBuffer);
             if (read == -1) {
                 throw new EOFException("End of file reading statistics(2)");
             }
@@ -1730,7 +1781,8 @@ public class ExecutionEngineIPC extends ExecutionEngine {
     private void sendDependencyTable(final int dependencyId) throws IOException{
         final byte[] dependencyBytes = nextDependencyAsBytes(dependencyId);
         if (dependencyBytes == null) {
-            m_connection.m_socket.getOutputStream().write(Connection.kErrorCode_DependencyNotFound);
+            m_connection.writeByte((byte)Connection.kErrorCode_DependencyNotFound);
+            //m_connection.m_socket.getOutputStream().write(Connection.kErrorCode_DependencyNotFound);
             return;
         }
         // 1 for response code + 4 for dependency length prefix + dependencyBytes.length
@@ -1745,10 +1797,15 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         // finally, write dependency table itself
         message.put(dependencyBytes);
         message.rewind();
-        if (m_connection.m_socketChannel.write(message) != message.capacity()) {
-            throw new IOException("Unable to send dependency table to client. Attempted blocking write of " +
-                    message.capacity() + " but not all of it was written");
-        }
+        // if (m_connection.m_socketChannel.write(message) != message.capacity()) {
+        //     throw new IOException("Unable to send dependency table to client. Attempted blocking write of " +
+        //             message.capacity() + " but not all of it was written");
+        // }
+        m_connection.write(message);
+        // if ( != message.capacity()) {
+        //     throw new IOException("Unable to send dependency table to client. Attempted blocking write of " +
+        //             message.capacity() + " but not all of it was written");
+        // }
     }
 
     @Override
@@ -1812,7 +1869,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             // Get the count.
             ByteBuffer countBuffer = ByteBuffer.allocate(4);
             while (countBuffer.hasRemaining()) {
-                int read = m_connection.m_socketChannel.read(countBuffer);
+                int read = m_connection.m_aeron_conn.read(countBuffer);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -1824,7 +1881,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             // Get the remaining tuple count.
             ByteBuffer remainingBuffer = ByteBuffer.allocate(8);
             while (remainingBuffer.hasRemaining()) {
-                int read = m_connection.m_socketChannel.read(remainingBuffer);
+                int read = m_connection.m_aeron_conn.read(remainingBuffer);
                 if (read == -1) {
                     throw new EOFException();
                 }
@@ -1842,7 +1899,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             for (int i = 0; i < count; i++) {
                 ByteBuffer lengthBuffer = ByteBuffer.allocate(4);
                 while (lengthBuffer.hasRemaining()) {
-                    int read = m_connection.m_socketChannel.read(lengthBuffer);
+                    int read = m_connection.m_aeron_conn.read(lengthBuffer);
                     if (read == -1) {
                         throw new EOFException();
                     }
@@ -1852,7 +1909,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
                 ByteBuffer view = outputBuffers.get(i).b().duplicate();
                 view.limit(view.position() + serialized[i]);
                 while (view.hasRemaining()) {
-                    m_connection.m_socketChannel.read(view);
+                    m_connection.m_aeron_conn.read(view);
                 }
             }
             return Pair.of(remaining, serialized);
@@ -1902,7 +1959,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
 
             ByteBuffer results = ByteBuffer.allocate(1);
             while (results.remaining() > 0) {
-                m_connection.m_socketChannel.read(results);
+                m_connection.m_aeron_conn.read(results);
             }
             results.flip();
 
@@ -1929,7 +1986,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
 
             ByteBuffer results = ByteBuffer.allocate(16);
             while (results.remaining() > 0) {
-                m_connection.m_socketChannel.read(results);
+                m_connection.m_aeron_conn.read(results);
             }
             results.flip();
 
@@ -1957,7 +2014,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             m_connection.readStatusByte();
             ByteBuffer hashCode = ByteBuffer.allocate(8);
             while (hashCode.hasRemaining()) {
-                int read = m_connection.m_socketChannel.read(hashCode);
+                int read = m_connection.m_aeron_conn.read(hashCode);
                 if (read <= 0) {
                     throw new EOFException();
                 }
@@ -1989,7 +2046,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             m_connection.readStatusByte();
             ByteBuffer part = ByteBuffer.allocate(4);
             while (part.hasRemaining()) {
-                int read = m_connection.m_socketChannel.read(part);
+                int read = m_connection.m_aeron_conn.read(part);
                 if (read <= 0) {
                     throw new EOFException();
                 }
@@ -2036,7 +2093,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             m_connection.write();
             ByteBuffer rowCount = ByteBuffer.allocate(8);
             while (rowCount.hasRemaining()) {
-                int read = m_connection.m_socketChannel.read(rowCount);
+                int read = m_connection.m_aeron_conn.read(rowCount);
                 if (read <= 0) {
                     throw new EOFException();
                 }
@@ -2060,7 +2117,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             m_connection.readStatusByte();
             ByteBuffer allocations = ByteBuffer.allocate(8);
             while (allocations.hasRemaining()) {
-                int read = m_connection.m_socketChannel.read(allocations);
+                int read = m_connection.m_aeron_conn.read(allocations);
                 if (read <= 0) {
                     throw new EOFException();
                 }
@@ -2086,7 +2143,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             m_connection.readStatusByte();
             ByteBuffer length = ByteBuffer.allocate(4);
             while (length.hasRemaining()) {
-                int read = m_connection.m_socketChannel.read(length);
+                int read = m_connection.m_aeron_conn.read(length);
                 if (read <= 0) {
                     throw new EOFException();
                 }
@@ -2095,7 +2152,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
 
             ByteBuffer retval = ByteBuffer.allocate(length.getInt());
             while (retval.hasRemaining()) {
-                int read = m_connection.m_socketChannel.read(retval);
+                int read = m_connection.m_aeron_conn.read(retval);
                 if (read <= 0) {
                     throw new EOFException();
                 }
@@ -2353,6 +2410,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             }
         }
 
+        m_data.flip();
         try {
             m_connection.write();
             m_connection.readStatusByte();
@@ -2368,7 +2426,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
 
         m_data.clear();
         m_data.putInt(Commands.ClearAllReplicableTables.m_id);
-
+        m_data.flip();
         try {
             m_connection.write();
             m_connection.readStatusByte();
@@ -2386,6 +2444,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         m_data.putInt(Commands.ClearReplicableTables.m_id);
         m_data.putInt(clusterId);
 
+        m_data.flip();
         try {
             m_connection.write();
             m_connection.readStatusByte();
