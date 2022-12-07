@@ -56,7 +56,7 @@ public class Benchmark {
         }
 
         // This helper class is used to capture client statistics
-        stats = new BenchmarkStats(client,false);
+        stats = new BenchmarkStats(client,true);
     }
 
 
@@ -72,19 +72,16 @@ public class Benchmark {
         // To make an asynchronous procedure call, you need a callback object
         // BenchmarkCallback is a generic callback that keeps track of the transaction results
         // for any given procedure name, which should match the procedure called below.
-        ProcedureCallback callback = new BenchmarkCallback("insert_session");
+        ProcedureCallback callback = new BenchmarkCallback("HPTSBench");
 
         // generate some random parameter values
-        int appid = rand.nextInt(50);
-        int deviceid = rand.nextInt(1000000);
+        long sample_id = 1;
 
         // call the procedure asynchronously, passing in the callback and the procedure name,
         // followed by the input parameters
         client.callProcedure(callback,
-                             "insert_session",
-                             appid,
-                             deviceid
-                             );
+                             "HPTSBench",
+                             sample_id);
 
     }
 

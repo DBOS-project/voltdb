@@ -27,38 +27,33 @@ import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
 
-public class Login extends VoltProcedure {
+public class Login1 extends VoltProcedure {
 
     // potential return codes (must be synced with client code)
     public static final long LOGIN_SUCCESSFUL = 0;
     public static final long LOGIN_FAIL = 1;
     public static final long LOGIN_TIMEOUT = 2;
 
-    // Checks if the vote is for a valid user
-    public final SQLStmt findUserStmt = new SQLStmt(
-            "SELECT username FROM user_session_table WHERE username = ?;");
+    public final SQLStmt emptyQuery = new SQLStmt("SELECT * from USER_SESSION_TABLE where username = ?");
 
-    // Update the last accessed time for a user
-    public final SQLStmt updateUserStmt = new SQLStmt(
-            "UPDATE user_session_table SET last_accessed = ? WHERE username = ?;");
-
-    // Add a logged in user
-    public final SQLStmt insertUserStmt = new SQLStmt(
-            "INSERT INTO user_session_table (username, password, global_session_id, last_accessed, json_data) VALUES (?, ?, ?, ?, ?);");
-
-    public long run(String username, String password, String json) {
-        // See if the user is already logged in.
-        voltQueueSQL(findUserStmt, username);
-        VoltTable[] selectResults = voltExecuteSQL();
-        if (selectResults[0].advanceRow() == true) {
-            // Update the last time this account was accessed (for timeout purposes)
-            voltQueueSQL(updateUserStmt, this.getTransactionTime(), username);
-        } else {
-            // Do the login, create an entry in the session table.  Use VoltDB's getUniqueID() api to create a deterministic unique ID for the login.
-            voltQueueSQL(insertUserStmt, username, password, Long.toString(getUniqueId()), this.getTransactionTime(), json);
+    public long run(int username) {
+        for (int i = 0; i < 1; ++i) {
+            voltQueueSQL(emptyQuery, username);
+            VoltTable[] selectResults = voltExecuteSQL();
         }
 
-        voltExecuteSQL();
+        // See if the user is already logged in.
+        // voltQueueSQL(findUserStmt, username);
+        // VoltTable[] selectResults = voltExecuteSQL();
+        // if (selectResults[0].advanceRow() == true) {
+        //     // Update the last time this account was accessed (for timeout purposes)
+        //     voltQueueSQL(updateUserStmt, this.getTransactionTime(), username);
+        // } else {
+        //     // Do the login, create an entry in the session table.  Use VoltDB's getUniqueID() api to create a deterministic unique ID for the login.
+        //     voltQueueSQL(insertUserStmt, username, password, Long.toString(getUniqueId()), this.getTransactionTime(), json);
+        // }
+
+        // voltExecuteSQL();
 
         return LOGIN_SUCCESSFUL;
     }

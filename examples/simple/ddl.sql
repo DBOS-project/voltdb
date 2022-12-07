@@ -16,6 +16,13 @@ PARTITION TABLE app_session ON COLUMN deviceid;
 -- create an index to allow faster access to the table based on a given deviceid
 CREATE INDEX app_session_idx ON app_session (deviceid);
 
+-- kkaffes HPTS benchmarking
+CREATE TABLE bench_table (
+  sample_id BIGINT NOT NULL,
+);
+PARTITION TABLE bench_table ON COLUMN sample_id;
+
+CREATE PROCEDURE PARTITION ON TABLE bench_table COLUMN sample_id FROM CLASS simple.HPTSBench;
 
 -- this view summarizes how many sessions have been inserted for each app / device combination
 CREATE VIEW app_usage AS

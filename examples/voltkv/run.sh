@@ -13,6 +13,8 @@ else
     exit -1
 fi
 
+POOLSIZE="${POOLSIZE:=100000}"
+
 # call script to set up paths, including
 # java classpaths and binary paths
 source $VOLTDB_BIN/voltenv
@@ -21,8 +23,8 @@ source $VOLTDB_BIN/voltenv
 # (once running, all nodes are the same -- no leaders)
 STARTUPLEADERHOST="localhost"
 # list of cluster nodes separated by commas in host:[port] format
-SERVERS="localhost"
-
+SERVERS="172.16.0.2"
+#SERVERS="localhost"
 # remove binaries, logs, runtime artifacts, etc... but keep the client jar
 function clean() {
     rm -rf client/voltkv/*.class voltdbroot log
@@ -89,17 +91,17 @@ function async-benchmark() {
         --displayinterval=5 \
         --duration=120 \
         --servers=$SERVERS \
-        --poolsize=100000 \
+        --poolsize=$POOLSIZE \
         --preload=true \
         --getputratio=0.90 \
         --keysize=32 \
-        --minvaluesize=1024 \
-        --maxvaluesize=1024 \
+        --minvaluesize=$PAYLOAD_SIZE \
+        --maxvaluesize=$PAYLOAD_SIZE \
         --entropy=127 \
         --usecompression=false 
 #        --multisingleratio=0.0
 #        --latencyreport=true \
-#        --ratelimit=100000 \
+#        --ratelimit=                   \
 }
 
 # Multi-threaded synchronous benchmark sample
@@ -119,10 +121,10 @@ function sync-benchmark() {
         --preload=true \
         --getputratio=0.90 \
         --keysize=32 \
-        --minvaluesize=1024 \
-        --maxvaluesize=1024 \
+        --minvaluesize=$PAYLOAD_SIZE \
+        --maxvaluesize=$PAYLOAD_SIZE \
         --usecompression=false \
-        --threads=40
+        --threads=8
 #        --multisingleratio=0.0
 }
 
@@ -143,8 +145,8 @@ function jdbc-benchmark() {
         --preload=true \
         --getputratio=0.90 \
         --keysize=32 \
-        --minvaluesize=1024 \
-        --maxvaluesize=1024 \
+        --minvaluesize=5120 \
+        --maxvaluesize=5120 \
         --usecompression=false \
         --threads=40
 }

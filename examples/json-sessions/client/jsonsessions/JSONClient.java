@@ -44,6 +44,7 @@ import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.voltdb.CLIConfig;
@@ -78,8 +79,9 @@ public class JSONClient {
     // Statistics counters
     AtomicLong acceptedLogins = new AtomicLong(0);
     AtomicLong badLogins = new AtomicLong(0);
+    
     private static final String list_of_languages[] = {"C++", "PHP", "Java"};
-
+    static AtomicInteger queryTimes = new AtomicInteger(1);
     /*
      * This class generates random login records.  For this sample, we have three different
      * sites that are tracked:  VoltDB Blog, Forum and Management.  The sites are created as
@@ -271,21 +273,19 @@ public class JSONClient {
      * time for the login is updated.  Thus this sample client can be run repeatedly without
      * having to cycle the database.
      */
-    private void doLogin(LoginGenerator.LoginRecord login) {
+    private void doLogin(int username, int times) {
         // Synchronously call the "Login" procedure passing in a json string containing
         // login-specific structure/data.
         try {
-            ClientResponse response = client.callProcedure("Login",
-                                                            login.username,
-                                                            login.password,
-                                                            login.json);
-
-
-            long resultCode = response.getResults()[0].asScalarLong();
-            if (resultCode == LOGIN_SUCCESSFUL)
-                acceptedLogins.incrementAndGet();
-            else
-                badLogins.incrementAndGet();
+            if (times == 1) {
+                ClientResponse response = client.callProcedure("Login1", username);
+            } else if (times == 5) {
+                ClientResponse response = client.callProcedure("Login5", username);
+            } else { //
+                assert(times == 10);
+                ClientResponse response = client.callProcedure("Login10", username);
+            }
+            acceptedLogins.incrementAndGet();
         }
         catch (Exception e) {
             badLogins.incrementAndGet();
@@ -304,8 +304,8 @@ public class JSONClient {
         public void run() {
             while (loadComplete.get() == false) {
                 // Generate the next login
-                LoginGenerator.LoginRecord login = random_login_generator.createLoginRecord();
-                doLogin(login);
+                //LoginGenerator.LoginRecord login = random_login_generator.createLoginRecord();
+                doLogin(random.nextInt(), queryTimes.get());
             }
 
         }
@@ -318,9 +318,9 @@ public class JSONClient {
     {
         LoginGenerator.LoginRecord unique_login;
         unique_login = random_login_generator.createUniqueLogin("voltdb", true);
-        doLogin(unique_login);
+        //doLogin(unique_login);
         unique_login = random_login_generator.createUniqueLogin("voltdb2", false);
-        doLogin(unique_login);
+        //doLogin(unique_login);
     }
 
     /**
@@ -330,7 +330,7 @@ public class JSONClient {
      */
     public void loadDatabase() throws Exception {
         // create/start the requested number of threads
-        int thread_count = 10;
+        int thread_count = 8;
         Thread[] loginThreads = new Thread[thread_count];
         for (int i = 0; i < thread_count; ++i) {
             loginThreads[i] = new Thread(new LoginThread());
@@ -359,7 +359,7 @@ public class JSONClient {
         printResults();
 
         // Create entries that we can query on.
-        createUniqueData();
+        //createUniqueData();
     }
 
     /**
@@ -531,6 +531,10 @@ public class JSONClient {
     public static void main(String[] args) throws Exception {
         JSONClient app = new JSONClient();
 
+        if (args.length >= 1) {
+            System.out.printf("args[0] %s\n", args[0]);
+            queryTimes.set(Integer.parseInt(args[0]));
+        }
         // Initialize connections
         app.initialize();
 
@@ -538,7 +542,7 @@ public class JSONClient {
         app.loadDatabase();
 
         // run sample JSON queries
-        app.runQueries();
+        //app.runQueries();
 
         // Disconnect
         app.shutdown();

@@ -23,6 +23,7 @@
 package org.voltdb.example.util;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.ConcurrentHashMap;
 import com.google_voltpatches.common.collect.ConcurrentHashMultiset;
 import com.google_voltpatches.common.collect.Multiset;
@@ -35,6 +36,7 @@ public class BenchmarkCallback implements ProcedureCallback {
     private static ConcurrentHashMap<String,Integer> procedures = new ConcurrentHashMap<String,Integer>();
     String procedureName;
     long maxErrors;
+    private static AtomicLong totalSPExecution = new AtomicLong(0);
 
     public static int count( String procedureName, String event ){
         return stats.add(procedureName + event, 1);
@@ -49,6 +51,7 @@ public class BenchmarkCallback implements ProcedureCallback {
         System.out.println("        calls: " + getCount(procedureName,"call"));
         System.out.println("      commits: " + getCount(procedureName,"commit"));
         System.out.println("    rollbacks: " + getCount(procedureName,"rollback"));
+        System.out.println("    avg execution time: " + totalSPExecution.longValue() / getCount(procedureName,"commit"));
     }
 
     public static void printAllResults() {
@@ -85,6 +88,7 @@ public class BenchmarkCallback implements ProcedureCallback {
 
         if (cr.getStatus() == ClientResponse.SUCCESS) {
             count(procedureName,"commit");
+	    totalSPExecution.addAndGet(cr.getResults()[0].fetchRow(0).getLong(0));
         } else {
             long totalErrors = count(procedureName,"rollback");
 
