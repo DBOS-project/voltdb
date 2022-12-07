@@ -22,4 +22,5 @@ if [ ! -z "$SRC" ]; then
 
     jar cf procedures.jar -C obj .
     rm -rf obj
+    echo "Finished"
 fi

@@ -80,8 +80,17 @@ function client-help() {
 # run the client that drives the example
 function client() {
     jars-ifneeded
+    echo "login 1"
     java -classpath json-client.jar:gson-2.2.2.jar:$CLIENTCLASSPATH \
-        jsonsessions.JSONClient
+    jsonsessions.JSONClient 1
+
+    echo "login 1"
+    java -classpath json-client.jar:gson-2.2.2.jar:$CLIENTCLASSPATH \
+    jsonsessions.JSONClient 5
+
+    echo "login 1"
+    java -classpath json-client.jar:gson-2.2.2.jar:$CLIENTCLASSPATH \
+    jsonsessions.JSONClient 10
 }
 
 function help() {

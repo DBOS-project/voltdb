@@ -178,7 +178,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
                 try {
                     System.out.println("Connecting to localhost:" + port);
                     m_socketChannel = SocketChannel.open(new InetSocketAddress(
-                            "localhost", port));
+                            "10.128.0.25", port));
                     m_socketChannel.configureBlocking(true);
                     m_socket = m_socketChannel.socket();
                     m_socket.setTcpNoDelay(true);
@@ -1146,7 +1146,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         }
         checkErrorCode(result);
     }
-
+    private final FastSerializer fser = new FastSerializer();
     private void sendPlanFragmentsInvocation(final Commands cmd,
             final int numFragmentIds,
             final long[] planFragmentIds,
@@ -1162,7 +1162,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             final long undoToken)
     {
         // big endian, not direct
-        final FastSerializer fser = new FastSerializer();
+        fser.clear();
         try {
             for (int i = 0; i < numFragmentIds; ++i) {
                 Object params = parameterSets[i];
@@ -1181,7 +1181,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
                 }
             }
         } catch (final Exception exception) { // ParameterSet serialization can throw RuntimeExceptions
-            fser.discard();
+            //fser.discard();
             throw new RuntimeException(exception);
         }
 
@@ -1213,7 +1213,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             verifyDataCapacity(m_data.position()+fser.size());
         } while (m_data.position() == 0);
         m_data.put(fser.getBuffer());
-        fser.discard();
+        //fser.discard();
 
         try {
             m_data.flip();

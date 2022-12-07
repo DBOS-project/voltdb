@@ -2250,6 +2250,8 @@ int main(int argc, char **argv) {
         if (status) {
             // error
         }
+        printf("got one connection\n");
+        fflush(stdout);
     }
 
     close(sock);

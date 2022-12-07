@@ -56,7 +56,7 @@ public class Benchmark {
         }
 
         // This helper class is used to capture client statistics
-        stats = new BenchmarkStats(client,false);
+        stats = new BenchmarkStats(client,true);
     }
 
 
@@ -81,8 +81,7 @@ public class Benchmark {
         // call the procedure asynchronously, passing in the callback and the procedure name,
         // followed by the input parameters
         client.callProcedure(callback,
-                             "insert_session",
-                             appid,
+                             "SelectDeviceSessions",
                              deviceid
                              );
 
