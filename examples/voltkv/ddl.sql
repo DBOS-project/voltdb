@@ -15,3 +15,4 @@ CREATE TABLE storeR
 );
 
 CREATE PROCEDURE selectR AS SELECT key, value from storeR where key=?;
+DROP PROCEDURE selectR;

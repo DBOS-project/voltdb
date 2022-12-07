@@ -2344,8 +2344,8 @@ void eethread2(int eeid, AeronConnectionPair * cp) {
     unsigned char buffer[150000];  
     unsigned char correct_buffer[150000];
     memset(buffer, 0, sizeof(buffer));
-    uint32_t times = 1000;
-    std::size_t length = 128000;
+    uint32_t times = 1000000;
+    std::size_t length = 256;
     for (uint32_t i = 0; i < times; ++i) {
         memset(buffer, i % 26 + 97, length);
         memset(correct_buffer, i % 26 + 97, length);
@@ -2588,14 +2588,14 @@ int main(int argc, char **argv) {
     
 
     for (int ee = 0; ee < eecount; ee++) {
-        std::string outgoing_shared_memory_file = "/dev/shm/volt_backend_out_" + std::to_string(ee);
+        std::string outgoing_shared_memory_file = "/dev/shm/voltdb_backend_out";
         int fd = open(outgoing_shared_memory_file.c_str(), O_CREAT|O_RDWR);
         if (fd < 0) {
             printf("Failed to open %s : %s\n", outgoing_shared_memory_file.c_str(), strerror(errno));
             fflush(stdout);
             exit(1);
         }
-        void * addr1 = mmap(nullptr, RING_BUFFER_CAP, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        void * addr1 = mmap(nullptr, RING_BUFFER_CAP, PROT_READ | PROT_WRITE, MAP_SHARED, fd, ee * RING_BUFFER_CAP);
         if (addr1 == MAP_FAILED) {
             printf("Failed to mmap %s : %s\n", outgoing_shared_memory_file.c_str(), strerror(errno));
             fflush(stdout);
@@ -2604,14 +2604,14 @@ int main(int argc, char **argv) {
         close(fd);
         auto outgoing_ringbuffer = new RingByteBuffer((char*)addr1, RING_BUFFER_CAP);
 
-        std::string incoming_shared_memory_file = "/dev/shm/volt_frontend_out_" + std::to_string(ee);
+        std::string incoming_shared_memory_file = "/dev/shm/voltdb_frontend_out";
         fd = open(incoming_shared_memory_file.c_str(), O_CREAT|O_RDWR);
         if (fd < 0) {
             printf("Failed to open %s : %s\n", incoming_shared_memory_file.c_str(), strerror(errno));
             fflush(stdout);
             exit(1);
         }
-        auto addr2 = mmap(nullptr, RING_BUFFER_CAP, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        auto addr2 = mmap(nullptr, RING_BUFFER_CAP, PROT_READ | PROT_WRITE, MAP_SHARED, fd, ee * RING_BUFFER_CAP);
         if (addr2 == MAP_FAILED) {
             printf("Failed to mmap %s : %s\n", incoming_shared_memory_file.c_str(), strerror(errno));
             fflush(stdout);

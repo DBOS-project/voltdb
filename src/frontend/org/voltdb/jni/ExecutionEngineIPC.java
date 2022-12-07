@@ -238,8 +238,8 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         public void pingpongTest() {
             System.out.printf("ping pong test for pub/sub pair (%d/%d) started\n", streamId, subStreamId);
             long t0 = System.nanoTime();
-            long times = 1000;
-            int length = 128000;
+            long times = 1000000;
+            int length = 256;
             ByteBuffer correctBuffer = ByteBuffer.allocate(length);
             ByteBuffer buffer = ByteBuffer.allocate(length);
             for (int i = 0; i < times; ++i) {
@@ -274,41 +274,29 @@ public class ExecutionEngineIPC extends ExecutionEngine {
 
         public AeronConnnection() {
             streamId = streamIdCounter.incrementAndGet() - 1;
-            outgoingRingBufferFile = "/dev/shm/volt_frontend_out_" + streamId;
-            // pub = aeron.addExclusivePublication(aeronChannel, streamId);
-            // System.out.printf("Aeron publication in %s connecting to stream %d\n", aeronChannel, streamId);
-            // while (pub.isConnected() == false) {
-            //     sleepIdle.idle();
-            // }
-            // System.out.printf("Aeron publication in %s connected to stream %d\n", aeronChannel, streamId);
+            //outgoingRingBufferFile = "/dev/shm/volt_frontend_out";
+            outgoingRingBufferFile = "/sys/bus/pci/devices/0000:00:05.0/resource2";
             subStreamId = maxStreamIdForFrontend + streamId;
-            incomingRingBufferFile = "/dev/shm/volt_backend_out_" + streamId;
+            incomingRingBufferFile = "/sys/bus/pci/devices/0000:00:04.0/resource2";
 
-            // sub = aeron.addSubscription(aeronChannel, subStreamId);
-            // System.out.printf("Aeron subscription in %s connecting to stream %d\n", aeronChannel, subStreamId);
-            // while (sub.isConnected() == false) {
-            //     sleepIdle.idle();
-            // }
-            // System.out.printf("Aeron subscription in %s connected to stream %d\n", aeronChannel, subStreamId);
-            // sub = aeron.addSubscription(backendChannelName, streamId);
-            // while (sub.isConnected() == false) {
-            //     sleepIdle.idle();
-            // }
-            // System.out.printf("Aeron subscription in {} connected to stream {}", backendChannelName, streamId);
             readBuffer = readBufferOrigin.b();
             readBuffer.clear();
             readBuffer.limit(0);
             //subscriptionPoller = new Poller(sub, readBuffer);
 
             File f1 = new File(outgoingRingBufferFile);
-            org.agrona.IoUtil.delete(f1, true);
-            outgoingRingBuffer = new RingByteBuffer(org.agrona.IoUtil.mapNewFile(f1, kRingBufferCapacity), kRingBufferCapacity);
+            //org.agrona.IoUtil.delete(f1, true);
+            outgoingRingBuffer = new RingByteBuffer(org.agrona.IoUtil.mapExistingFile(f1, outgoingRingBufferFile + streamId, streamId * kRingBufferCapacity, kRingBufferCapacity), kRingBufferCapacity);
+            outgoingRingBuffer.setReadPos(0);
+            outgoingRingBuffer.setWritePos(0);
             
             File f2 = new File(incomingRingBufferFile);
-            org.agrona.IoUtil.delete(f2, true);
-            incomingRingBuffer = new RingByteBuffer(org.agrona.IoUtil.mapNewFile(f2, kRingBufferCapacity), kRingBufferCapacity);
+            //org.agrona.IoUtil.delete(f2, true);
+            incomingRingBuffer = new RingByteBuffer(org.agrona.IoUtil.mapExistingFile(f2,  incomingRingBufferFile + streamId, streamId * kRingBufferCapacity, kRingBufferCapacity), kRingBufferCapacity);
+            incomingRingBuffer.setReadPos(0);
+            incomingRingBuffer.setWritePos(0);
 
-            System.out.printf("Opened mapped files %s/%s\n", outgoingRingBufferFile, incomingRingBufferFile);
+            System.out.printf("Opened mapped files %s/%s\n", outgoingRingBufferFile + ":" + streamId, incomingRingBufferFile + ":" + streamId);
         }
 
         class Poller implements io.aeron.logbuffer.FragmentHandler {

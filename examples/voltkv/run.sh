@@ -13,6 +13,8 @@ else
     exit -1
 fi
 
+POOLSIZE="${POOLSIZE:=100000}"
+
 # call script to set up paths, including
 # java classpaths and binary paths
 source $VOLTDB_BIN/voltenv
@@ -89,12 +91,12 @@ function async-benchmark() {
         --displayinterval=5 \
         --duration=120 \
         --servers=$SERVERS \
-        --poolsize=100000 \
+        --poolsize=$POOLSIZE \
         --preload=true \
         --getputratio=0.90 \
         --keysize=32 \
-        --minvaluesize=1024 \
-        --maxvaluesize=1024 \
+        --minvaluesize=$PAYLOAD_SIZE \
+        --maxvaluesize=$PAYLOAD_SIZE \
         --entropy=127 \
         --usecompression=false 
 #        --multisingleratio=0.0
@@ -119,10 +121,10 @@ function sync-benchmark() {
         --preload=true \
         --getputratio=0.90 \
         --keysize=32 \
-        --minvaluesize=1024 \
-        --maxvaluesize=1024 \
+        --minvaluesize=$PAYLOAD_SIZE \
+        --maxvaluesize=$PAYLOAD_SIZE \
         --usecompression=false \
-        --threads=40
+        --threads=8
 #        --multisingleratio=0.0
 }
 
@@ -143,8 +145,8 @@ function jdbc-benchmark() {
         --preload=true \
         --getputratio=0.90 \
         --keysize=32 \
-        --minvaluesize=1024 \
-        --maxvaluesize=1024 \
+        --minvaluesize=5120 \
+        --maxvaluesize=5120 \
         --usecompression=false \
         --threads=40
 }
