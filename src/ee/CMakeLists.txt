@@ -334,6 +334,9 @@ SET (VOLTDB_IPC_SRC
 SET (VOLTDB_SHM_SRC
   voltdbshm.cpp
 )
+SET (VOLTDB_SHMVM_SRC
+  voltdbshmvm.cpp
+)
 
 #
 # These are sets of object files, something like static libraries.
@@ -342,14 +345,16 @@ VOLTDB_ADD_LIBRARY(voltdbobjs OBJECT ${VOLTDB_SRC})
 VOLTDB_ADD_LIBRARY(voltdbjniobjs OBJECT ${VOLTDB_JNI_SRC})
 VOLTDB_ADD_LIBRARY(voltdbipcobjs OBJECT ${VOLTDB_IPC_SRC})
 VOLTDB_ADD_LIBRARY(voltdbshmobjs OBJECT ${VOLTDB_SHM_SRC})
+VOLTDB_ADD_LIBRARY(voltdbshmvmobjs OBJECT ${VOLTDB_SHMVM_SRC})
 VOLTDB_ADD_LIBRARY(third_party_objs OBJECT ${VOLTDB_THIRD_PARTY_SRC})
 
 ADD_DEPENDENCIES(voltdbobjs s2geo crypto pcre2)
 ADD_DEPENDENCIES(voltdbjniobjs s2geo crypto pcre2)
 ADD_DEPENDENCIES(voltdbipcobjs s2geo crypto pcre2)
 ADD_DEPENDENCIES(voltdbshmobjs s2geo crypto pcre2)
+ADD_DEPENDENCIES(voltdbshmvmobjs s2geo crypto pcre2)
 
-FOREACH (obj voltdbobjs voltdbjniobjs voltdbipcobjs voltdbshmobjs)
+FOREACH (obj voltdbobjs voltdbjniobjs voltdbipcobjs voltdbshmobjs voltdbshmvmobjs)
    TARGET_INCLUDE_DIRECTORIES(${obj}
      PUBLIC
      ${CMAKE_SOURCE_DIR}/third_party/cpp
@@ -401,18 +406,32 @@ TARGET_LINK_LIBRARIES(${VOLTDB_IPCRUN_NAME}
   -lpcre2-8 -ls2geo -lcrypto
   -ldl)
 
-SET (VOLTDB_SHMRUN_NAME voltdbshm)
-VOLTDB_ADD_EXECUTABLE(${VOLTDB_SHMRUN_NAME}
+#SET (VOLTDB_SHMRUN_NAME voltdbshm)
+#VOLTDB_ADD_EXECUTABLE(${VOLTDB_SHMRUN_NAME}
+#  $<TARGET_OBJECTS:voltdbobjs>
+#  $<TARGET_OBJECTS:third_party_objs>
+#  $<TARGET_OBJECTS:voltdbshmobjs>
+#)
+  
+#TARGET_LINK_LIBRARIES(${VOLTDB_SHMRUN_NAME}
+#  ${VOLTDB_LINK_FLAGS}
+#  -L${VOLTDB_3PTY_INSTALL_PREFIX}/lib
+#  -lpcre2-8 -ls2geo -lcrypto
+#  -ldl)
+
+SET (VOLTDB_SHMVMRUN_NAME voltdbshmvm)
+VOLTDB_ADD_EXECUTABLE(${VOLTDB_SHMVMRUN_NAME}
   $<TARGET_OBJECTS:voltdbobjs>
   $<TARGET_OBJECTS:third_party_objs>
-  $<TARGET_OBJECTS:voltdbshmobjs>
+  $<TARGET_OBJECTS:voltdbshmvmobjs>
 )
   
-TARGET_LINK_LIBRARIES(${VOLTDB_SHMRUN_NAME}
+TARGET_LINK_LIBRARIES(${VOLTDB_SHMVMRUN_NAME}
   ${VOLTDB_LINK_FLAGS}
   -L${VOLTDB_3PTY_INSTALL_PREFIX}/lib
-  -lpcre2-8 -ls2geo -lcrypto -laeron -laeron_client
+  -lpcre2-8 -ls2geo -lcrypto
   -ldl)
+
 
 ########################################################################
 #

@@ -96,124 +96,195 @@ import com.google_voltpatches.common.collect.ImmutableList;
  * Compiles a project XML file and some metadata into a Jar file
  * containing stored procedure code and a serialized catalog.
  *
- * The compiling algorithm is somewhat confusing.  We use a combination of HSQLDB, java regular expressions,
- * stone knives and bear skins to parse SQL into an internal form we can use.  This internal form is mostly
- * a VoltXMLElement object.  However, the result can also be a Catalog, if we are called upon to compile
- * DDL.  There is some other, static state which must be made correct as well.
+ * The compiling algorithm is somewhat confusing. We use a combination of
+ * HSQLDB, java regular expressions,
+ * stone knives and bear skins to parse SQL into an internal form we can use.
+ * This internal form is mostly
+ * a VoltXMLElement object. However, the result can also be a Catalog, if we are
+ * called upon to compile
+ * DDL. There is some other, static state which must be made correct as well.
  *
- * SQL statements are either DML, DDL, or DQL.  The DML statements are insert and delete.  The DQL
- * statements are either select or set operations applied to select statements.  Neither of these,
- * DML and DQL statements, changes the catalog.  They don't define new tables or indexes, and they
- * don't change table representations.  The DDL statements make all the catalog changes.  These
- * DDL commands include create table, create index, create view, create function, drop table,
- * drop index, drop view, partition table, alter table, and perhaps some others.  Some are standard
- * SQL commands, and can be processed by HSQL, perhaps with some massaging of the text.  Others are
+ * SQL statements are either DML, DDL, or DQL. The DML statements are insert and
+ * delete. The DQL
+ * statements are either select or set operations applied to select statements.
+ * Neither of these,
+ * DML and DQL statements, changes the catalog. They don't define new tables or
+ * indexes, and they
+ * don't change table representations. The DDL statements make all the catalog
+ * changes. These
+ * DDL commands include create table, create index, create view, create
+ * function, drop table,
+ * drop index, drop view, partition table, alter table, and perhaps some others.
+ * Some are standard
+ * SQL commands, and can be processed by HSQL, perhaps with some massaging of
+ * the text. Others are
  * completely VoltDB syntax, and HSQL knows nothing about them.
  *
  * <h3>DML and DQL</h3>
- * When we compile a DML or DQL statement it's in the context of a catalog and set of user
- * defined function definitions.  The user defined function definitions are stored in static
- * data in the HSQL compiler.  They must be correct.
- * <strong>Note:</strong> This should really be stored in the HSQL session object, along with the database.
+ * When we compile a DML or DQL statement it's in the context of a catalog and
+ * set of user
+ * defined function definitions. The user defined function definitions are
+ * stored in static
+ * data in the HSQL compiler. They must be correct.
+ * <strong>Note:</strong> This should really be stored in the HSQL session
+ * object, along with the database.
  *
  * <h3>DDL</h3>
- * When we compile a DDL statement it always affects a single table.  There may also be other
- * artifacts as well.  For example, a create index command affects a single table, but it
+ * When we compile a DDL statement it always affects a single table. There may
+ * also be other
+ * artifacts as well. For example, a create index command affects a single
+ * table, but it
  * creates an index, which is another artifact internally.
  *
- * The input to the compiler for DDL is a catalog jar file and a DDL string.  The DDL string could be a
- * sequence of DDL statements.  The result should be a catalog object with the new DDL added.  However,
- * there is also a static set of function definitions maintained in the compiler.  This static set of
- * function definitions needs to reflect the new catalog as well.  <strong>Note:</strong> This is very
- * fragile.  We should really fix this.
+ * The input to the compiler for DDL is a catalog jar file and a DDL string. The
+ * DDL string could be a
+ * sequence of DDL statements. The result should be a catalog object with the
+ * new DDL added. However,
+ * there is also a static set of function definitions maintained in the
+ * compiler. This static set of
+ * function definitions needs to reflect the new catalog as well.
+ * <strong>Note:</strong> This is very
+ * fragile. We should really fix this.
  *
  * <ol>
- *   <li>We first start with an empty catalog.  From the catalog jar file we extract a context.  This
- *       is a catalog object and the DDL string used to create the catalog object.  We call this DDL
- *       string the <em>Canonical DDL.</em> </li>
- *   <li>We process the canonical DDL string.
- *       <ol>
- *         <li>The canonical DDL string is broken up into individual statements.</li>
- *         <li>Each statement is pre-processed to find out what table or index it creates, and, for
- *             indexes, what table the index is on.</li>
- *         <li>If a statement is one which we can process by matching regular expressions (see S.K. & B.S. above)
- *             we extract substrings and process the statement in the front end, without calling HSQL.  So,
- *             HSQLDB doesn't know anything about these kind of VoltDB statements.</li>
- *         <li>If a statement is not one that VoltDB knows how to process, we send it to HSQL.  This creates a table
- *             or an index internally, in HSQL's symbol table.  We have built into to HSQL the ability to
- *             query for the VoltXML of a table or index.  So we can extract VoltXML from HSQL for
- *             these statements.</li>
- *         <li>Note that in this stage we are just processing canonical DDL.</li>
- *         <li>Also note that we need the VoltXML because we may mix VoltDB processing and HSQL processing
- *             for a single table.  Consider the strings:
- *             <pre>
+ * <li>We first start with an empty catalog. From the catalog jar file we
+ * extract a context. This
+ * is a catalog object and the DDL string used to create the catalog object. We
+ * call this DDL
+ * string the <em>Canonical DDL.</em></li>
+ * <li>We process the canonical DDL string.
+ * <ol>
+ * <li>The canonical DDL string is broken up into individual statements.</li>
+ * <li>Each statement is pre-processed to find out what table or index it
+ * creates, and, for
+ * indexes, what table the index is on.</li>
+ * <li>If a statement is one which we can process by matching regular
+ * expressions (see S.K. & B.S. above)
+ * we extract substrings and process the statement in the front end, without
+ * calling HSQL. So,
+ * HSQLDB doesn't know anything about these kind of VoltDB statements.</li>
+ * <li>If a statement is not one that VoltDB knows how to process, we send it to
+ * HSQL. This creates a table
+ * or an index internally, in HSQL's symbol table. We have built into to HSQL
+ * the ability to
+ * query for the VoltXML of a table or index. So we can extract VoltXML from
+ * HSQL for
+ * these statements.</li>
+ * <li>Note that in this stage we are just processing canonical DDL.</li>
+ * <li>Also note that we need the VoltXML because we may mix VoltDB processing
+ * and HSQL processing
+ * for a single table. Consider the strings:
+ * 
+ * <pre>
  *               {@code
  *               create table aaa ( id integer );
  *               partition table aaa on column id;
  *               create index aaaidx on aaa ( id + id );}
  *             </pre>
- *             In this case we need to create the table aaa, partition it and create an index.  The index will
- *             be a child of the table's VoltXML.  This mixes partition information and index definitioning
- *             both in the same VoltXML definition for the same table.  So, when we create the index we process
- *             it with HSQL, fetch out the VoltXML for the new table, calculate the difference between the existing
- *             table VoltXML and add the new elements.</li>
- *         <li>Note also that {@code CREATE PROCEDURE} is a DDL statement.  But we don't process it here.  We
- *             just buffer it up here in a tracker, along with some other information we track.</li>
- *         <li>Note that user defined functions are only called in stored procedures and in DML and DQL.  Since we don't
- *             care about DQL and DML here, as we are discussing DDL, we only care about stored procedures.  These
- *             have been buffered up in the tracker, and will not be compiled here.  So it doesn't really
- *             matter what order user defined functions are processed, or if HSQL knows about them.  So
- *             we just add them to the VoltXML and nowhere else.</li>
- *       </ol>
- *       The result of this processing is not a new catalog, but a new VoltXML object.  We can't just reuse
- *       the old catalog because it has the form of a set of commands for the EE, and we need the VoltXML tree
- *       to do the VoltXML differencing discussed above.  Note that procedures in the canonical DDL
- *       still have not been compiled to the catalog.  They are in the tracker, so the contents of the
- *       tracker is, perhaps, a result of this processing as well.  Since these are for the existing
- *       catalog, all function signatures, including function ids, should match the existing catalog's
- *       definition exactly.</li>
- *   </li>
- *   <li>After all the canonical DDL has been compiled to XML, we process the new DDL in the same way as the
- *       canonical DDL. But this processing is done in the context of the canonical DDL.  Since we will just
- *       buffer up stored procedures here, and not compile them, the order that user defined functions are
- *       stored in the VoltXML does not matter here either, so we just add them to the VoltXML.
- *       <ol>
- *         <li>We can check the VoltXML to see if a user defined function is doubly defined.</li>
- *         <li>We can just drop the functions in the VoltXML if they are dropped in the DDL.  We
- *             don't have to alter the compiler's function table here.  But see below to tell how
- *             we keep these definitions transactional.</li>
- *       </ol>
- *   <li>After all the DDL has been processed, we compile the VoltXML to a proper catalog object.  This is
- *       the internal catalog object, not the catalog command string we send to the EE.  We will need to add
- *       the stored procedures.</li>
- *   <li>Before we can add the stored procedures we need to make sure HSQL knows about the user defined functions.
- *       These definitions are in a static table in FunctionForVoltDB.FunctionDescriptor.  We first disable all user defined
- *       functions from the static table.  They are not deleted, they are just set to the side.  We then traverse the
- *       VoltXML for the new catalog and define the user defined functions in the static table.  We now have the
- *       old function definitions stored away and the new function definitions active.</br>
- *       <strong>Note:</strong> Keeping this static data definition correct causes no end of problem for us, and really should be
- *       fixed some day.</li>
- *   <li>We then process the stored procedures, which are stored in the tracker.  These compilations can either
- *       succeed or fail.  If they fail they throw a VoltCompilerException, which we can catch.
- *       <ol>
- *         <li>If the stored procedure compilation succeeds, we discard all the old user defined function
- *             definitions, and commit to the new set in the static FunctionId table.</li>
- *         <li>If the stored procedure compilation fails, we delete all the new user defined function definitions
- *             and restore the old ones.
- *       </ol>
- *   </li>
+ * 
+ * In this case we need to create the table aaa, partition it and create an
+ * index. The index will
+ * be a child of the table's VoltXML. This mixes partition information and index
+ * definitioning
+ * both in the same VoltXML definition for the same table. So, when we create
+ * the index we process
+ * it with HSQL, fetch out the VoltXML for the new table, calculate the
+ * difference between the existing
+ * table VoltXML and add the new elements.</li>
+ * <li>Note also that {@code CREATE PROCEDURE} is a DDL statement. But we don't
+ * process it here. We
+ * just buffer it up here in a tracker, along with some other information we
+ * track.</li>
+ * <li>Note that user defined functions are only called in stored procedures and
+ * in DML and DQL. Since we don't
+ * care about DQL and DML here, as we are discussing DDL, we only care about
+ * stored procedures. These
+ * have been buffered up in the tracker, and will not be compiled here. So it
+ * doesn't really
+ * matter what order user defined functions are processed, or if HSQL knows
+ * about them. So
+ * we just add them to the VoltXML and nowhere else.</li>
+ * </ol>
+ * The result of this processing is not a new catalog, but a new VoltXML object.
+ * We can't just reuse
+ * the old catalog because it has the form of a set of commands for the EE, and
+ * we need the VoltXML tree
+ * to do the VoltXML differencing discussed above. Note that procedures in the
+ * canonical DDL
+ * still have not been compiled to the catalog. They are in the tracker, so the
+ * contents of the
+ * tracker is, perhaps, a result of this processing as well. Since these are for
+ * the existing
+ * catalog, all function signatures, including function ids, should match the
+ * existing catalog's
+ * definition exactly.</li>
+ * </li>
+ * <li>After all the canonical DDL has been compiled to XML, we process the new
+ * DDL in the same way as the
+ * canonical DDL. But this processing is done in the context of the canonical
+ * DDL. Since we will just
+ * buffer up stored procedures here, and not compile them, the order that user
+ * defined functions are
+ * stored in the VoltXML does not matter here either, so we just add them to the
+ * VoltXML.
+ * <ol>
+ * <li>We can check the VoltXML to see if a user defined function is doubly
+ * defined.</li>
+ * <li>We can just drop the functions in the VoltXML if they are dropped in the
+ * DDL. We
+ * don't have to alter the compiler's function table here. But see below to tell
+ * how
+ * we keep these definitions transactional.</li>
+ * </ol>
+ * <li>After all the DDL has been processed, we compile the VoltXML to a proper
+ * catalog object. This is
+ * the internal catalog object, not the catalog command string we send to the
+ * EE. We will need to add
+ * the stored procedures.</li>
+ * <li>Before we can add the stored procedures we need to make sure HSQL knows
+ * about the user defined functions.
+ * These definitions are in a static table in
+ * FunctionForVoltDB.FunctionDescriptor. We first disable all user defined
+ * functions from the static table. They are not deleted, they are just set to
+ * the side. We then traverse the
+ * VoltXML for the new catalog and define the user defined functions in the
+ * static table. We now have the
+ * old function definitions stored away and the new function definitions
+ * active.</br>
+ * <strong>Note:</strong> Keeping this static data definition correct causes no
+ * end of problem for us, and really should be
+ * fixed some day.</li>
+ * <li>We then process the stored procedures, which are stored in the tracker.
+ * These compilations can either
+ * succeed or fail. If they fail they throw a VoltCompilerException, which we
+ * can catch.
+ * <ol>
+ * <li>If the stored procedure compilation succeeds, we discard all the old user
+ * defined function
+ * definitions, and commit to the new set in the static FunctionId table.</li>
+ * <li>If the stored procedure compilation fails, we delete all the new user
+ * defined function definitions
+ * and restore the old ones.
+ * </ol>
+ * </li>
  * </ol>
  */
 public class VoltCompiler {
-    /** Represents the level of severity for a Feedback message generated during compiling. */
-    public static enum Severity { INFORMATIONAL, WARNING, ERROR, UNEXPECTED }
+    /**
+     * Represents the level of severity for a Feedback message generated during
+     * compiling.
+     */
+    public static enum Severity {
+        INFORMATIONAL, WARNING, ERROR, UNEXPECTED
+    }
+
     public static final int NO_LINE_NUMBER = -1;
     private static final String NO_FILENAME = "null";
 
     // Causes the "debugoutput" folder to be generated and populated.
     // Also causes explain plans on disk to include cost.
-    public final static boolean DEBUG_MODE
-      = Boolean.parseBoolean(System.getProperty("org.voltdb.compilerdebug", "false"));
+    public final static boolean DEBUG_MODE = Boolean
+            .parseBoolean(System.getProperty("org.voltdb.compilerdebug", "false"));
 
     // was this voltcompiler instantiated in a main(), or as part of VoltDB
     public final boolean standaloneCompiler;
@@ -230,12 +301,16 @@ public class VoltCompiler {
     ArrayList<Feedback> m_warnings = new ArrayList<>();
     ArrayList<Feedback> m_errors = new ArrayList<>();
 
-    // Name of DDL file built by the DDL VoltCompiler from the catalog and added to the jar.
+    // Name of DDL file built by the DDL VoltCompiler from the catalog and added to
+    // the jar.
     public static final String AUTOGEN_DDL_FILE_NAME = "autogen-ddl.sql";
     public static final String CATLOG_REPORT = "catalog-report.html";
-    // Environment variable used to verify that a catalog created from autogen-dll.sql is effectively
-    // identical to the original catalog that was used to create the autogen-ddl.sql file.
-    public static final boolean DEBUG_VERIFY_CATALOG = Boolean.parseBoolean(System.getenv().get("VERIFY_CATALOG_DEBUG"));
+    // Environment variable used to verify that a catalog created from
+    // autogen-dll.sql is effectively
+    // identical to the original catalog that was used to create the autogen-ddl.sql
+    // file.
+    public static final boolean DEBUG_VERIFY_CATALOG = Boolean
+            .parseBoolean(System.getenv().get("VERIFY_CATALOG_DEBUG"));
 
     /// Set this to true to automatically retry a failed attempt to round-trip
     /// a rebuild of a catalog from its canonical ddl. This gives a chance to
@@ -271,7 +346,8 @@ public class VoltCompiler {
 
     private final String m_user;
 
-    // Whether or not to use SQLCommand as a pre-processor for DDL (in voltdb init --classes). Default is false.
+    // Whether or not to use SQLCommand as a pre-processor for DDL (in voltdb init
+    // --classes). Default is false.
     private boolean m_filterWithSQLCommand = false;
 
     /**
@@ -317,7 +393,7 @@ public class VoltCompiler {
 
         public String getLogString() {
             String retval = "";
-            if (! fileName.equals(NO_FILENAME)) {
+            if (!fileName.equals(NO_FILENAME)) {
                 retval += "[" + fileName;
                 if (lineNo != NO_LINE_NUMBER) {
                     retval += ":" + lineNo;
@@ -384,7 +460,7 @@ public class VoltCompiler {
 
         @Override
         public void fatalError(final SAXParseException exception) throws SAXException {
-            //addErr(exception.getMessage(), exception.getLineNumber());
+            // addErr(exception.getMessage(), exception.getLineNumber());
         }
 
         @Override
@@ -400,10 +476,10 @@ public class VoltCompiler {
         public final String m_stmtLiterals;
         public final String m_joinOrder;
         public final ProcedurePartitionData m_partitionData;
-        public final boolean m_builtInStmt;    // auto-generated SQL statement
+        public final boolean m_builtInStmt; // auto-generated SQL statement
         public final Class<?> m_class;
 
-        ProcedureDescriptor (final ArrayList<String> authGroups, final String className) {
+        ProcedureDescriptor(final ArrayList<String> authGroups, final String className) {
             m_authGroups = authGroups;
             m_className = className;
             m_stmtLiterals = null;
@@ -424,7 +500,7 @@ public class VoltCompiler {
         }
 
         ProcedureDescriptor(final ArrayList<String> authGroups, final Class<?> clazz,
-                            final ProcedurePartitionData partitionData) {
+                final ProcedurePartitionData partitionData) {
             m_authGroups = authGroups;
             m_className = clazz.getName();
             m_stmtLiterals = null;
@@ -434,11 +510,11 @@ public class VoltCompiler {
             m_class = clazz;
         }
 
-        public ProcedureDescriptor (final ArrayList<String> authGroups, final String className,
+        public ProcedureDescriptor(final ArrayList<String> authGroups, final String className,
                 final String singleStmt, final String joinOrder, final ProcedurePartitionData partitionData,
                 boolean builtInStmt, Class<?> clazz) {
-            assert(className != null);
-            assert(singleStmt != null);
+            assert (className != null);
+            assert (singleStmt != null);
 
             m_authGroups = authGroups;
             m_className = className;
@@ -463,8 +539,11 @@ public class VoltCompiler {
         this(standaloneCompiler, isXDCR, null);
     }
 
-    /** Parameterless constructor is for embedded VoltCompiler use only.
-     * @param isXDCR*/
+    /**
+     * Parameterless constructor is for embedded VoltCompiler use only.
+     * 
+     * @param isXDCR
+     */
     public VoltCompiler(boolean isXDCR) {
         this(isXDCR, null);
     }
@@ -523,7 +602,8 @@ public class VoltCompiler {
      * Compile from a set of DDL files.
      *
      * @param jarOutputPath The location to put the finished JAR to.
-     * @param ddlFilePaths The array of DDL files to compile (at least one is required).
+     * @param ddlFilePaths  The array of DDL files to compile (at least one is
+     *                      required).
      * @return true if successful
      * @throws VoltCompilerException
      */
@@ -570,16 +650,18 @@ public class VoltCompiler {
         try {
             m_classLoader = inMemoryUserJar.getLoader();
             if (classesJarPaths != null) {
-                // Make user's classes available to the compiler and add all VoltDB artifacts to theirs (overwriting any existing VoltDB artifacts).
+                // Make user's classes available to the compiler and add all VoltDB artifacts to
+                // theirs (overwriting any existing VoltDB artifacts).
                 // This keeps all their resources because stored procedures may depend on them.
-                for (File classesJarPath: classesJarPaths) {
+                for (File classesJarPath : classesJarPaths) {
                     if (classesJarPath.exists()) {
                         InMemoryJarfile jarFile = new InMemoryJarfile(classesJarPath);
                         inMemoryUserJar.putAll(jarFile);
                     }
                 }
             }
-            // NOTE/TODO: this is not from AdHoc code branch. We use the old code path here, and don't update CalciteSchema from VoltDB catalog.
+            // NOTE/TODO: this is not from AdHoc code branch. We use the old code path here,
+            // and don't update CalciteSchema from VoltDB catalog.
             if (compileInternal(null, null, ddlReaderList, Collections.emptyList(), inMemoryUserJar) == null) {
                 return false;
             }
@@ -603,7 +685,7 @@ public class VoltCompiler {
     /**
      * Compile from DDL in a single string
      *
-     * @param ddl The inline DDL text
+     * @param ddl     The inline DDL text
      * @param jarPath The location to put the finished JAR to.
      * @return true if successful
      * @throws VoltCompilerException
@@ -618,6 +700,7 @@ public class VoltCompiler {
 
     /**
      * Compile empty catalog jar
+     * 
      * @param jarOutputPath output jar path
      * @return true if successful
      */
@@ -625,7 +708,8 @@ public class VoltCompiler {
         // Use a special DDL reader to provide the contents.
         List<VoltCompilerReader> ddlReaderList = new ArrayList<>(1);
         ddlReaderList.add(new VoltCompilerStringReader("ddl.sql", m_emptyDDLComment));
-        // Seed it with the DDL so that a version upgrade hack in compileInternalToFile()
+        // Seed it with the DDL so that a version upgrade hack in
+        // compileInternalToFile()
         // doesn't try to get the DDL file from the path.
         InMemoryJarfile jarFile = new InMemoryJarfile();
         try {
@@ -634,7 +718,8 @@ public class VoltCompiler {
             compilerLog.error("Failed to add DDL file to empty in-memory jar.");
             return false;
         }
-        // NOTE/TODO: this is not from AdHoc code branch. We use the old code path here, and don't update CalciteSchema from VoltDB catalog.
+        // NOTE/TODO: this is not from AdHoc code branch. We use the old code path here,
+        // and don't update CalciteSchema from VoltDB catalog.
         return compileInternalToFile(jarOutputPath, null, null, ddlReaderList, jarFile);
     }
 
@@ -650,8 +735,10 @@ public class VoltCompiler {
     }
 
     /**
-     * Internal method that takes the generated DDL from the catalog and builds a new catalog.
-     * The generated catalog is diffed with the original catalog to verify compilation and
+     * Internal method that takes the generated DDL from the catalog and builds a
+     * new catalog.
+     * The generated catalog is diffed with the original catalog to verify
+     * compilation and
      * catalog generation consistency.
      */
     private void debugVerifyCatalog(InMemoryJarfile origJarFile, List<SqlNode> sqlNodes, Catalog origCatalog) {
@@ -666,7 +753,8 @@ public class VoltCompiler {
         // This call is purposely replicated in retryFailedCatalogRebuildUnderDebug,
         // where it provides an opportunity to set a breakpoint on a do-over when this
         // mainline call produces a flawed catalog that fails the catalog diff.
-        // Keep the two calls in synch to allow debugging under the same exact conditions.
+        // Keep the two calls in synch to allow debugging under the same exact
+        // conditions.
         Catalog autoGenCatalog = autoGenCompiler.compileCatalogInternal(null, null,
                 autogenReaderList, sqlNodes, autoGenJarOutput);
         if (autoGenCatalog == null) {
@@ -674,8 +762,7 @@ public class VoltCompiler {
             return;
         }
 
-        FilteredCatalogDiffEngine diffEng =
-                new FilteredCatalogDiffEngine(origCatalog, autoGenCatalog, false);
+        FilteredCatalogDiffEngine diffEng = new FilteredCatalogDiffEngine(origCatalog, autoGenCatalog, false);
         String diffCmds = diffEng.commands();
         if (diffCmds != null && !diffCmds.equals("")) {
             // This retry is disabled by default to avoid confusing the unwary developer
@@ -692,8 +779,9 @@ public class VoltCompiler {
             diffCmds = diffEng.commands();
             String crashAdvice = "Catalog Verification from Generated DDL failed! " +
                     "VoltDB dev: Consider" +
-                    (RETRY_FAILED_CATALOG_REBUILD_UNDER_DEBUG ? "" :
-                        " setting VoltCompiler.RETRY_FAILED_CATALOG_REBUILD_UNDER_DEBUG = true and") +
+                    (RETRY_FAILED_CATALOG_REBUILD_UNDER_DEBUG ? ""
+                            : " setting VoltCompiler.RETRY_FAILED_CATALOG_REBUILD_UNDER_DEBUG = true and")
+                    +
                     " setting a breakpoint in VoltCompiler.replayFailedCatalogRebuildUnderDebug" +
                     " to debug a replay of the faulty catalog rebuild roundtrip. ";
             VoltDB.crashLocalVoltDB(crashAdvice + "The offending diffcmds were: " + diffCmds);
@@ -702,19 +790,23 @@ public class VoltCompiler {
         }
     }
 
-    /** Take two steps back to retry and potentially debug a catalog rebuild
-     *  that generated an unintended change. This code is PURPOSELY redundant
-     *  with the mainline call in debugVerifyCatalog above.
-     *  Keep the two calls in synch and only redirect through this function
-     *  in the post-mortem replay after the other call created a flawed catalog.
+    /**
+     * Take two steps back to retry and potentially debug a catalog rebuild
+     * that generated an unintended change. This code is PURPOSELY redundant
+     * with the mainline call in debugVerifyCatalog above.
+     * Keep the two calls in synch and only redirect through this function
+     * in the post-mortem replay after the other call created a flawed catalog.
      */
     private Catalog replayFailedCatalogRebuildUnderDebug(
-            VoltCompiler autoGenCompiler, List<VoltCompilerReader> autogenReaderList, InMemoryJarfile autoGenJarOutput) {
+            VoltCompiler autoGenCompiler, List<VoltCompilerReader> autogenReaderList,
+            InMemoryJarfile autoGenJarOutput) {
         // Be sure to set RETRY_FAILED_CATALOG_REBUILD_UNDER_DEBUG = true to enable
         // this last ditch retry before crashing.
         // BREAKPOINT HERE!
-        // Then step IN to debug the failed rebuild -- or, just as likely, the canonical ddl.
-        // Or step OVER to debug just the catalog diff process, retried with verbose output --
+        // Then step IN to debug the failed rebuild -- or, just as likely, the canonical
+        // ddl.
+        // Or step OVER to debug just the catalog diff process, retried with verbose
+        // output --
         // maybe it's just being too sensitive to immaterial changes?
         Catalog autoGenCatalog = autoGenCompiler.compileCatalogInternal(null, null,
                 autogenReaderList, Collections.emptyList(), autoGenJarOutput);
@@ -722,12 +814,16 @@ public class VoltCompiler {
     }
 
     /**
-     * Internal method for compiling with and without a project.xml file or DDL files.
+     * Internal method for compiling with and without a project.xml file or DDL
+     * files.
      *
-     * @param projectReader Reader for project file or null if a project file is not used.
+     * @param projectReader Reader for project file or null if a project file is not
+     *                      used.
      * @param jarOutputPath The location to put the finished JAR to.
-     * @param ddlFilePaths The list of DDL files to compile (when no project is provided).
-     * @param jarOutputRet The in-memory jar to populate or null if the caller doesn't provide one.
+     * @param ddlFilePaths  The list of DDL files to compile (when no project is
+     *                      provided).
+     * @param jarOutputRet  The in-memory jar to populate or null if the caller
+     *                      doesn't provide one.
      * @return true if successful
      */
     private boolean compileInternalToFile(
@@ -738,7 +834,8 @@ public class VoltCompiler {
             return false;
         }
 
-        // NOTE/TODO: All the callers of this is not from AdHoc code branch. We use the old code path here, and don't update CalciteSchema from VoltDB catalog.
+        // NOTE/TODO: All the callers of this is not from AdHoc code branch. We use the
+        // old code path here, and don't update CalciteSchema from VoltDB catalog.
         final InMemoryJarfile jarOutput = compileInternal(
                 canonicalDDLIfAny, previousCatalogIfAny, ddlReaderList, Collections.emptyList(), jarOutputRet);
         try {
@@ -764,12 +861,12 @@ public class VoltCompiler {
         CatalogMap<Table> tables = catalogContext != null ? catalogContext.getTables() : null;
         int tableCount = tables != null ? tables.size() : 0;
         Cluster cluster = catalogContext != null ? catalogContext.getCluster() : null;
-        Deployment deployment = cluster != null ?  cluster.getDeployment().get("deployment") : null;
+        Deployment deployment = cluster != null ? cluster.getDeployment().get("deployment") : null;
         int hostcount = clusterSettings != null ? clusterSettings.hostcount() : 1;
         int kfactor = deployment != null ? deployment.getKfactor() : 0;
         int sitesPerHost = 8;
-        if  (catalogContext != null && catalogContext.getNodeSettings()!= null) {
-            sitesPerHost =  voltdb.getCatalogContext().getNodeSettings().getLocalSitesCount();
+        if (catalogContext != null && catalogContext.getNodeSettings() != null) {
+            sitesPerHost = voltdb.getCatalogContext().getNodeSettings().getLocalSitesCount();
         }
         boolean isPro = MiscUtils.isPro();
         long minHeapRqt = RealVoltDB.computeMinimumHeapRqt(tableCount, sitesPerHost, kfactor);
@@ -781,23 +878,27 @@ public class VoltCompiler {
     }
 
     /**
-     * Internal method for compiling with and without a project.xml file or DDL files.
+     * Internal method for compiling with and without a project.xml file or DDL
+     * files.
      *
-     * @param canonicalDDLIfAny ???
+     * @param canonicalDDLIfAny    ???
      * @param previousCatalogIfAny
-     * @param ddlReaderList The list of DDL files to read and compile ??? (when no project is provided).
-     * @param sqlNodes Calcite SqlNodes for DDL stmts
-     * @param jarOutputRet The in-memory jar to populate or null if the caller doesn't provide one.
+     * @param ddlReaderList        The list of DDL files to read and compile ???
+     *                             (when no project is provided).
+     * @param sqlNodes             Calcite SqlNodes for DDL stmts
+     * @param jarOutputRet         The in-memory jar to populate or null if the
+     *                             caller doesn't provide one.
      * @return The InMemoryJarfile containing the compiled catalog if
-     * successful, null if not.  If the caller provided an InMemoryJarfile, the
-     * return value will be the same object, not a copy.
+     *         successful, null if not. If the caller provided an InMemoryJarfile,
+     *         the
+     *         return value will be the same object, not a copy.
      */
     private InMemoryJarfile compileInternal(
             final VoltCompilerReader canonicalDDLIfAny, final Catalog previousCatalogIfAny,
             final List<VoltCompilerReader> ddlReaderList, final List<SqlNode> sqlNodes,
             final InMemoryJarfile jarOutputRet) {
         // Expect to have either >1 ddl file or a project file.
-        assert(ddlReaderList.size() > 0);
+        assert (ddlReaderList.size() > 0);
         // Make a temporary local output jar if one wasn't provided.
         final InMemoryJarfile jarOutput = jarOutputRet != null ? jarOutputRet : new InMemoryJarfile();
 
@@ -812,14 +913,15 @@ public class VoltCompiler {
         m_errors.clear();
 
         // do all the work to get the catalog
-        final Catalog catalog = compileCatalogInternal(canonicalDDLIfAny, previousCatalogIfAny, ddlReaderList, sqlNodes, jarOutput);
+        final Catalog catalog = compileCatalogInternal(canonicalDDLIfAny, previousCatalogIfAny, ddlReaderList, sqlNodes,
+                jarOutput);
         if (catalog == null) {
             return null;
         }
         Cluster cluster = catalog.getClusters().get("cluster");
-        assert(cluster != null);
+        assert (cluster != null);
         Database database = cluster.getDatabases().get("database");
-        assert(database != null);
+        assert (database != null);
 
         // Build DDL from Catalog Data
         String ddlWithBatchSupport = CatalogSchemaTools.toSchema(catalog);
@@ -828,8 +930,7 @@ public class VoltCompiler {
         // generate the catalog report and write it to disk
         try {
             generateCatalogReport(m_catalog, ddlWithBatchSupport, m_warnings, jarOutput);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
             return null;
         }
@@ -855,7 +956,7 @@ public class VoltCompiler {
             e.printStackTrace();
             return null;
         }
-        assert(!hasErrors());
+        assert (!hasErrors());
         if (hasErrors()) {
             return null;
         } else {
@@ -870,7 +971,7 @@ public class VoltCompiler {
     HashMap<String, byte[]> getExplainPlans(Catalog catalog) {
         HashMap<String, byte[]> retval = new HashMap<>();
         Database db = getCatalogDatabase(m_catalog);
-        assert(db != null);
+        assert (db != null);
         for (Procedure proc : db.getProcedures()) {
             for (Statement stmt : proc.getStatements()) {
                 String s = "SQL: " + stmt.getSqltext() + "\n";
@@ -903,13 +1004,15 @@ public class VoltCompiler {
 
     /**
      * Compile from DDL files (only).
-     * @param ddlFilePaths  input ddl files
-     * @return  compiled catalog
+     * 
+     * @param ddlFilePaths input ddl files
+     * @return compiled catalog
      * @throws VoltCompilerException
      */
     public Catalog compileCatalogFromDDL(final String... ddlFilePaths) throws VoltCompilerException {
         InMemoryJarfile jarOutput = new InMemoryJarfile();
-        // NOTE/TODO: this is not from AdHoc code branch. We use the old code path here, and don't update CalciteSchema from VoltDB catalog.
+        // NOTE/TODO: this is not from AdHoc code branch. We use the old code path here,
+        // and don't update CalciteSchema from VoltDB catalog.
         return compileCatalogInternal(null, null,
                 DDLPathsToReaderList(ddlFilePaths), Collections.emptyList(), jarOutput);
     }
@@ -917,16 +1020,19 @@ public class VoltCompiler {
     /**
      * Internal method for compiling the catalog.
      *
-     * @param canonicalDDLIfAny catalog-related info parsed from a project file ???
+     * @param canonicalDDLIfAny    catalog-related info parsed from a project file
+     *                             ???
      * @param previousCatalogIfAny previous catalog object, null if not exists
-     * @param ddlReaderList Reader objects for ddl files.
-     * @param sqlNodes Calcite SqlNodes for DDL stmts
-     * @param jarOutput The in-memory jar to populate or null if the caller doesn't provide one.
+     * @param ddlReaderList        Reader objects for ddl files.
+     * @param sqlNodes             Calcite SqlNodes for DDL stmts
+     * @param jarOutput            The in-memory jar to populate or null if the
+     *                             caller doesn't provide one.
      * @return true if successful
      */
     private Catalog compileCatalogInternal(
             final VoltCompilerReader canonicalDDLIfAny, final Catalog previousCatalogIfAny,
-            final List<VoltCompilerReader> ddlReaderList, final List<SqlNode> sqlNodes, final InMemoryJarfile jarOutput) {
+            final List<VoltCompilerReader> ddlReaderList, final List<SqlNode> sqlNodes,
+            final InMemoryJarfile jarOutput) {
         m_catalog = new Catalog();
         // Initialize the catalog for one cluster
         m_catalog.execute("add / clusters cluster");
@@ -943,17 +1049,17 @@ public class VoltCompiler {
             return null;
         }
 
-        assert(m_catalog != null);
+        assert (m_catalog != null);
 
         // add epoch info to catalog
-        final int epoch = (int)(TransactionIdManager.getEpoch() / 1000);
+        final int epoch = (int) (TransactionIdManager.getEpoch() / 1000);
         m_catalog.getClusters().get("cluster").setLocalepoch(epoch);
 
         return m_catalog;
     }
 
     public String getCanonicalDDL() {
-        if(m_canonicalDDL == null) {
+        if (m_canonicalDDL == null) {
             throw new RuntimeException();
         }
         return m_canonicalDDL;
@@ -969,7 +1075,8 @@ public class VoltCompiler {
     }
 
     /**
-     * @return The name of the user which initiated this compile operation or {@code null} if no user is specified
+     * @return The name of the user which initiated this compile operation or
+     *         {@code null} if no user is specified
      */
     public String getUser() {
         return m_user;
@@ -987,37 +1094,45 @@ public class VoltCompiler {
     }
 
     /**
-     * Create default roles. These roles cannot be removed nor overridden in the DDL.
-     * Make sure to omit these roles in the generated DDL in {@link org.voltdb.utils.CatalogSchemaTools}
-     * Also, make sure to prevent them from being dropped by DROP ROLE in the DDLCompiler
+     * Create default roles. These roles cannot be removed nor overridden in the
+     * DDL.
+     * Make sure to omit these roles in the generated DDL in
+     * {@link org.voltdb.utils.CatalogSchemaTools}
+     * Also, make sure to prevent them from being dropped by DROP ROLE in the
+     * DDLCompiler
      * !!!
-     * IF YOU ADD A THIRD ROLE TO THE DEFAULTS, IT'S TIME TO BUST THEM OUT INTO A CENTRAL
+     * IF YOU ADD A THIRD ROLE TO THE DEFAULTS, IT'S TIME TO BUST THEM OUT INTO A
+     * CENTRAL
      * LOCALE AND DO ALL THIS MAGIC PROGRAMATICALLY --izzy 11/20/2014
      */
     private static void addDefaultRoles(Catalog catalog) {
         // admin
         catalog.execute("add /clusters#cluster/databases#database groups administrator");
         Permission.setPermissionsInGroup(getCatalogDatabase(catalog).getGroups().get("administrator"),
-                                         Permission.getPermissionsFromAliases(Arrays.asList("ADMIN")));
+                Permission.getPermissionsFromAliases(Arrays.asList("ADMIN")));
 
         // user
         catalog.execute("add /clusters#cluster/databases#database groups user");
         Permission.setPermissionsInGroup(getCatalogDatabase(catalog).getGroups().get("user"),
-                                         Permission.getPermissionsFromAliases(Arrays.asList("SQL", "ALLPROC")));
+                Permission.getPermissionsFromAliases(Arrays.asList("SQL", "ALLPROC")));
     }
 
     public static enum DdlProceduresToLoad {
         NO_DDL_PROCEDURES, ALL_DDL_PROCEDURES
     }
 
-
     /**
      * Simplified interface for loading a ddl file with full support for VoltDB
-     * extensions (partitioning, procedures, export), but no support for "project file" input.
-     * This is, at least initially, only a back door to create a fully functional catalog for
+     * extensions (partitioning, procedures, export), but no support for "project
+     * file" input.
+     * This is, at least initially, only a back door to create a fully functional
+     * catalog for
      * the purposes of planner unit testing.
-     * @param hsql an interface to the hsql frontend, initialized and potentially reused by the caller.
-     * @param whichProcs indicates which ddl-defined procedures to load: none, single-statement, or all
+     * 
+     * @param hsql         an interface to the hsql frontend, initialized and
+     *                     potentially reused by the caller.
+     * @param whichProcs   indicates which ddl-defined procedures to load: none,
+     *                     single-statement, or all
      * @param ddlFilePaths schema file paths
      * @throws VoltCompilerException
      */
@@ -1029,18 +1144,22 @@ public class VoltCompiler {
         List<VoltCompilerReader> ddlReaderList = DDLPathsToReaderList(ddlFilePaths);
         final VoltDDLElementTracker voltDdlTracker = new VoltDDLElementTracker(this);
         InMemoryJarfile jarOutput = new InMemoryJarfile();
-        // NOTE/TODO: this is not from AdHoc code branch. We use the old code path here, and don't update CalciteSchema from VoltDB catalog.
+        // NOTE/TODO: this is not from AdHoc code branch. We use the old code path here,
+        // and don't update CalciteSchema from VoltDB catalog.
         compileDatabase(db, hsql, voltDdlTracker, null, null,
                 ddlReaderList, Collections.emptyList(), null, whichProcs, jarOutput);
         return m_catalog;
     }
 
     /**
-     * Load a ddl file with full support for VoltDB extensions (partitioning, procedures,
+     * Load a ddl file with full support for VoltDB extensions (partitioning,
+     * procedures,
      * export), AND full support for input via a project xml file's "database" node.
+     * 
      * @param canonicalDDLIfAny catalog-related info parsed from a project file
-     * @param ddlReaderList Reader objects for ddl files.
-     * @param jarOutput The in-memory jar to populate or null if the caller doesn't provide one.
+     * @param ddlReaderList     Reader objects for ddl files.
+     * @param jarOutput         The in-memory jar to populate or null if the caller
+     *                          doesn't provide one.
      * @throws VoltCompilerException
      */
     private void compileDatabaseNode(
@@ -1061,15 +1180,19 @@ public class VoltCompiler {
     /**
      * Common code for schema loading shared by loadSchema and compileDatabaseNode
      *
-     * @param db the database entry in the catalog
-     * @param hsql an interface to the hsql frontend, initialized and potentially reused by the caller.
-     * @param voltDdlTracker non-standard VoltDB schema annotations, initially those from a project file
+     * @param db                the database entry in the catalog
+     * @param hsql              an interface to the hsql frontend, initialized and
+     *                          potentially reused by the caller.
+     * @param voltDdlTracker    non-standard VoltDB schema annotations, initially
+     *                          those from a project file
      * @param canonicalDDLIfAny ???
-     * @param previousDBIfAny previous db catalog object, null if not exists???
-     * @param sqlNodes Calcite SqlNodes for DDL stmts
+     * @param previousDBIfAny   previous db catalog object, null if not exists???
+     * @param sqlNodes          Calcite SqlNodes for DDL stmts
      * @param classDependencies optional additional jar files required by procedures
-     * @param whichProcs indicates which ddl-defined procedures to load: none, single-statement, or all
-     * @param jarOutput The in-memory jar to populate or null if the caller doesn't provide one.
+     * @param whichProcs        indicates which ddl-defined procedures to load:
+     *                          none, single-statement, or all
+     * @param jarOutput         The in-memory jar to populate or null if the caller
+     *                          doesn't provide one.
      */
     private void compileDatabase(
             Database db, HSQLInterface hsql, VoltDDLElementTracker voltDdlTracker,
@@ -1120,7 +1243,8 @@ public class VoltCompiler {
                 }
             }
 
-            // When A/A is enabled, create an export table for every DR table to log possible conflicts
+            // When A/A is enabled, create an export table for every DR table to log
+            // possible conflicts
             ddlcompiler.loadAutogenExportTableSchema(db, previousDBIfAny, whichProcs, m_isXDCR);
             sqlNodes.forEach(node -> {
                 CreateTableUtils.addTable(node, db);
@@ -1145,7 +1269,7 @@ public class VoltCompiler {
             ddlcompiler.processMaterializedViewWarnings(db);
 
             // process DRed tables
-            for (Entry<String, String> drNode: voltDdlTracker.getDRedTables().entrySet()) {
+            for (Entry<String, String> drNode : voltDdlTracker.getDRedTables().entrySet()) {
                 compileDRTable(drNode, db);
             }
 
@@ -1169,7 +1293,8 @@ public class VoltCompiler {
     }
 
     /**
-     * Once the DDL file is over, take all of the extra classes found and add them to the jar.
+     * Once the DDL file is over, take all of the extra classes found and add them
+     * to the jar.
      */
     private void addExtraClasses(final InMemoryJarfile jarOutput) throws VoltCompilerException {
 
@@ -1200,13 +1325,16 @@ public class VoltCompiler {
     }
 
     /**
-     * @param db the database entry in the catalog
-     * @param hsql an interface to the hsql frontend, initialized and potentially reused by the caller.
-     * @param allProcs ???
+     * @param db                the database entry in the catalog
+     * @param hsql              an interface to the hsql frontend, initialized and
+     *                          potentially reused by the caller.
+     * @param allProcs          ???
      * @param classDependencies ???
-     * @param whichProcs indicates which ddl-defined procedures to load: none, single-statement, or all
-     * @param prevProcsIfAny ???
-     * @param jarOutput The in-memory jar to populate or null if the caller doesn't provide one.
+     * @param whichProcs        indicates which ddl-defined procedures to load:
+     *                          none, single-statement, or all
+     * @param prevProcsIfAny    ???
+     * @param jarOutput         The in-memory jar to populate or null if the caller
+     *                          doesn't provide one.
      * @throws VoltCompilerException
      */
     private void compileProcedures(
@@ -1224,7 +1352,8 @@ public class VoltCompiler {
         }
 
         // Ignore class dependencies if ignoring java stored procs.
-        // This extra qualification anticipates some (undesirable) overlap between planner
+        // This extra qualification anticipates some (undesirable) overlap between
+        // planner
         // testing and additional library code in the catalog jar file.
         // That is, if it became possible for ddl file syntax to trigger additional
         // (non-stored-procedure) class loading into the catalog jar,
@@ -1286,12 +1415,15 @@ public class VoltCompiler {
     static void addDatabaseEstimatesInfo(final DatabaseEstimates estimates, final Database db) {
         // Not implemented yet. Don't panic.
 
-        /*for (Table table : db.getTables()) {
-            DatabaseEstimates.TableEstimates tableEst = new DatabaseEstimates.TableEstimates();
-            tableEst.maxTuples = 1000000;
-            tableEst.minTuples = 100000;
-            estimates.tables.put(table, tableEst);
-        }*/
+        /*
+         * for (Table table : db.getTables()) {
+         * DatabaseEstimates.TableEstimates tableEst = new
+         * DatabaseEstimates.TableEstimates();
+         * tableEst.maxTuples = 1000000;
+         * tableEst.minTuples = 100000;
+         * estimates.tables.put(table, tableEst);
+         * }
+         */
     }
 
     void addExportTableToConnector(final String targetName, final String tableName, final Database catdb)
@@ -1306,13 +1438,15 @@ public class VoltCompiler {
         Table tableref = catdb.getTables().getIgnoreCase(tableName);
         if (tableref == null) {
             throw new VoltCompilerException("While configuring export, table " + tableName + " was not present in " +
-            "the catalog.");
+                    "the catalog.");
         } else if (TableType.isStream(tableref.getTabletype())) {
             checkExportedStream(tableref, catdb, "export");
 
-            // This is used to enforce default connectors assigned to streams through the Java Property
+            // This is used to enforce default connectors assigned to streams through the
+            // Java Property
             // for streams that don't have the Export To Target clause
-            if (TableType.isConnectorLessStream(tableref.getTabletype()) && System.getProperty(ExportDataProcessor.EXPORT_TO_TYPE) != null) {
+            if (TableType.isConnectorLessStream(tableref.getTabletype())
+                    && System.getProperty(ExportDataProcessor.EXPORT_TO_TYPE) != null) {
                 tableref.setTabletype(TableType.STREAM.get());
             }
         }
@@ -1320,22 +1454,22 @@ public class VoltCompiler {
         // Reject materialized views except if migrating view
         if (tableref.getMaterializer() != null && !TableType.isPersistentMigrate(tableref.getTabletype())) {
             compilerLog.error("While configuring export, " + tableName + " is a " +
-                                        "materialized view.  A view cannot be export source.");
+                    "materialized view.  A view cannot be export source.");
             throw new VoltCompilerException("View configured as export source");
         }
-        org.voltdb.catalog.ConnectorTableInfo connTableInfo =
-                catconn.getTableinfo().getIgnoreCase(tableName);
+        org.voltdb.catalog.ConnectorTableInfo connTableInfo = catconn.getTableinfo().getIgnoreCase(tableName);
 
         if (connTableInfo == null) {
             connTableInfo = catconn.getTableinfo().add(tableName);
             connTableInfo.setTable(tableref);
             connTableInfo.setAppendonly(true);
-        } else  {
+        } else {
             throw new VoltCompilerException(String.format("Table \"%s\" is already exported", tableName));
         }
     }
 
-    // Note: this method has side-effects on the stream being checked, and the views using it
+    // Note: this method has side-effects on the stream being checked, and the views
+    // using it
     void checkExportedStream(Table table, final Database catdb, String what) throws VoltCompilerException {
         assert TableType.isStream(table.getTabletype());
 
@@ -1353,9 +1487,10 @@ public class VoltCompiler {
                 if (t.getColumns().get(pc.getName()) == null) {
                     compilerLog.error("While configuring " + what + ", table " + t + " is a source table " +
                             "for a materialized view. Export only tables support views as long as partitioned column is part of the view.");
-                    throw new VoltCompilerException("Stream configured with materialized view without partitioned column in the view.");
+                    throw new VoltCompilerException(
+                            "Stream configured with materialized view without partitioned column in the view.");
                 } else {
-                    //Set partition column of view table to partition column of stream
+                    // Set partition column of view table to partition column of stream
                     t.setPartitioncolumn(t.getColumns().get(pc.getName()));
                 }
             }
@@ -1368,8 +1503,10 @@ public class VoltCompiler {
             throw new VoltCompilerException("Streams cannot be configured with indexes");
         }
 
-        // Streams exporting to topic or target should never be set to replicated even if no partition column
-        // exists. The results are "partitioned" streams with no partitioning column (iffy).
+        // Streams exporting to topic or target should never be set to replicated even
+        // if no partition column
+        // exists. The results are "partitioned" streams with no partitioning column
+        // (iffy).
         if (table.getIsreplicated()) {
             table.setIsreplicated(false);
             table.setPartitioncolumn(null);
@@ -1392,7 +1529,7 @@ public class VoltCompiler {
     }
 
     // Usage messages for new and legacy syntax.
-    static final String usageNew    = "VoltCompiler <output-JAR> <input-DDL> ...";
+    static final String usageNew = "VoltCompiler <output-JAR> <input-DDL> ...";
     static final String usageLegacy = "VoltCompiler <project-file> <output-JAR>";
 
     /**
@@ -1400,13 +1537,14 @@ public class VoltCompiler {
      *
      * Incoming arguments:
      *
-     *         New syntax: OUTPUT_JAR INPUT_DDL ...
-     *      Legacy syntax: PROJECT_FILE OUTPUT_JAR
+     * New syntax: OUTPUT_JAR INPUT_DDL ...
+     * Legacy syntax: PROJECT_FILE OUTPUT_JAR
      *
-     * @param args  arguments (see above)
+     * @param args arguments (see above)
      */
     public static void main(final String[] args) {
-        // passing true to constructor indicates the compiler is being run in standalone mode
+        // passing true to constructor indicates the compiler is being run in standalone
+        // mode
         final VoltCompiler compiler = new VoltCompiler(true, false);
 
         boolean success = false;
@@ -1417,7 +1555,7 @@ public class VoltCompiler {
                 // to catch accidental incomplete use of the legacy syntax.
                 if (args[1].toLowerCase().endsWith(".xml") || args[1].toLowerCase().endsWith(".jar")) {
                     System.err.println("Error: Expecting a DDL file as the second argument.\n"
-                                     + "      .xml and .jar are invalid DDL file extensions.");
+                            + "      .xml and .jar are invalid DDL file extensions.");
                     System.exit(-1);
                 }
                 success = compiler.compileFromDDL(args[0], ArrayUtils.subarray(args, 1, args.length));
@@ -1432,7 +1570,7 @@ public class VoltCompiler {
         }
 
         // Should have exited if inadequate arguments were provided.
-        assert(args.length > 0);
+        assert (args.length > 0);
 
         // Exit with error code if we failed
         if (!success) {
@@ -1568,20 +1706,20 @@ public class VoltCompiler {
                 }
 
                 outputStream.print("\n" +
-                                "\tUsing the output of these queries as input to subsequent\n" +
-                                "\twrite queries can result in differences between replicated\n" +
-                                "\tpartitions at runtime, forcing VoltDB to shutdown the cluster.\n" +
-                                "\tReview the compiler messages above to identify the offending\n" +
-                                "\tSQL statements (marked as \"[NDO] or [NDC]\").  Add a unique\n" +
-                                "\tindex to the schema or an explicit ORDER BY clause to the\n" +
-                                "\tquery to make these queries deterministic.\n\n");
+                        "\tUsing the output of these queries as input to subsequent\n" +
+                        "\twrite queries can result in differences between replicated\n" +
+                        "\tpartitions at runtime, forcing VoltDB to shutdown the cluster.\n" +
+                        "\tReview the compiler messages above to identify the offending\n" +
+                        "\tSQL statements (marked as \"[NDO] or [NDC]\").  Add a unique\n" +
+                        "\tindex to the schema or an explicit ORDER BY clause to the\n" +
+                        "\tquery to make these queries deterministic.\n\n");
             }
             if (countSinglePartition == 0 && countMultiPartition > 0) {
                 outputStream.print("ALL MULTI-PARTITION WARNING:\n" +
-                                "\tAll of the user procedures are multi-partition. This often\n" +
-                                "\tindicates that the application is not utilizing VoltDB partitioning\n" +
-                                "\tfor best performance. For information on VoltDB partitioning, see:\n" +
-                                "\thttp://voltdb.com/docs/UsingVoltDB/ChapAppDesign.php\n\n");
+                        "\tAll of the user procedures are multi-partition. This often\n" +
+                        "\tindicates that the application is not utilizing VoltDB partitioning\n" +
+                        "\tfor best performance. For information on VoltDB partitioning, see:\n" +
+                        "\thttp://voltdb.com/docs/UsingVoltDB/ChapAppDesign.php\n\n");
             }
             if (m_reportPath != null) {
                 outputStream.println("------------------------------------------\n");
@@ -1600,8 +1738,10 @@ public class VoltCompiler {
     }
 
     /**
-     * Return a copy of the input sqltext with each run of successive whitespace characters replaced by a single space.
+     * Return a copy of the input sqltext with each run of successive whitespace
+     * characters replaced by a single space.
      * This is just for informal feedback purposes, so quoting is not respected.
+     * 
      * @param sqltext
      * @return a possibly modified copy of the input sqltext
      **/
@@ -1623,7 +1763,7 @@ public class VoltCompiler {
         }
     }
 
-    public List<Class<?>> getInnerClasses(Class <?> c) throws VoltCompilerException {
+    public List<Class<?>> getInnerClasses(Class<?> c) throws VoltCompilerException {
         ImmutableList.Builder<Class<?>> builder = ImmutableList.builder();
         ClassLoader cl = c.getClassLoader();
         if (cl == null) {
@@ -1642,7 +1782,7 @@ public class VoltCompiler {
                             " from in-memory jar representation.";
                     throw new VoltCompilerException(msg);
                 }
-                assert(clz != null);
+                assert (clz != null);
                 builder.add(clz);
             }
         } else {
@@ -1688,7 +1828,7 @@ public class VoltCompiler {
             } else if ("file".equals(curl.getProtocol())) { // load directly from a classfile
                 Pattern nameRE = Pattern.compile("/(" + stem + "\\$[^/]+).class\\z");
                 File sourceDH = new File(curl.getFile()).getParentFile();
-                for (File f: sourceDH.listFiles()) {
+                for (File f : sourceDH.listFiles()) {
                     Matcher mtc = nameRE.matcher(f.getAbsolutePath());
                     if (mtc.find()) {
                         String innerName = mtc.group(1).replace('/', '.');
@@ -1737,8 +1877,7 @@ public class VoltCompiler {
      */
     enum DeprecatedProjectElement {
         security("(?i)\\Acvc-[^:]+:\\s+Invalid\\s+content\\s+.+?\\s+element\\s+'security'",
-                "security may be enabled in the deployment file only"
-                );
+                "security may be enabled in the deployment file only");
 
         /**
          * message regular expression that pertains to the deprecated element
@@ -1764,16 +1903,15 @@ public class VoltCompiler {
          *
          * @param jxbex a {@link JAXBException}
          * @return an enum of {@code DeprecatedProjectElement} if the
-         *    given exception corresponds to a deprecated xml element
+         *         given exception corresponds to a deprecated xml element
          */
         static DeprecatedProjectElement valueOf(JAXBException jxbex) {
-            if(jxbex == null || jxbex.getLinkedException() == null ||
-                    ! (jxbex.getLinkedException() instanceof org.xml.sax.SAXParseException)) {
+            if (jxbex == null || jxbex.getLinkedException() == null ||
+                    !(jxbex.getLinkedException() instanceof org.xml.sax.SAXParseException)) {
                 return null;
             }
-            org.xml.sax.SAXParseException saxex =
-                    org.xml.sax.SAXParseException.class.cast(jxbex.getLinkedException());
-            for( DeprecatedProjectElement dpe: DeprecatedProjectElement.values()) {
+            org.xml.sax.SAXParseException saxex = org.xml.sax.SAXParseException.class.cast(jxbex.getLinkedException());
+            for (DeprecatedProjectElement dpe : DeprecatedProjectElement.values()) {
                 Matcher mtc = dpe.messagePattern.matcher(saxex.getMessage());
                 if (mtc.find()) {
                     return dpe;
@@ -1784,8 +1922,9 @@ public class VoltCompiler {
     }
 
     /**
-     * Compile the provided jarfile.  Basically, treat the jarfile as a staging area
-     * for the artifacts to be included in the compile, and then compile it in place.
+     * Compile the provided jarfile. Basically, treat the jarfile as a staging area
+     * for the artifacts to be included in the compile, and then compile it in
+     * place.
      *
      * *NOTE*: Does *NOT* work with project.xml jarfiles.
      *
@@ -1803,8 +1942,9 @@ public class VoltCompiler {
         // Use the in-memory jarfile-provided class loader so that procedure
         // classes can be found and copied to the new file that gets written.
         ClassLoader originalClassLoader = m_classLoader;
-        try (VoltCompilerStringReader canonicalDDLReader = new VoltCompilerStringReader(VoltCompiler.AUTOGEN_DDL_FILE_NAME, oldDDL);
-             VoltCompilerStringReader newDDLReader = new VoltCompilerStringReader("Ad Hoc DDL Input", newDDL)) {
+        try (VoltCompilerStringReader canonicalDDLReader = new VoltCompilerStringReader(
+                VoltCompiler.AUTOGEN_DDL_FILE_NAME, oldDDL);
+                VoltCompilerStringReader newDDLReader = new VoltCompilerStringReader("Ad Hoc DDL Input", newDDL)) {
 
             List<VoltCompilerReader> ddlList = new ArrayList<>();
             ddlList.add(newDDLReader);
@@ -1835,8 +1975,9 @@ public class VoltCompiler {
     }
 
     /**
-     * Compile the provided jarfile.  Basically, treat the jarfile as a staging area
-     * for the artifacts to be included in the compile, and then compile it in place.
+     * Compile the provided jarfile. Basically, treat the jarfile as a staging area
+     * for the artifacts to be included in the compile, and then compile it in
+     * place.
      *
      * @throws ClassNotFoundException
      * @throws VoltCompilerException
@@ -1844,7 +1985,8 @@ public class VoltCompiler {
      *
      */
     public void compileInMemoryJarfileForUpdateClasses(InMemoryJarfile jarOutput,
-            Catalog currentCatalog, HSQLInterface hsql) throws IOException, ClassNotFoundException, VoltCompilerException {
+            Catalog currentCatalog, HSQLInterface hsql)
+            throws IOException, ClassNotFoundException, VoltCompilerException {
         // clear out the warnings and errors
         m_warnings.clear();
         m_infos.clear();
@@ -1875,7 +2017,8 @@ public class VoltCompiler {
 
         for (Procedure procedure : procedures) {
             if (!procedure.getHasjava()) {
-                // Skip the DDL statement stored procedures as @UpdateClasses does not affect them
+                // Skip the DDL statement stored procedures as @UpdateClasses does not affect
+                // them
                 continue;
             }
             // default procedure is also a single statement procedure
@@ -1886,7 +2029,8 @@ public class VoltCompiler {
                 continue;
             }
 
-            // clear up the previous procedure contents before recompiling java user procedures
+            // clear up the previous procedure contents before recompiling java user
+            // procedures
             procedure.getStatements().clear();
             procedure.getParameters().clear();
 
@@ -1943,7 +2087,6 @@ public class VoltCompiler {
         // allow gc to reclaim any cache memory here
         m_previousCatalogStmts.clear();
 
-
         // generate the catalog report and write it to disk
         generateCatalogReport(catalog, canonicalDDL, m_warnings, jarOutput);
 
@@ -1959,7 +2102,7 @@ public class VoltCompiler {
         }
         jarOutput.put(CatalogUtil.CATALOG_FILENAME, catalogBytes);
 
-        assert(!hasErrors());
+        assert (!hasErrors());
         if (hasErrors()) {
             StringBuilder sb = new StringBuilder();
             for (Feedback fb : m_errors) {
@@ -1973,7 +2116,7 @@ public class VoltCompiler {
      * Check a loaded catalog. If it needs to be upgraded recompile it and save
      * an upgraded jar file.
      *
-     * @param outputJar  in-memory jar file (updated in place here)
+     * @param outputJar in-memory jar file (updated in place here)
      * @return source version upgraded from or null if not upgraded
      * @throws IOException
      */
@@ -1987,7 +2130,7 @@ public class VoltCompiler {
         // Check if it's compatible (or the upgrade is being forced).
         // getConfig() may return null if it's being mocked for a test.
         if (VoltDB.Configuration.m_forceCatalogUpgrade
-            || !versionFromCatalog.equals(VoltDB.instance().getVersionString())) {
+                || !versionFromCatalog.equals(VoltDB.instance().getVersionString())) {
 
             // Patch the buildinfo.
             String versionFromVoltDB = VoltDB.instance().getVersionString();
@@ -2019,7 +2162,8 @@ public class VoltCompiler {
             // classes can be found and copied to the new file that gets written.
             ClassLoader originalClassLoader = m_classLoader;
 
-            // Compile and save the file to voltdbroot. Assume it's a test environment if there
+            // Compile and save the file to voltdbroot. Assume it's a test environment if
+            // there
             // is no catalog context available.
             String jarName = String.format("catalog-%s.jar", versionFromVoltDB);
             String textName = String.format("catalog-%s.out", versionFromVoltDB);
@@ -2073,8 +2217,8 @@ public class VoltCompiler {
                     if (success) {
                         summarizeSuccess(outputStream, outputStream, outputJarPath);
                         consoleLog.info(String.format("The catalog was automatically upgraded from " +
-                                        "version %s to %s and saved to \"%s\". " +
-                                        "Compiler output is available in \"%s\".",
+                                "version %s to %s and saved to \"%s\". " +
+                                "Compiler output is available in \"%s\".",
                                 versionFromCatalog, versionFromVoltDB,
                                 outputJarPath, outputTextPath));
                     } else {
@@ -2082,12 +2226,12 @@ public class VoltCompiler {
                         outputStream.close();
                         compilerLog.error("Catalog upgrade failed.");
                         compilerLog.info(String.format("Had attempted to perform an automatic version upgrade of a " +
-                                        "catalog that was compiled by an older %s version of VoltDB, " +
-                                        "but the automatic upgrade failed. The cluster  will not be " +
-                                        "able to start until the incompatibility is fixed. " +
-                                        "Try re-compiling the catalog with the newer %s version " +
-                                        "of the VoltDB compiler. Compiler output from the failed " +
-                                        "upgrade is available in \"%s\".",
+                                "catalog that was compiled by an older %s version of VoltDB, " +
+                                "but the automatic upgrade failed. The cluster  will not be " +
+                                "able to start until the incompatibility is fixed. " +
+                                "Try re-compiling the catalog with the newer %s version " +
+                                "of the VoltDB compiler. Compiler output from the failed " +
+                                "upgrade is available in \"%s\".",
                                 versionFromCatalog, versionFromVoltDB, outputTextPath));
                         throw new IOException(String.format(
                                 "Catalog upgrade failed. You will need to recompile."));
@@ -2099,12 +2243,12 @@ public class VoltCompiler {
                 compilerLog.error("Catalog upgrade failed with error:");
                 compilerLog.error(e.getMessage());
                 compilerLog.info(String.format("Had attempted to perform an automatic version upgrade of a " +
-                                "catalog that was compiled by an older %s version of VoltDB, " +
-                                "but the automatic upgrade failed. The cluster  will not be " +
-                                "able to start until the incompatibility is fixed. " +
-                                "Try re-compiling the catalog with the newer %s version " +
-                                "of the VoltDB compiler. Compiler output from the failed " +
-                                "upgrade is available in \"%s\".",
+                        "catalog that was compiled by an older %s version of VoltDB, " +
+                        "but the automatic upgrade failed. The cluster  will not be " +
+                        "able to start until the incompatibility is fixed. " +
+                        "Try re-compiling the catalog with the newer %s version " +
+                        "of the VoltDB compiler. Compiler output from the failed " +
+                        "upgrade is available in \"%s\".",
                         versionFromCatalog, versionFromVoltDB, outputTextPath));
                 throw new IOException(String.format(
                         "Catalog upgrade failed. You will need to recompile."));
@@ -2125,9 +2269,11 @@ public class VoltCompiler {
     }
 
     /**
-     * Key prefix includes attributes that make a cached statement usable if they match
+     * Key prefix includes attributes that make a cached statement usable if they
+     * match
      *
-     * For example, if the SQL is the same, but the partitioning isn't, then the statements
+     * For example, if the SQL is the same, but the partitioning isn't, then the
+     * statements
      * aren't actually interchangeable.
      */
     String getKeyPrefix(StatementPartitioning partitioning, DeterminismMode detMode, String joinOrder) {
@@ -2165,7 +2311,8 @@ public class VoltCompiler {
             return null;
         }
 
-        // check that no underlying tables have been modified since the proc had been compiled
+        // check that no underlying tables have been modified since the proc had been
+        // compiled
         String[] tablesTouched = candidate.getTablesread().split(",");
         for (String tableName : tablesTouched) {
             if (isDirtyTable(tableName)) {
@@ -2183,7 +2330,7 @@ public class VoltCompiler {
 
         ++m_stmtCacheHits;
         // easy debugging stmt
-        //printStmtCacheStats();
+        // printStmtCacheStats();
         return candidate;
     }
 

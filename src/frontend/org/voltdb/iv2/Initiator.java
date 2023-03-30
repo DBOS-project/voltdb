@@ -24,6 +24,7 @@ import org.apache.zookeeper_voltpatches.ZooKeeper;
 import org.voltdb.BackendTarget;
 import org.voltdb.CatalogContext;
 import org.voltdb.CommandLog;
+import org.voltdb.InterVMMessagingProtocol;
 import org.voltdb.MemoryStats;
 import org.voltdb.ProducerDRGateway;
 import org.voltdb.StartAction;
@@ -34,25 +35,25 @@ import org.voltdb.iv2.SpScheduler.DurableUniqueIdListener;
  * Abstracts the top-level interface to create and configure an Iv2
  * MP or SP initiator.
  */
-public interface Initiator
-{
+public interface Initiator {
     /** Configure an Initiator and prepare it for work */
     public void configure(BackendTarget backend,
-                          CatalogContext catalogContext,
-                          String serializedCatalog,
-                          int numberOfPartitions,
-                          StartAction startAction,
-                          StatsAgent agent,
-                          MemoryStats memStats,
-                          CommandLog cl,
-                          String coreBindIds,
-                          boolean isLowestSiteId)
-        throws KeeperException, InterruptedException, ExecutionException;
+            CatalogContext catalogContext,
+            String serializedCatalog,
+            int numberOfPartitions,
+            StartAction startAction,
+            StatsAgent agent,
+            MemoryStats memStats,
+            CommandLog cl,
+            String coreBindIds,
+            boolean isLowestSiteId,
+            InterVMMessagingProtocol protocol)
+            throws KeeperException, InterruptedException, ExecutionException;
 
     /** Create DR gateway */
     public void initDRGateway(StartAction startAction,
-                              ProducerDRGateway nodeDRGateway,
-                              boolean createMpDRGateway);
+            ProducerDRGateway nodeDRGateway,
+            boolean createMpDRGateway);
 
     /** Shutdown an Initiator and its sub-components. */
     public void shutdown();
@@ -73,6 +74,9 @@ public interface Initiator
     /** Write a viable replay set to the command log */
     public void enableWritingIv2FaultLog();
 
-    /** Assign or remove a listener to/from the spScheduler for notification of CommandLogged (durable) UniqueIds */
+    /**
+     * Assign or remove a listener to/from the spScheduler for notification of
+     * CommandLogged (durable) UniqueIds
+     */
     public void configureDurableUniqueIdListener(DurableUniqueIdListener listener, boolean install);
 }

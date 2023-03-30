@@ -17,11 +17,11 @@
 
 package org.voltdb.iv2;
 
+import com.google_voltpatches.common.collect.ImmutableMap;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
-
 import org.apache.zookeeper_voltpatches.KeeperException;
 import org.apache.zookeeper_voltpatches.ZooKeeper;
 import org.voltcore.messaging.HostMessenger;
@@ -31,6 +31,7 @@ import org.voltcore.zk.LeaderElector;
 import org.voltdb.BackendTarget;
 import org.voltdb.CatalogContext;
 import org.voltdb.CommandLog;
+import org.voltdb.InterVMMessagingProtocol;
 import org.voltdb.MemoryStats;
 import org.voltdb.ProducerDRGateway;
 import org.voltdb.Promotable;
@@ -45,15 +46,15 @@ import org.voltdb.messaging.DumpMessage;
 import org.voltdb.messaging.HashMismatchMessage;
 import org.voltdb.messaging.Iv2InitiateTaskMessage;
 
-import com.google_voltpatches.common.collect.ImmutableMap;
+
 
 /**
  * Subclass of Initiator to manage multi-partition operations.
- * This class is primarily used for object construction and configuration plumbing;
+ * This class is primarily used for object construction and configuration
+ * plumbing;
  * Try to avoid filling it with lots of other functionality.
  */
-public class MpInitiator extends BaseInitiator<MpScheduler> implements Promotable
-{
+public class MpInitiator extends BaseInitiator<MpScheduler> implements Promotable {
     public static final int MP_INIT_PID = TxnEgo.PARTITIONID_MAX_VALUE;
 
     LeaderCache.Callback m_replicaRemovalHandler = new LeaderCache.Callback() {
@@ -77,16 +78,16 @@ public class MpInitiator extends BaseInitiator<MpScheduler> implements Promotabl
 
     LeaderCache m_replicaRemovalCache;
     private AtomicBoolean m_replicaRemovalInvoked = new AtomicBoolean(false);
-    public MpInitiator(HostMessenger messenger, List<Long> buddyHSIds, StatsAgent agent, int leaderId)
-    {
+
+    public MpInitiator(HostMessenger messenger, List<Long> buddyHSIds, StatsAgent agent, int leaderId) {
         super(VoltZK.iv2mpi,
                 messenger,
                 MP_INIT_PID,
                 new MpScheduler(
-                    MP_INIT_PID,
-                    buddyHSIds,
-                    new SiteTaskerQueue(MP_INIT_PID),
-                    leaderId),
+                        MP_INIT_PID,
+                        buddyHSIds,
+                        new SiteTaskerQueue(MP_INIT_PID),
+                        leaderId),
                 "MP",
                 agent,
                 StartAction.CREATE /* never for rejoin */);
@@ -94,24 +95,25 @@ public class MpInitiator extends BaseInitiator<MpScheduler> implements Promotabl
 
     @Override
     public void configure(BackendTarget backend,
-                          CatalogContext catalogContext,
-                          String serializedCatalog,
-                          int numberOfPartitions,
-                          StartAction startAction,
-                          StatsAgent agent,
-                          MemoryStats memStats,
-                          CommandLog cl,
-                          String coreBindIds,
-                          boolean isLowestSiteId)
-        throws KeeperException, InterruptedException, ExecutionException
-    {
-        // note the mp initiator always uses a non-ipc site, even though it's never used for anything
+            CatalogContext catalogContext,
+            String serializedCatalog,
+            int numberOfPartitions,
+            StartAction startAction,
+            StatsAgent agent,
+            MemoryStats memStats,
+            CommandLog cl,
+            String coreBindIds,
+            boolean isLowestSiteId,
+            InterVMMessagingProtocol vmMessagingProtocol)
+            throws KeeperException, InterruptedException, ExecutionException {
+        // note the mp initiator always uses a non-ipc site, even though it's never used
+        // for anything
         if (backend.isValgrindTarget) {
             backend = BackendTarget.NATIVE_EE_JNI;
         }
 
         super.configureCommon(backend, catalogContext, serializedCatalog,
-                numberOfPartitions, startAction, null, null, cl, coreBindIds, false);
+                numberOfPartitions, startAction, null, null, cl, coreBindIds, false, vmMessagingProtocol);
         // Hacky
         MpScheduler sched = m_scheduler;
         MpRoSitePool sitePool = new MpRoSitePool(m_initiatorMailbox.getHSId(),
@@ -121,7 +123,8 @@ public class MpInitiator extends BaseInitiator<MpScheduler> implements Promotabl
                 m_initiatorMailbox);
         sched.setMpRoSitePool(sitePool);
 
-        // add ourselves to the ephemeral node list which BabySitters will watch for this
+        // add ourselves to the ephemeral node list which BabySitters will watch for
+        // this
         // partition
         LeaderElector.createParticipantNode(m_messenger.getZK(),
                 LeaderElector.electionDirForPartition(VoltZK.leaders_initiators, m_partitionId),
@@ -132,14 +135,12 @@ public class MpInitiator extends BaseInitiator<MpScheduler> implements Promotabl
     }
 
     @Override
-    public void initDRGateway(StartAction startAction, ProducerDRGateway nodeDRGateway, boolean createMpDRGateway)
-    {
+    public void initDRGateway(StartAction startAction, ProducerDRGateway nodeDRGateway, boolean createMpDRGateway) {
         // No-op on MPI
     }
 
     @Override
-    public void acceptPromotion()
-    {
+    public void acceptPromotion() {
         try {
             long startTime = System.currentTimeMillis();
             Boolean success = false;
@@ -158,7 +159,7 @@ public class MpInitiator extends BaseInitiator<MpScheduler> implements Promotabl
             m_term.start();
             while (!success) {
                 final RepairAlgo repair = m_initiatorMailbox.constructRepairAlgo(m_term.getInterestingHSIds(),
-                                deadMPIHost, m_whoami, false);
+                        deadMPIHost, m_whoami, false);
 
                 // term syslogs the start of leader promotion.
                 long txnid = Long.MIN_VALUE;
@@ -172,8 +173,8 @@ public class MpInitiator extends BaseInitiator<MpScheduler> implements Promotabl
                     success = false;
                 }
                 if (success) {
-                    ((MpInitiatorMailbox)m_initiatorMailbox).setLeaderState(txnid, repairTruncationHandle);
-                    List<Iv2InitiateTaskMessage> restartTxns = ((MpPromoteAlgo)repair).getInterruptedTxns();
+                    ((MpInitiatorMailbox) m_initiatorMailbox).setLeaderState(txnid, repairTruncationHandle);
+                    List<Iv2InitiateTaskMessage> restartTxns = ((MpPromoteAlgo) repair).getInterruptedTxns();
                     if (!restartTxns.isEmpty()) {
                         // Should only be one restarting MP txn
                         if (restartTxns.size() > 1) {
@@ -186,7 +187,8 @@ public class MpInitiator extends BaseInitiator<MpScheduler> implements Promotabl
                             tmLog.fatal("This node will fail.  Please contact VoltDB support with your cluster's " +
                                     "log files.");
                             m_initiatorMailbox.send(
-                                    com.google_voltpatches.common.primitives.Longs.toArray(m_term.getInterestingHSIds().get()),
+                                    com.google_voltpatches.common.primitives.Longs
+                                            .toArray(m_term.getInterestingHSIds().get()),
                                     new DumpMessage());
                             throw new RuntimeException("Failing promoted MPI node with unresolvable repair condition.");
                         }
@@ -194,7 +196,7 @@ public class MpInitiator extends BaseInitiator<MpScheduler> implements Promotabl
                             tmLog.debug(m_whoami + " restarting MP transaction: " + restartTxns.get(0));
                         }
                         Iv2InitiateTaskMessage firstMsg = restartTxns.get(0);
-                        assert(firstMsg.getTruncationHandle() == TransactionInfoBaseMessage.UNUSED_TRUNC_HANDLE);
+                        assert (firstMsg.getTruncationHandle() == TransactionInfoBaseMessage.UNUSED_TRUNC_HANDLE);
                         m_initiatorMailbox.repairReplicasWith(null, firstMsg);
                     }
                     tmLog.info(m_whoami
@@ -208,16 +210,15 @@ public class MpInitiator extends BaseInitiator<MpScheduler> implements Promotabl
                     iv2masters.put(m_partitionId, m_initiatorMailbox.getHSId());
                     VoltDB.getTTLManager().scheduleTTLTasks();
                     m_replicaRemovalCache.start(true);
-                }
-                else {
+                } else {
                     // The only known reason to fail is a failed replica during
                     // recovery; that's a bounded event (by k-safety).
                     // CrashVoltDB here means one node failure causing another.
                     // Don't create a cascading failure - just try again.
                     tmLog.info(m_whoami
-                             + "interrupted during leader promotion after "
-                             + (System.currentTimeMillis() - startTime) + " ms. of "
-                             + "trying. Retrying.");
+                            + "interrupted during leader promotion after "
+                            + (System.currentTimeMillis() - startTime) + " ms. of "
+                            + "trying. Retrying.");
                 }
             }
         } catch (Exception e) {
@@ -229,36 +230,33 @@ public class MpInitiator extends BaseInitiator<MpScheduler> implements Promotabl
      * The MPInitiator does not have user data to rejoin.
      */
     @Override
-    public boolean isRejoinable()
-    {
+    public boolean isRejoinable() {
         return false;
     }
 
     @Override
     public Term createTerm(ZooKeeper zk, int partitionId, long initiatorHSId, InitiatorMailbox mailbox,
-            String whoami)
-    {
+            String whoami) {
         return new MpTerm(zk, initiatorHSId, mailbox, whoami);
     }
 
     /**
-     * Update the MPI's Site's catalog.  Unlike the SPI, this is not going to
+     * Update the MPI's Site's catalog. Unlike the SPI, this is not going to
      * run from the same Site's thread; this is actually going to run from some
-     * other local SPI's Site thread.  Since the MPI's site thread is going to
+     * other local SPI's Site thread. Since the MPI's site thread is going to
      * be blocked running the EveryPartitionTask for the catalog update, this
-     * is currently safe with no locking.  And yes, I'm a horrible person.
+     * is currently safe with no locking. And yes, I'm a horrible person.
      */
     public void updateCatalog(String diffCmds, CatalogContext context, boolean isReplay,
-            boolean requireCatalogDiffCmdsApplyToEE, boolean requiresNewExportGeneration)
-    {
-        // note this will never require snapshot isolation because the MPI has no snapshot funtionality
+            boolean requireCatalogDiffCmdsApplyToEE, boolean requiresNewExportGeneration) {
+        // note this will never require snapshot isolation because the MPI has no
+        // snapshot funtionality
         m_executionSite.updateCatalog(diffCmds, context, false, true, Long.MIN_VALUE, Long.MIN_VALUE, Long.MIN_VALUE,
                 isReplay, requireCatalogDiffCmdsApplyToEE, requiresNewExportGeneration, null);
         m_scheduler.updateCatalog(diffCmds, context);
     }
 
-    public void updateSettings(CatalogContext context)
-    {
+    public void updateSettings(CatalogContext context) {
         m_executionSite.updateSettings(context);
         m_scheduler.updateSettings(context);
     }

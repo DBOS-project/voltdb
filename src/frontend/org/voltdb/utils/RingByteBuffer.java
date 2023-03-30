@@ -15,11 +15,13 @@
  * along with VoltDB.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package org.voltdb.jni;
+package org.voltdb.utils;
+
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
-
 import org.agrona.concurrent.UnsafeBuffer;
+
+
 public class RingByteBuffer {
     private MappedByteBuffer mbuffer;
     private int capacity;
@@ -28,11 +30,16 @@ public class RingByteBuffer {
     private UnsafeBuffer dataBuffer;
     private final static int kReadPosOffset = 0;
     private final static int kWritePosOffset = 64;
-    private final static int kMetadataSize = 4096;
+    private final static int kIsHaltedOffset = 128;
+    // private final static int kReadPosOffset = 0;
+    // private final static int kWritePosOffset = 4096;
+    // private final static int kIsHaltedOffset = 4096*2;
+    private final static int kMetadataSize = 4096 * 3;
     private long readPosCached = 0;
     private long writePosCached = 0;
+
     public RingByteBuffer(MappedByteBuffer mappedByteBuffer, int capacity) {
-        assert(capacity >= kMetadataSize);
+        assert (capacity >= kMetadataSize);
         this.capacity = capacity;
         this.effectiveCapacity = capacity - kMetadataSize;
         mbuffer = mappedByteBuffer;
@@ -40,38 +47,45 @@ public class RingByteBuffer {
         dataBuffer = new UnsafeBuffer(mbuffer, kMetadataSize, effectiveCapacity);
     }
 
-    long getReadPos() {
+    public long getReadPos() {
         return metadataBuffer.getLong(kReadPosOffset);
     }
 
-    long getWritePos() {
+    public long getWritePos() {
         return metadataBuffer.getLong(kWritePosOffset);
     }
 
-    void setReadPos(long newReadPos) {
+    public void setReadPos(long newReadPos) {
         metadataBuffer.putLong(kReadPosOffset, newReadPos);
     }
 
-    void setWritePos(long newWritePos) {
+    public void setWritePos(long newWritePos) {
         metadataBuffer.putLong(kWritePosOffset, newWritePos);
     }
 
+    public void setHalted(long halted) {
+        metadataBuffer.putLong(kIsHaltedOffset, (long) halted);
+    }
+
+    public long getHalted() {
+        return metadataBuffer.getLong(kIsHaltedOffset);
+    }
+
     // long writableBytes() {
-    //     long readPos = getReadPos();
-    //     long writePos = getWritePos();
-    //     return effectiveCapacity - (writePos - readPos);
+    // long readPos = getReadPos();
+    // long writePos = getWritePos();
+    // return effectiveCapacity - (writePos - readPos);
     // }
 
-
-    // long readableBytes() {
-    //     return getWritePos() - getReadPos();
-    // }
+    public long readableBytes() {
+        return getWritePos() - getReadPos();
+    }
 
     // boolean empty() {
-    //     return readableBytes() == 0;
+    // return readableBytes() == 0;
     // }
 
-    boolean readBytes(ByteBuffer buf) {
+    public boolean readBytes(ByteBuffer buf) {
         int n = buf.remaining();
         long readPos = getReadPos();
         if (writePosCached - readPos < n) {
@@ -83,11 +97,11 @@ public class RingByteBuffer {
         long realReadPos = readPos % effectiveCapacity;
 
         if (realReadPos + n <= effectiveCapacity) {
-            dataBuffer.getBytes((int)realReadPos, buf, n);
+            dataBuffer.getBytes((int) realReadPos, buf, n);
         } else {
-            int firstPartLength = effectiveCapacity - (int)realReadPos;
-            int secondPartLength = (int)realReadPos + n - effectiveCapacity;
-            dataBuffer.getBytes((int)realReadPos, buf, firstPartLength);
+            int firstPartLength = effectiveCapacity - (int) realReadPos;
+            int secondPartLength = (int) realReadPos + n - effectiveCapacity;
+            dataBuffer.getBytes((int) realReadPos, buf, firstPartLength);
             dataBuffer.getBytes(0, buf, secondPartLength);
         }
         setReadPos(readPos + n);
@@ -95,7 +109,7 @@ public class RingByteBuffer {
         return true;
     }
 
-    boolean writeBytes(ByteBuffer buf) {
+    public boolean writeBytes(ByteBuffer buf) {
         int n = buf.remaining();
         long writePos = getWritePos();
         if (effectiveCapacity - (writePos - readPosCached) < n) {
@@ -107,11 +121,11 @@ public class RingByteBuffer {
         long realWritePos = writePos % effectiveCapacity;
 
         if (realWritePos + n <= effectiveCapacity) {
-            dataBuffer.putBytes((int)realWritePos, buf, n);
+            dataBuffer.putBytes((int) realWritePos, buf, n);
         } else {
-            int firstPartLength = effectiveCapacity - (int)realWritePos;
-            int secondPartLength = (int)realWritePos + n - effectiveCapacity;
-            dataBuffer.putBytes((int)realWritePos, buf, firstPartLength);
+            int firstPartLength = effectiveCapacity - (int) realWritePos;
+            int secondPartLength = (int) realWritePos + n - effectiveCapacity;
+            dataBuffer.putBytes((int) realWritePos, buf, firstPartLength);
             dataBuffer.putBytes(0, buf, secondPartLength);
         }
         setWritePos(writePos + n);

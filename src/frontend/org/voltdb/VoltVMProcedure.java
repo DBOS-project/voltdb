@@ -20,7 +20,7 @@ package org.voltdb;
 import java.util.Date;
 import java.util.Random;
 import org.voltdb.Expectation.Type;
-import org.voltdb.client.ClientResponse;
+
 
 /**
  * Wraps the stored procedure object created by the user
@@ -31,7 +31,7 @@ import org.voltdb.client.ClientResponse;
  * Consider this when specifying access privileges.
  *
  */
-public abstract class VoltProcedure {
+public abstract class VoltVMProcedure extends VoltProcedure{
 
     final static Double DOUBLE_NULL = new Double(-1.7976931348623157E+308);
 
@@ -65,18 +65,7 @@ public abstract class VoltProcedure {
      */
     public static final Expectation EXPECT_SCALAR_LONG = new Expectation(Type.EXPECT_SCALAR_LONG);
 
-    /**
-     * Expect a result with a single row and a single BIGINT column containing
-     * the specified value. This factory method constructs an Expectation for the specified
-     * value.
-     * @param scalar The expected value the single row/column should contain
-     * @return An Expectation that will cause an exception to be thrown if the value or schema doesn't match
-     */
-    public static final Expectation EXPECT_SCALAR_MATCH(long scalar) {
-        return new Expectation(Type.EXPECT_SCALAR_MATCH, scalar);
-    }
-
-    ProcedureRunner m_runner;
+    ProcedureRunnerProxy m_runner;
     private boolean m_initialized;
 
     /**
@@ -108,6 +97,7 @@ public abstract class VoltProcedure {
      *
      * @return An ID that is unique to this transaction
      */
+    @Override
     public long getUniqueId() {
         return m_runner.getUniqueId();
     }
@@ -116,6 +106,7 @@ public abstract class VoltProcedure {
      * Get the ID of cluster that the client connects to.
      * @return An ID that identifies the VoltDB cluster
      */
+    @Override
     public int getClusterId() {
         return m_runner.getClusterId();
     }
@@ -126,77 +117,23 @@ public abstract class VoltProcedure {
      * Constructor does nothing. All actual initialization is done in the
      * {@link VoltProcedure init} method.
      */
-    public VoltProcedure() {}
+    public VoltVMProcedure() {}
 
     /**
      * End users should not call this method.
      * Used by the VoltDB runtime to initialize stored procedures for execution.
      */
-    void init(ProcedureRunner procRunner)
+    void init(ProcedureRunnerProxy procRunner)
     {
         if (m_initialized) {
-            throw new IllegalStateException("VoltProcedure has already been initialized");
+            throw new IllegalStateException("VoltVMProcedure has already been initialized");
         }
 
         m_initialized = true;
         m_runner = procRunner;
     }
 
-    /**
-     * Thrown from a stored procedure to indicate to VoltDB
-     * that the procedure should be aborted and rolled back.
-     */
-    public static class VoltAbortException extends RuntimeException {
-        private static final long serialVersionUID = -1L;
-        private String message = "No message specified.";
-
-        /**
-         * Constructs a new AbortException
-         */
-        public VoltAbortException() {}
-
-        /**
-         * Constructs a new AbortException from an existing <code>Throwable</code>.
-         *
-         * @param t Throwable to embed.
-         */
-        public VoltAbortException(Throwable t) {
-            super(t);
-            if (t.getMessage() != null) {
-                message = t.getMessage();
-            }
-            else if (t.getCause() != null) {
-                message = t.getCause().getMessage();
-            }
-        }
-
-        /**
-         * Constructs a new AbortException with the specified detail message.
-         *
-         * @param msg Exception specific message.
-         */
-        public VoltAbortException(String msg) {
-            message = msg;
-        }
-        /**
-         * Returns the detail message string of this <tt>AbortException</tt>
-         *
-         * @return The detail message.
-         */
-        @Override
-        public String getMessage() {
-            return message;
-        }
-
-        public byte getClientResponseStatus() {
-            return ClientResponse.USER_ABORT;
-        }
-
-        public String getShortStatusString() {
-            return "USER ABORT";
-        }
-    }
-
+   
     /**
      * Get a Java RNG seeded with the current transaction id. This will ensure that
      * two procedures for the same transaction, but running on different replicas,
@@ -206,6 +143,7 @@ public abstract class VoltProcedure {
      *
      * @return A deterministically-seeded java.util.Random instance.
      */
+    @Override
     public Random getSeededRandomNumberGenerator() {
         return m_runner.getSeededRandomNumberGenerator();
     }
@@ -222,6 +160,7 @@ public abstract class VoltProcedure {
      * @return A java.util.Date instance with deterministic time for all replicas using
      * UTC (Universal Coordinated Time is like GMT).
      */
+    @Override
     public Date getTransactionTime() {
         return m_runner.getTransactionTime();
     }
@@ -237,6 +176,7 @@ public abstract class VoltProcedure {
      * @param args List of arguments to be bound as parameters for the {@link org.voltdb.SQLStmt statement}
      * @see <a href="#allowable_params">List of allowable parameter types</a>
      */
+    @Override
     public void voltQueueSQL(final SQLStmt stmt, Expectation expectation, Object... args) {
         m_runner.voltQueueSQL(stmt, expectation, args);
     }
@@ -248,6 +188,7 @@ public abstract class VoltProcedure {
      * @param args List of arguments to be bound as parameters for the {@link org.voltdb.SQLStmt statement}
      * @see <a href="#allowable_params">List of allowable parameter types</a>
      */
+    @Override
     public void voltQueueSQL(final SQLStmt stmt, Object... args) {
         m_runner.voltQueueSQL(stmt, (Expectation) null, args);
     }
@@ -259,6 +200,7 @@ public abstract class VoltProcedure {
      * @return Result {@link org.voltdb.VoltTable tables} generated by executing the queued
      * query {@link org.voltdb.SQLStmt statements}
      */
+    @Override
     public VoltTable[] voltExecuteSQL() {
         return voltExecuteSQL(false);
     }
@@ -274,6 +216,7 @@ public abstract class VoltProcedure {
      * @return Result {@link org.voltdb.VoltTable tables} generated by executing the queued
      * query {@link org.voltdb.SQLStmt statements}
      */
+    @Override
     public VoltTable[] voltExecuteSQL(boolean isFinalSQL) {
         return m_runner.voltExecuteSQL(isFinalSQL);
     }
@@ -286,6 +229,7 @@ public abstract class VoltProcedure {
      *
      * @param statusCode Byte-long application-specific status code.
      */
+    @Override
     public void setAppStatusCode(byte statusCode) {
         m_runner.setAppStatusCode(statusCode);
     }
@@ -298,10 +242,12 @@ public abstract class VoltProcedure {
      *
      * @param statusString Application specific status string.
      */
+    @Override
     public void setAppStatusString(String statusString) {
         m_runner.setAppStatusString(statusString);
     }
 
+    @Override
     public int getPartitionId() {
         return m_runner.getPartitionId();
     }

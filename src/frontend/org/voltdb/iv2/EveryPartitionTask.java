@@ -21,12 +21,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
 import org.voltcore.messaging.Mailbox;
 import org.voltcore.messaging.TransactionInfoBaseMessage;
 import org.voltcore.utils.CoreUtils;
 import org.voltdb.SiteProcedureConnection;
 import org.voltdb.rejoin.TaskLog;
+
 
 /**
  * Implements the Single-partition everywhere procedure ProcedureTask.
@@ -97,6 +97,7 @@ public class EveryPartitionTask extends TransactionTask
         return sb.toString();
     }
 
+    @Override
     public boolean needCoordination() {
         return false;
     }

@@ -74,7 +74,15 @@
 #include <mach/task.h>
 #include <mach/mach.h>
 #endif // MACOSX
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include<sys/ioctl.h>
 
+#define DBOS_PV_WAIT _IOW('a','a',int32_t*)
+#define DBOS_PV_NOTIFY _IOW('a','b',uint64_t*)
+#define DBOS_PV_GET_VM_ID _IOW('a','w',uint64_t*)
+#define DBOS_NOTIFY_AND_WAIT _IOW('a','q',uint64_t*)
 // Print an error if trying to compile on 32-bit systemes.
 #ifdef LINUX
 #if __SIZEOF_POINTER__ == 4
@@ -239,6 +247,91 @@ SHAREDLIB_JNIEXPORT jlong JNICALL Java_org_voltdb_jni_ExecutionEngine_nativeCrea
     }
     return reinterpret_cast<jlong>(engine);
 }
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_DBOSPVOpen(JNIEnv *env, jclass obj, jbyteArray hypervisorDevicePath) {
+    // obj is the instance pointer of the ExecutionEngineJNI instance
+    // that is creating this native EE. Turn this into a global reference
+    // and only use that global reference for calling back to Java.
+    // The jobject parameter here (and in all the other native interfaces)
+    // is a local reference and only valid until the return of the
+    // native invocation. Since calling patterns like java->ee->java->ee-
+    // exist, the local jobject pointers are basically uncacheable. The
+    // second java->ee call may generate a new local reference that would
+    // be invalid in the previous stack frames (after the return of the
+    // last ee native call.)
+
+    jbyte* dev_path_chars = env->GetByteArrayElements(hypervisorDevicePath, NULL);
+    std::string dev_path(reinterpret_cast<char*>(dev_path_chars), env->GetArrayLength(hypervisorDevicePath));
+    
+    
+    JavaVM *vm;
+    env->GetJavaVM(&vm);
+    currentVM = vm;
+    
+    int fd_hypervisor = open(dev_path.c_str(), O_RDWR);
+    if (fd_hypervisor < 0) {
+        VOLT_ERROR("Failed to open hypervisor device path ");
+        throw std::exception();
+    }
+    
+    return reinterpret_cast<jint>(fd_hypervisor);
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_DBOSPVGetVMId(JNIEnv *env, jclass obj, jint hypervisor_fd) {
+    uint64_t vm_id = 0;
+    int ret = reinterpret_cast<jint>(ioctl(hypervisor_fd, DBOS_PV_GET_VM_ID, &vm_id));
+    if (ret) {
+        VOLT_ERROR("Failed to get vm id");
+        throw std::exception();
+    }
+
+    return vm_id;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_DBOSPVNotify(JNIEnv *env, jclass obj, jint hypervisor_fd, jint dual_qemu_pid, jint dual_qemu_lapic_id) {
+    uint64_t word = (((uint64_t) dual_qemu_pid) << 32) | ((uint32_t)dual_qemu_lapic_id);
+    return reinterpret_cast<jint>(ioctl(hypervisor_fd, DBOS_PV_NOTIFY, &word));
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_DBOSPVNotifyAndWait(JNIEnv *env, jclass obj, jint hypervisor_fd, jint dual_qemu_pid, jint dual_qemu_lapic_id) {
+    uint64_t word = (((uint64_t) dual_qemu_pid) << 32) | ((uint32_t)dual_qemu_lapic_id);
+    return reinterpret_cast<jint>(ioctl(hypervisor_fd, DBOS_NOTIFY_AND_WAIT, &word));
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_DBOSPVWait(JNIEnv *env, jclass obj, jint hypervisor_fd) {
+    uint32_t dummy = 0;
+    return reinterpret_cast<jint>(ioctl(hypervisor_fd, DBOS_PV_WAIT, &dummy));
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_DBOSBindCurrentThreadToCore(JNIEnv *env, jclass obj, jint core_id) {
+    JavaVM *vm;
+    env->GetJavaVM(&vm);
+    currentVM = vm;
+
+    cpu_set_t cpuset;
+    pthread_t thread = pthread_self();
+    // Initialize the cpuset mask
+    CPU_ZERO(&cpuset);
+    CPU_SET(core_id, &cpuset);
+
+    // Bind the thread to the specified core
+    int result = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+    if (result != 0)
+    {
+        VOLT_ERROR("Error setting thread affinity");
+        throw std::exception();
+    }
+    return result;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_DBOSGetCPUId(JNIEnv *env, jclass obj) {
+    JavaVM *vm;
+    env->GetJavaVM(&vm);
+    currentVM = vm;
+    
+    return reinterpret_cast<jint>(sched_getcpu());
+}
+
 /**
  * Releases all resources held in the execution engine.
  * @param engine_ptr the VoltDBEngine pointer to be destroyed

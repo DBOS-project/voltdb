@@ -33,7 +33,13 @@ server_list_help = ('{hostname-or-ip[,...]}, '
         VOLT.BooleanOption('-r', '--replica', 'replica', None),
         VOLT.BooleanOption('-A', '--add', 'enableadd', 'allows the server to elastically expand the cluster if the cluster is already complete', default = False),
         VOLT.IntegerOption('-m', '--missing', 'missing', 'specifies how many nodes are missing at K-safe cluster startup'),
-        VOLT.PathOption('-l', '--license', 'license', 'specify a license file to replace the existing staged copy of the license')
+        VOLT.PathOption('-l', '--license', 'license', 'specify a license file to replace the existing staged copy of the license'),
+        VOLT.BooleanOption('-P', '--procedureprocess', 'procedureprocess', 'run as procedure process possibly in a vm'),
+        VOLT.BooleanOption('-V', '--vmisolation', 'vmisolation', 'enable vm isolation'),
+        VOLT.BooleanOption('-R', '--vmpvaccel', 'vmpvaccel', 'enable vm pv acceleration'),
+        VOLT.PathOption('-Q', '--vmshminputfile', 'vmshminputfile', 'shared memory file path for input'),
+        VOLT.PathOption('-W', '--vmshmoutputfile', 'vmshmoutputfile', 'shared memory file path for output'),
+        VOLT.PathOption('-E', '--vmid', 'vmid', 'vm id'),
     ),
     log4j_default = 'log4j.xml',
     description = 'Starts a database, which has been initialized.'
@@ -55,4 +61,22 @@ def start(runner):
         runner.args.extend(['enableadd'])
     if runner.opts.license:
         runner.args.extend(['license', runner.opts.license])
+    if runner.opts.procedureprocess:
+        runner.args.extend(['procedureprocess'])
+        print("procedureprocess enabled")
+    if runner.opts.vmisolation:
+        runner.args.extend(['vmisolation'])
+        print("vmisolation enabled")
+    if runner.opts.vmpvaccel:
+        runner.args.extend(['vmpvaccel'])
+        print("vmpvaccel enabled")
+    if runner.opts.vmshminputfile:
+        runner.args.extend(['vmshminputfile', runner.opts.vmshminputfile])
+        print("vmshminputfile ", runner.opts.vmshminputfile)
+    if runner.opts.vmshmoutputfile:
+        runner.args.extend(['vmshmoutputfile', runner.opts.vmshmoutputfile])
+        print("vmshmoutputfile ", runner.opts.vmshmoutputfile)
+    if runner.opts.vmid:
+        runner.args.extend(['vmid', runner.opts.vmid])
+        print("vmid ", runner.opts.vmid)
     runner.go()

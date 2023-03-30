@@ -17,6 +17,8 @@
 
 package org.voltdb;
 
+import com.google_voltpatches.common.collect.ImmutableMap;
+import com.google_voltpatches.common.collect.Lists;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -24,7 +26,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.stream.Collectors;
-
 import org.voltcore.logging.VoltLogger;
 import org.voltdb.SystemProcedureCatalog.Config;
 import org.voltdb.catalog.Column;
@@ -34,17 +35,15 @@ import org.voltdb.compiler.PlannerTool;
 import org.voltdb.compiler.StatementCompiler;
 import org.voltdb.sysprocs.LowImpactDeleteNT.ComparisonOperation;
 
-import com.google_voltpatches.common.collect.ImmutableMap;
-import com.google_voltpatches.common.collect.Lists;
+
 
 public class LoadedProcedureSet {
 
-    public static final String ORGVOLTDB_PROCNAME_ERROR_FMT =
-            "VoltDB does not support procedures with package names " +
+    public static final String ORGVOLTDB_PROCNAME_ERROR_FMT = "VoltDB does not support procedures with package names " +
             "that are prefixed with \"org.voltdb\". Please use a different " +
             "package name and retry. Procedure name was %s.";
-    public static final String UNABLETOLOAD_ERROR_FMT =
-            "VoltDB was unable to load a procedure (%s) it expected to be " +
+    public static final String UNABLETOLOAD_ERROR_FMT = "VoltDB was unable to load a procedure (%s) it expected to be "
+            +
             "in the catalog jarfile and will now exit.";
 
     private static final VoltLogger hostLog = new VoltLogger("HOST");
@@ -78,12 +77,14 @@ public class LoadedProcedureSet {
     }
 
     private void registerPlanFragment(final long pfId, final ProcedureRunner proc) {
-        assert(m_registeredSysProcPlanFragments.containsKey(pfId) == false);
+        assert (m_registeredSysProcPlanFragments.containsKey(pfId) == false);
         m_registeredSysProcPlanFragments.put(pfId, proc);
     }
 
     /**
-     * Load all user procedures and system procedures as new procedures from beginning.
+     * Load all user procedures and system procedures as new procedures from
+     * beginning.
+     * 
      * @param catalogContext
      */
     public void loadProcedures(CatalogContext catalogContext) {
@@ -93,8 +94,7 @@ public class LoadedProcedureSet {
     /**
      * Load procedures.
      */
-    public void loadProcedures(CatalogContext catalogContext, boolean isInitOrReplay)
-    {
+    public void loadProcedures(CatalogContext catalogContext, boolean isInitOrReplay) {
         m_defaultProcManager = catalogContext.m_defaultProcs;
         // default proc caches clear on catalog update
         m_defaultProcCache.clear();
@@ -107,9 +107,9 @@ public class LoadedProcedureSet {
             if (isInitOrReplay) {
                 // reload user procedures
                 m_userProcs = loadUserProcedureRunners(catalogContext.database.getProcedures(),
-                                                       catalogContext.getCatalogJar().getLoader(),
-                                                       null,
-                                                       m_site);
+                        catalogContext.getCatalogJar().getLoader(),
+                        null,
+                        m_site);
             } else {
                 // When catalog updates, only user procedures needs to be reloaded.
                 m_userProcs = catalogContext.getPreparedUserProcedureRunners(m_site);
@@ -123,8 +123,7 @@ public class LoadedProcedureSet {
             Iterable<Procedure> catalogProcedures,
             ClassLoader loader,
             ImmutableMap<String, Class<?>> classesMap,
-            SiteProcedureConnection site) throws Exception
-    {
+            SiteProcedureConnection site) throws Exception {
         ImmutableMap.Builder<String, ProcedureRunner> builder = ImmutableMap.<String, ProcedureRunner>builder();
 
         for (final Procedure proc : catalogProcedures) {
@@ -144,7 +143,7 @@ public class LoadedProcedureSet {
                 final String className = proc.getClassname();
                 Class<?> procClass = null;
                 if (loader == null) {
-                    assert(classesMap != null);
+                    assert (classesMap != null);
                     procClass = classesMap.get(className);
                 } else {
                     try {
@@ -162,12 +161,11 @@ public class LoadedProcedureSet {
 
                 // create new instance VoltProcedure
                 procedure = (VoltProcedure) procClass.newInstance();
-            }
-            else {
+            } else {
                 procedure = new ProcedureRunner.StmtProcedure();
             }
 
-            assert(procedure != null);
+            assert (procedure != null);
             ProcedureRunner runner = new ProcedureRunner(procedure, site, proc);
             builder.put(proc.getTypeName().intern(), runner);
         }
@@ -176,15 +174,15 @@ public class LoadedProcedureSet {
 
     private ImmutableMap<String, ProcedureRunner> loadSystemProcedures(
             CatalogContext catalogContext,
-            SiteProcedureConnection site)
-    {
-        // clean up all the registered system plan fragments before reloading system procedures
+            SiteProcedureConnection site) {
+        // clean up all the registered system plan fragments before reloading system
+        // procedures
         m_registeredSysProcPlanFragments.clear();
         ImmutableMap.Builder<String, ProcedureRunner> builder = ImmutableMap.<String, ProcedureRunner>builder();
 
         List<Long> durableFragments = Lists.newArrayList();
         List<String> replayableProcs = Lists.newArrayList();
-        Set<Entry<String,Config>> entrySet = SystemProcedureCatalog.listing.entrySet();
+        Set<Entry<String, Config>> entrySet = SystemProcedureCatalog.listing.entrySet();
         for (Entry<String, Config> entry : entrySet) {
             Config sysProc = entry.getValue();
             Procedure proc = sysProc.asCatalogProcedure();
@@ -203,8 +201,7 @@ public class LoadedProcedureSet {
             if (className != null) {
                 try {
                     procClass = catalogContext.classForProcedureOrUDF(className);
-                }
-                catch (final ClassNotFoundException e) {
+                } catch (final ClassNotFoundException e) {
                     if (sysProc.commercial) {
                         continue;
                     }
@@ -214,8 +211,7 @@ public class LoadedProcedureSet {
 
                 try {
                     procedure = (VoltSystemProcedure) procClass.newInstance();
-                }
-                catch (final InstantiationException | IllegalAccessException e) {
+                } catch (final InstantiationException | IllegalAccessException e) {
                     hostLog.warnFmt(e, "Execution site siteId %s", site.getCorrespondingSiteId());
                 }
 
@@ -227,14 +223,14 @@ public class LoadedProcedureSet {
 
                 // register the plan fragments with procedure set
                 long[] planFragments = procedure.getPlanFragmentIds();
-                assert(planFragments != null);
-                for (long pfId: planFragments) {
+                assert (planFragments != null);
+                for (long pfId : planFragments) {
                     registerPlanFragment(pfId, runner);
                 }
 
                 builder.put(entry.getKey().intern(), runner);
-                if (!sysProc.singlePartition  && sysProc.isDurable()) {
-                    long[] fragIds =  procedure.getAllowableSysprocFragIdsInTaskLog();
+                if (!sysProc.singlePartition && sysProc.isDurable()) {
+                    long[] fragIds = procedure.getAllowableSysprocFragIdsInTaskLog();
                     if (fragIds != null && fragIds.length > 0) {
                         durableFragments.addAll(Arrays.stream(fragIds).boxed().collect(Collectors.toList()));
                     }
@@ -248,8 +244,7 @@ public class LoadedProcedureSet {
         return builder.build();
     }
 
-    public ProcedureRunner getProcByName(String procName)
-    {
+    public ProcedureRunner getProcByName(String procName) {
         // Check the procs from the catalog
         ProcedureRunner pr = m_userProcs.get(procName);
         if (pr == null) {
@@ -288,19 +283,18 @@ public class LoadedProcedureSet {
 
     /**
      * (TableName).nibbleDelete is cached in default procedure cache.
+     * 
      * @param tableName
      * @return
      */
     public ProcedureRunner getNibbleDeleteProc(String procName,
-                                               Table catTable,
-                                               Column column,
-                                               ComparisonOperation op)
-    {
+            Table catTable,
+            Column column,
+            ComparisonOperation op) {
         ProcedureRunner pr = m_defaultProcCache.get(procName);
         if (pr == null) {
-            Procedure newCatProc =
-                    StatementCompiler.compileNibbleDeleteProcedure(
-                            catTable, procName, column, op);
+            Procedure newCatProc = StatementCompiler.compileNibbleDeleteProcedure(
+                    catTable, procName, column, op);
             VoltProcedure voltProc = new ProcedureRunner.StmtProcedure();
             pr = new ProcedureRunner(voltProc, m_site, newCatProc);
             // this will ensure any created fragment tasks know to load the plans
@@ -318,7 +312,7 @@ public class LoadedProcedureSet {
         ProcedureRunner runner = m_defaultProcCache.get(procName);
         if (runner == null) {
             Procedure newCatProc = StatementCompiler.compileMigrateProcedure(
-                            catTable, procName, column, op);
+                    catTable, procName, column, op);
             VoltProcedure voltProc = new ProcedureRunner.StmtProcedure();
             runner = new ProcedureRunner(voltProc, m_site, newCatProc);
             runner.setProcNameToLoadForFragmentTasks(newCatProc.getTypeName());

@@ -17,9 +17,11 @@
 
 package org.voltdb;
 
+import com.google_voltpatches.common.collect.ImmutableMap;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.SortedMap;
@@ -27,7 +29,6 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
-
 import org.apache.calcite.schema.SchemaPlus;
 import org.apache.zookeeper_voltpatches.KeeperException;
 import org.json_voltpatches.JSONException;
@@ -51,14 +52,15 @@ import org.voltdb.utils.Encoder;
 import org.voltdb.utils.InMemoryJarfile;
 import org.voltdb.utils.TimeUtils;
 
-import com.google_voltpatches.common.collect.ImmutableMap;
 
-public class CatalogContext {
+
+public class CatalogContext implements Serializable {
     private static final VoltLogger hostLog = new VoltLogger("HOST");
 
     public static final class ProcedurePartitionInfo {
         VoltType type;
         int index;
+
         public ProcedurePartitionInfo(VoltType type, int index) {
             this.type = type;
             this.index = index;
@@ -86,8 +88,7 @@ public class CatalogContext {
             try {
                 m_jarfile = new InMemoryJarfile(catalogBytes);
                 m_catalogCRC = m_jarfile.getCRC();
-            }
-            catch (IOException e) {
+            } catch (IOException e) {
                 throw new RuntimeException(e);
             }
 
@@ -132,19 +133,25 @@ public class CatalogContext {
     public final JdbcDatabaseMetaDataGenerator m_jdbc;
     public final HostMessenger m_messenger;
 
-    // Some people may be interested in the JAXB rather than the raw deployment bytes.
+    // Some people may be interested in the JAXB rather than the raw deployment
+    // bytes.
     private DeploymentType m_memoizedDeployment;
 
     public long m_lastUpdateCoreDuration = -1; // in nano seconds
 
-    // This is the Calcite schema for a single database. This object is used to update
+    // This is the Calcite schema for a single database. This object is used to
+    // update
     // the Calcite schema when the catalog is updated.
     private SchemaPlus m_schemaPlus;
 
     /**
-     * Constructor especially used during @CatalogContext update when @param hasSchemaChange is false.
-     * When @param hasSchemaChange is true, @param defaultProcManager and @param plannerTool will be created as new.
-     * Otherwise, it will try to use the ones passed in to save CPU cycles for performance reason.
+     * Constructor especially used during @CatalogContext update when @param
+     * hasSchemaChange is false.
+     * When @param hasSchemaChange is true, @param defaultProcManager and @param
+     * plannerTool will be created as new.
+     * Otherwise, it will try to use the ones passed in to save CPU cycles for
+     * performance reason.
+     * 
      * @param genId
      * @param catalog
      * @param settings
@@ -186,9 +193,12 @@ public class CatalogContext {
         m_catalogInfo = catalogInfo;
 
         // If there is no schema change, default procedures will not be changed.
-        // Also, the planner tool can be almost reused except updating the catalog hash string.
-        // When there is schema change, we just reload every default procedure and create new planner tool
-        // by applying the existing schema, which are costly in the UAC MP blocking path.
+        // Also, the planner tool can be almost reused except updating the catalog hash
+        // string.
+        // When there is schema change, we just reload every default procedure and
+        // create new planner tool
+        // by applying the existing schema, which are costly in the UAC MP blocking
+        // path.
         if (hasSchemaChange) {
             m_defaultProcs = new DefaultProcedureManager(database);
             m_ptool = new PlannerTool(database, m_catalogInfo.m_catalogHash);
@@ -203,9 +213,9 @@ public class CatalogContext {
         if (procedures != null) {
             for (Procedure proc : procedures) {
                 if (proc.getSinglepartition() && proc.getPartitiontable() != null) {
-                    ProcedurePartitionInfo ppi =
-                            new ProcedurePartitionInfo(VoltType.get((byte)proc.getPartitioncolumn().getType()),
-                                                       proc.getPartitionparameter());
+                    ProcedurePartitionInfo ppi = new ProcedurePartitionInfo(
+                            VoltType.get((byte) proc.getPartitioncolumn().getType()),
+                            proc.getPartitionparameter());
                     proc.setAttachment(ppi);
                 }
             }
@@ -216,6 +226,7 @@ public class CatalogContext {
 
     /**
      * Constructor of @CatalogConext used when creating brand-new instances.
+     * 
      * @param catalog
      * @param settings
      * @param version
@@ -235,8 +246,8 @@ public class CatalogContext {
             byte[] deploymentBytes,
             HostMessenger messenger) {
         this(catalog, settings, version, genId,
-             new CatalogInfo(catalogBytes, catalogBytesHash, deploymentBytes),
-             null, null, messenger, true);
+                new CatalogInfo(catalogBytes, catalogBytesHash, deploymentBytes),
+                null, null, messenger, true);
     }
 
     public Cluster getCluster() {
@@ -284,25 +295,24 @@ public class CatalogContext {
             CatalogInfo catalogInfo,
             HostMessenger messenger,
             boolean hasSchemaChange) {
-        assert(newCatalog != null);
-        assert(catalogInfo != null);
+        assert (newCatalog != null);
+        assert (catalogInfo != null);
 
         if (!isForReplay) {
             catalogInfo = m_preparedCatalogInfo;
             newCatalog = catalogInfo.m_catalog;
         }
 
-        CatalogContext retval =
-            new CatalogContext(
-                    newCatalog,
-                    this.m_dbSettings,
-                    nextCatalogVersion, // version increment
-                    genId,
-                    catalogInfo,
-                    m_defaultProcs,
-                    m_ptool,
-                    messenger,
-                    hasSchemaChange);
+        CatalogContext retval = new CatalogContext(
+                newCatalog,
+                this.m_dbSettings,
+                nextCatalogVersion, // version increment
+                genId,
+                catalogInfo,
+                m_defaultProcs,
+                m_ptool,
+                messenger,
+                hasSchemaChange);
         return retval;
     }
 
@@ -311,20 +321,21 @@ public class CatalogContext {
         ImmutableMap<String, ProcedureRunner> userProcRunner = m_catalogInfo.m_preparedProcRunners.poll();
 
         if (userProcRunner == null) {
-            // somehow there is no prepared user procedure runner map left, then prepare it again
+            // somehow there is no prepared user procedure runner map left, then prepare it
+            // again
 
             CatalogMap<Procedure> catalogProcedures = database.getProcedures();
             try {
                 userProcRunner = LoadedProcedureSet.loadUserProcedureRunners(catalogProcedures,
-                                                                        m_catalogInfo.m_jarfile.getLoader(),
-                                                                        null, null);
+                        m_catalogInfo.m_jarfile.getLoader(),
+                        null, null);
             } catch (Exception e) {
                 e.printStackTrace();
                 return null;
             }
         }
 
-        for (ProcedureRunner runner: userProcRunner.values()) {
+        for (ProcedureRunner runner : userProcRunner.values()) {
             // swap site and initiate the statistics
             runner.initSiteAndStats(site);
         }
@@ -339,8 +350,10 @@ public class CatalogContext {
     }
 
     /**
-     * Write, replace or update the catalog jar based on different cases. This function
+     * Write, replace or update the catalog jar based on different cases. This
+     * function
      * assumes any IOException should lead to fatal crash.
+     * 
      * @param path
      * @param name
      * @throws IOException
@@ -405,7 +418,7 @@ public class CatalogContext {
     }
 
     // Generate helpful status messages based on configuration present in the
-    // catalog.  Used to generated these messages at startup and after an
+    // catalog. Used to generated these messages at startup and after an
     // @UpdateApplicationCatalog
     SortedMap<String, String> getDebuggingInfoFromCatalog(boolean verbose) {
         SortedMap<String, String> logLines = new TreeMap<>();
@@ -424,13 +437,15 @@ public class CatalogContext {
             int kFactor = deployment.getKfactor();
             if (sphMap == null) {
                 logLines.put("deployment1",
-                        String.format("Cluster has %d hosts with leader hostname: \"%s\". [unknown] local sites count. K = %d.",
+                        String.format(
+                                "Cluster has %d hosts with leader hostname: \"%s\". [unknown] local sites count. K = %d.",
                                 hostCount, VoltDB.instance().getConfig().m_leader, kFactor));
                 logLines.put("deployment2", "Unable to retrieve partition information from the cluster.");
             } else {
                 int localSitesCount = sphMap.get(m_messenger.getHostId());
                 logLines.put("deployment1",
-                        String.format("Cluster has %d hosts with leader hostname: \"%s\". %d local sites count. K = %d.",
+                        String.format(
+                                "Cluster has %d hosts with leader hostname: \"%s\". %d local sites count. K = %d.",
                                 hostCount, VoltDB.instance().getConfig().m_leader, localSitesCount, kFactor));
 
                 int totalSitesCount = 0;
@@ -443,9 +458,9 @@ public class CatalogContext {
                         String.format("The entire cluster has %d %s of%s %d logical partition%s.",
                                 replicas,
                                 replicas > 1 ? "copies" : "copy",
-                                        partitionCount > 1 ? " each of the" : "",
-                                                partitionCount,
-                                                partitionCount > 1 ? "s" : ""));
+                                partitionCount > 1 ? " each of the" : "",
+                                partitionCount,
+                                partitionCount > 1 ? "s" : ""));
             }
         }
 
@@ -455,16 +470,14 @@ public class CatalogContext {
         // partition detection
         if (cluster.getNetworkpartition()) {
             logLines.put("partition-detection", "Detection of network partitions in the cluster is enabled.");
-        }
-        else {
+        } else {
             logLines.put("partition-detection", "Detection of network partitions in the cluster is not enabled.");
         }
 
         // security info
         if (cluster.getSecurityenabled()) {
             logLines.put("sec-enabled", "Client authentication is enabled.");
-        }
-        else {
+        } else {
             logLines.put("sec-enabled", "Client authentication is not enabled. Anonymous clients accepted.");
         }
 
@@ -472,17 +485,17 @@ public class CatalogContext {
         SnapshotSchedule ssched = database.getSnapshotschedule().get("default");
         if (ssched == null || !ssched.getEnabled()) {
             logLines.put("snapshot-schedule1", "No schedule set for automated snapshots.");
-        }
-        else {
+        } else {
             TimeUnit unit = TimeUtils.convertTimeUnit(ssched.getFrequencyunit());
             String msg = "[unknown frequency]";
             if (unit != null) {
                 msg = String.format("%s %s", ssched.getFrequencyvalue(), unit.name().toLowerCase());
             }
-            logLines.put("snapshot-schedule1", "Automatic snapshots enabled, saved to " + VoltDB.instance().getSnapshotPath() +
-                         " and named with prefix '" + ssched.getPrefix() + "'.");
+            logLines.put("snapshot-schedule1",
+                    "Automatic snapshots enabled, saved to " + VoltDB.instance().getSnapshotPath() +
+                            " and named with prefix '" + ssched.getPrefix() + "'.");
             logLines.put("snapshot-schedule2", "Database will retain a history of " + ssched.getRetain() +
-                         " snapshots, generated every " + msg + ".");
+                    " snapshots, generated every " + msg + ".");
         }
 
         return logLines;
@@ -496,8 +509,7 @@ public class CatalogContext {
         return m_catalogInfo.m_catalogCRC;
     }
 
-    public byte[] getCatalogHash()
-    {
+    public byte[] getCatalogHash() {
         return m_catalogInfo.m_catalogHash;
     }
 
@@ -508,7 +520,8 @@ public class CatalogContext {
     /**
      * @param catalogHash
      * @param deploymentHash
-     * @return true if the prepared catalog mismatch the catalog update invocation, false otherwise
+     * @return true if the prepared catalog mismatch the catalog update invocation,
+     *         false otherwise
      */
     public boolean checkMismatchedPreparedCatalog(byte[] catalogHash, byte[] deploymentHash) {
         if (m_preparedCatalogInfo == null) {
@@ -517,7 +530,7 @@ public class CatalogContext {
         }
 
         if (!Arrays.equals(m_preparedCatalogInfo.m_catalogHash, catalogHash) ||
-            !Arrays.equals(m_preparedCatalogInfo.m_deploymentHash, deploymentHash)) {
+                !Arrays.equals(m_preparedCatalogInfo.m_deploymentHash, deploymentHash)) {
             return true;
         }
 
@@ -527,14 +540,14 @@ public class CatalogContext {
     /**
      * Get the JAXB XML Deployment object, which is memoized
      */
-    public DeploymentType getDeployment()
-    {
+    public DeploymentType getDeployment() {
         if (m_memoizedDeployment == null) {
             m_memoizedDeployment = CatalogUtil.getDeployment(
                     new ByteArrayInputStream(m_catalogInfo.m_deploymentBytes));
             // This should NEVER happen
             if (m_memoizedDeployment == null) {
-                VoltDB.crashLocalVoltDB("The internal deployment bytes are invalid.  This should never occur; please contact VoltDB support with your logfiles.");
+                VoltDB.crashLocalVoltDB(
+                        "The internal deployment bytes are invalid.  This should never occur; please contact VoltDB support with your logfiles.");
             }
         }
         return m_memoizedDeployment;
@@ -557,16 +570,15 @@ public class CatalogContext {
     /**
      * Get the XML Deployment bytes
      */
-    public byte[] getDeploymentBytes()
-    {
+    public byte[] getDeploymentBytes() {
         return m_catalogInfo.m_deploymentBytes;
     }
 
     public String getCatalogLogString() {
         return String.format("Catalog: catalog hash %s, deployment hash %s, version %d",
-                                Encoder.hexEncode(m_catalogInfo.m_catalogHash).substring(0, 10),
-                                Encoder.hexEncode(m_catalogInfo.m_deploymentHash).substring(0, 10),
-                                catalogVersion);
+                Encoder.hexEncode(m_catalogInfo.m_catalogHash).substring(0, 10),
+                Encoder.hexEncode(m_catalogInfo.m_deploymentHash).substring(0, 10),
+                catalogVersion);
     }
 
     /**
@@ -578,7 +590,6 @@ public class CatalogContext {
         }
         return m_catalogInfo.m_jarfile.getFullJarBytes();
     }
-
 
     /**
      * Get a file/entry (as bytes) given a key/path in the source jar.
@@ -592,6 +603,7 @@ public class CatalogContext {
 
     /**
      * Set the Calcite schema associated with the default database
+     * 
      * @param schemaPlus the updated schema
      */
     public void setSchemaPlus(SchemaPlus schemaPlus) {

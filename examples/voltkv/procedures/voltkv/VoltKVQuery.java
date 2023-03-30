@@ -24,16 +24,16 @@
 package voltkv;
 
 import org.voltdb.SQLStmt;
-import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
-
-public class Query extends VoltProcedure {
+import org.voltdb.VoltVMProcedure;
+public class VoltKVQuery extends VoltVMProcedure {
 
     public final SQLStmt emptyQuery = new SQLStmt("SELECT * from store where key = ?");
 
     public VoltTable run(String key) {
         voltQueueSQL(emptyQuery, key);
-        VoltTable selectResults = voltExecuteSQL();
-        return selectResults;
+        VoltTable[] selectResults = voltExecuteSQL();
+        return selectResults[0];
     }
+
 }

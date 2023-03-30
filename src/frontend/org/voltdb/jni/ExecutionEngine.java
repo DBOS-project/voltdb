@@ -26,7 +26,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionException;
-
 import org.voltcore.logging.VoltLogger;
 import org.voltcore.utils.CoreUtils;
 import org.voltcore.utils.DBBPool;
@@ -57,6 +56,7 @@ import org.voltdb.types.PlanNodeType;
 import org.voltdb.types.TimestampType;
 import org.voltdb.utils.VoltTableUtil;
 import org.voltdb.utils.VoltTrace;
+
 
 /**
  * Wrapper for native Execution Engine library. There are two implementations,
@@ -1014,6 +1014,20 @@ public abstract class ExecutionEngine implements FastDeserializer.Deserializatio
      * JNI class is better.  So put this here with the backend->frontend api definition.
      */
     protected native byte[] nextDependencyTest(int dependencyId);
+
+    public static native int DBOSPVOpen(byte hypervisorDevicePath[]);
+
+    public static native int DBOSPVNotify(int hypervisorFD, int dual_qemu_pid, int dual_qemu_lapic_id);
+    
+    public static native int DBOSPVNotifyAndWait(int hypervisorFD, int dual_qemu_pid, int dual_qemu_lapic_id);
+
+    public static native int DBOSPVGetVMId(int hypervisorFD);
+    
+    public static native int DBOSPVWait(int hypervisorFD);
+
+    public static native int DBOSBindCurrentThreadToCore(int core_id);
+    
+    public static native int DBOSGetCPUId();
 
     /**
      * Just creates a new VoltDBEngine object and returns it to Java.

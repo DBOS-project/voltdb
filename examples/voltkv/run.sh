@@ -23,8 +23,8 @@ source $VOLTDB_BIN/voltenv
 # (once running, all nodes are the same -- no leaders)
 STARTUPLEADERHOST="localhost"
 # list of cluster nodes separated by commas in host:[port] format
-SERVERS="localhost"
-
+#SERVERS="localhost"
+SERVERS="172.16.0.2"
 # remove binaries, logs, runtime artifacts, etc... but keep the client jar
 function clean() {
     rm -rf client/voltkv/*.class voltdbroot log
@@ -40,10 +40,13 @@ function cleanall() {
 function jars() {
     # compile java source
     javac -classpath $CLIENTCLASSPATH client/voltkv/*.java
+    javac -classpath $APPCLASSPATH procedures/voltkv/*.java
     # build client jar
     jar cf voltkv-client.jar -C client voltkv
+    jar cf procedures.jar -C procedures voltkv
     # remove compiled .class files
     rm -rf client/voltkv/*.class
+    rm -rf procedures/voltkv/*/class
 }
 
 # compile the client jarfile if it doesn't exist

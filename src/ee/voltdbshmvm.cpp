@@ -70,18 +70,22 @@ class Table;
 
 class AeronConnectionPair;
 
-#define RING_BUFFER_CAP (256*1024)
+#define RING_BUFFER_CAP (512*1024)
 struct MetaData {
     uint64_t read_pos;
     char pad_1[64 - sizeof(read_pos)];
     uint64_t write_pos;
-    char pad_2[4096 - sizeof(write_pos) - sizeof(pad_1) - sizeof(read_pos)];
+    char pad_2[128 - sizeof(write_pos) - sizeof(pad_1) - sizeof(read_pos)];
+    uint64_t is_halted;
+    char pad_3[4096 - sizeof(write_pos) - sizeof(pad_1) - sizeof(read_pos) - sizeof(pad_2) - sizeof(write_pos)];
 };
 class RingByteBuffer {
 public:
 
     static constexpr int kReadPosOffset = 0;
     static constexpr int kWritePosOffset = 64;
+    static constexpr int kIsHaltedOffset = 128;
+    static constexpr int kIsUnhaltPostedOffset = 128 + 64;
     static constexpr int kDataStartOffset = sizeof(MetaData);
     static_assert(sizeof(MetaData) == 4096, "sizeof(MetaData) != 4096");
     char * byte_array;
@@ -119,6 +123,19 @@ public:
         return metadata_buffer.putInt64(kWritePosOffset, new_write_pos);
     }
 
+    inline void set_halted() {
+        metadata_buffer.putInt64(kIsHaltedOffset, 1);
+    }
+
+    inline void clear_halted() {
+        metadata_buffer.putInt64(kIsHaltedOffset, 0);
+    }
+
+    inline std::size_t get_is_halted() {
+        return metadata_buffer.getInt64(kIsHaltedOffset);
+    }
+
+
     // inline std::size_t writable_bytes() {
     //     std::size_t read_pos = get_read_pos();
     //     std::size_t write_pos = get_write_pos();
@@ -130,9 +147,9 @@ public:
     //     return readable_bytes() == 0;
     // }
 
-    // inline std::size_t readable_bytes() {
-    //     return get_write_pos() - get_read_pos();
-    // }
+    inline std::size_t readable_bytes() {
+        return get_write_pos() - get_read_pos();
+    }
 
     bool read_bytes(void * buf, std::size_t n) {
         //assert(readble_bytes() >= n);
@@ -645,116 +662,21 @@ static bool staticDebugVerbose = false;
 static constexpr std::size_t bufferSize = 1024 * 1024;
 class AeronConnectionPair {
 public:
-    //std::shared_ptr<aeron::Subscription> sub;
-    //std::shared_ptr<aeron::Publication> pub;
+    int32_t dual_qemu_lapic_id = -1;
+    int32_t core_id = -1;
+    uint64_t pv_notify_count = 0;
+    uint64_t pv_wait_count = 0;
+    bool use_para_virt_notification = false;
     RingByteBuffer * outgoing_ringbuffer;
     RingByteBuffer * incoming_ringbuffer;
-    //uint8_t write_buf[bufferSize];
-    //aeron::concurrent::AtomicBuffer writeBuffer;
-    //uint8_t read_buf[bufferSize];
-    //std::size_t read_pos;
-    //std::size_t read_limit;
-    //aeron::concurrent::AtomicBuffer readBuffer;
-    //aeron::fragment_handler_t fragment_handler;
-
     AeronConnectionPair(RingByteBuffer * outgoing_ringbuffer, RingByteBuffer * incoming_ringbuffer): outgoing_ringbuffer(outgoing_ringbuffer), incoming_ringbuffer(incoming_ringbuffer) {
-        // writeBuffer = aeron::concurrent::AtomicBuffer(write_buf, sizeof(write_buf));
-        // readBuffer = aeron::concurrent::AtomicBuffer(read_buf, sizeof(read_buf));
-        // read_pos = 0;
-        // read_limit = 0;
-
-        // fragment_handler = [&, this](const aeron::concurrent::AtomicBuffer &buffer, 
-        //                              aeron::util::index_t offset, 
-        //                              aeron::util::index_t length, const aeron::Header &header)
-        //     {
-        //         assert(length < bufferSize);
-        //         while (length > this->read_buffer_left_space()) {
-        //             if (this->read_pos == 0) {
-        //                 printf("\n\nCannot take in %d bytes to a read buffer with %lu bytes of capacity. \n\n", length, this->read_buffer_left_space());
-        //                 fflush(stdout);
-        //                 exit(-1);
-        //             }
-        //             this->compact_read_buffer();
-        //         }
-        //         append_incoming_bytes(buffer.buffer() + offset, length);
-        //     };
+        
     }
-
-    // int poll_from_subscription()   {
-    //     return sub->poll(fragment_handler, 1);
-    // }
-
-    // std::size_t available_incoming_bytes() {
-    //     // assert(read_limit >= read_pos);
-    //     // assert(bufferSize >= read_limit);
-    //     // return read_limit - read_pos;
-    //     return incoming_ringbuffer->readable_bytes();
-    // }
-
 };
 
-// static void writeOrDie(int fd, const unsigned char *data, ssize_t sz) {
-//     ssize_t written = 0;
-//     ssize_t last = 0;
-//     while (written < sz) {
-//         if (staticDebugVerbose) {
-//             std::cout << "Trying to write " << (sz - written) << " bytes" << std::endl;
-//         }
-//         last = write(fd, data + written, sz - written);
-//         if (last < 0) {
-//             printf("\n\nIPC write to JNI returned -1. Exiting\n\n");
-//             fflush(stdout);
-//             exit(-1);
-//         }
-//         if (staticDebugVerbose) {
-//             std::cout << "Wrote " << last << " bytes" << std::endl;
-//         }
-//         written += last;
-//     }
-// }
-//thread_local aeron::concurrent::BusySpinIdleStrategy idleStrategy;
-static void writeOrDie(AeronConnectionPair * cp, const unsigned char *data, ssize_t sz) {
-    // cp->writeBuffer.putBytes(0, data, sz);
 
-    // std::int64_t result = cp->pub->offer(cp->writeBuffer, 0, sz);
-    // while (result <= 0) {
-    //     if (aeron::NOT_CONNECTED == result || aeron::PUBLICATION_CLOSED == result) {
-    //         printf("\n\nIPC write to aeron::pub encounters connection problem: %ld. Exiting\n\n", result);
-    //         fflush(stdout);
-    //         exit(-1);
-    //     }
-    //     result = cp->pub->offer(cp->writeBuffer, 0, sz);
-    // }
-    // while (cp->outgoing_ringbuffer->writable_bytes() < sz) {
-    //     idleStrategy.idle(0);
-    // }
-    while (cp->outgoing_ringbuffer->write_bytes(data, sz) == false)
-    {
-        //idleStrategy.idle(0);
-    }
-}
-
-
-static ssize_t read(AeronConnectionPair * cp, void *buf, size_t sz) {
-    // if (cp->available_incoming_bytes() >= sz) {
-    //     cp->consume_incoming_bytes((unsigned char *)buf, sz);
-    // } else {
-    //     // poll more data from subscription
-    //     while (cp->available_incoming_bytes() < sz) {
-    //         auto work = cp->poll_from_subscription();
-    //         idleStrategy.idle(work);
-    //     }
-    //     cp->consume_incoming_bytes((unsigned char *)buf, sz);
-    // }
-    // while (cp->incoming_ringbuffer->readable_bytes() < sz) {
-    //     idleStrategy.idle(0);
-    // }
-    while (cp->incoming_ringbuffer->read_bytes(buf, sz) == false)
-    {
-        //idleStrategy.idle(0);
-    }
-    return sz;
-}
+static ssize_t read(AeronConnectionPair * cp, void *buf, size_t sz);
+static void writeOrDie(AeronConnectionPair * cp, const unsigned char *data, ssize_t sz, bool no_notify = false);
 
 /**
  * Utility used for deserializing ParameterSet passed from Java.
@@ -1249,11 +1171,11 @@ void VoltDBSHM::setViewsEnabled(struct ipc_command *cmd) {
 
 void VoltDBSHM::sendPerFragmentStatsBuffer() {
     int8_t statusCode = static_cast<int8_t>(kErrorCode_pushPerFragmentStatsBuffer);
-    writeOrDie(m_cp, (unsigned char*)&statusCode, sizeof(int8_t));
+    writeOrDie(m_cp, (unsigned char*)&statusCode, sizeof(int8_t), true);
     // write the per-fragment stats back across the wire
     char *perFragmentStatsBuffer = m_engine->getPerFragmentStatsBuffer();
     int32_t perFragmentStatsBufferSizeToSend = htonl(m_engine->getPerFragmentStatsSize());
-    writeOrDie(m_cp, (unsigned char*)&perFragmentStatsBufferSizeToSend, sizeof(int32_t));
+    writeOrDie(m_cp, (unsigned char*)&perFragmentStatsBufferSizeToSend, sizeof(int32_t), true);
     writeOrDie(m_cp, (unsigned char*)perFragmentStatsBuffer, m_engine->getPerFragmentStatsSize());
 }
 
@@ -1270,7 +1192,7 @@ void checkBytesRead(ssize_t byteCountExpected, ssize_t byteCountRead, std::strin
 int VoltDBSHM::callJavaUserDefinedHelper(int kErrorCode) {
     // Send a special status code indicating that a UDF invocation request is coming on the wire.
     int8_t statusCode = static_cast<int8_t>(kErrorCode);
-    writeOrDie(m_cp, (unsigned char*)&statusCode, sizeof(int8_t));
+    writeOrDie(m_cp, (unsigned char*)&statusCode, sizeof(int8_t), true);
 
     // Get the UDF buffer size.
     int32_t* udfBufferInInt32 = reinterpret_cast<int32_t*>(m_udfBuffer);
@@ -1718,7 +1640,7 @@ void VoltDBSHM::getStats(struct ipc_command *cmd) {
         // write the results array back across the wire
         const int8_t successResult = kErrorCode_Success;
         if (result == 0 || result == 1) {
-            writeOrDie(m_cp, (const unsigned char*)&successResult, sizeof(int8_t));
+            writeOrDie(m_cp, (const unsigned char*)&successResult, sizeof(int8_t), true);
 
             if (result == 1) {
                 const int32_t size = m_engine->getResultsSize();
@@ -1933,7 +1855,7 @@ void VoltDBSHM::fetchTopicsGroups(struct ipc_command *cmd) {
         }
 
         response = result > 0;
-        writeOrDie(m_cp, &response, sizeof(uint8_t));
+        writeOrDie(m_cp, &response, sizeof(uint8_t), true);
         const int32_t size = m_engine->getResultsSize();
         writeOrDie(m_cp, m_engine->getResultsBuffer(), size);
     } catch (const FatalException &e) {
@@ -2008,11 +1930,11 @@ void VoltDBSHM::getUSOForExportTable(struct ipc_command *cmd) {
     // write offset across bigendian.
     int64_t ackOffsetI64 = static_cast<int64_t>(ackOffset);
     ackOffsetI64 = htonll(ackOffsetI64);
-    writeOrDie(m_cp, (unsigned char*)&ackOffsetI64, sizeof(ackOffsetI64));
+    writeOrDie(m_cp, (unsigned char*)&ackOffsetI64, sizeof(ackOffsetI64), true);
 
     // write the poll data. It is at least 4 bytes of length prefix.
     seqNo = htonll(seqNo);
-    writeOrDie(m_cp, (unsigned char*)&seqNo, sizeof(seqNo));
+    writeOrDie(m_cp, (unsigned char*)&seqNo, sizeof(seqNo), true);
 
     genId = htonll(genId);
     writeOrDie(m_cp, (unsigned char*)&genId, sizeof(genId));
@@ -2120,7 +2042,7 @@ void VoltDBSHM::pushExportBuffer(
     index += 40;
     if (block != NULL) {
         *reinterpret_cast<int32_t*>(&m_reusedResultBuffer[index]) = htonl(block->rawLength());
-        writeOrDie(m_cp, (unsigned char*)m_reusedResultBuffer, index + 4);
+        writeOrDie(m_cp, (unsigned char*)m_reusedResultBuffer, index + 4, true);
         // Memset the first 8 bytes to initialize the MAGIC_HEADER_SPACE_FOR_JAVA
         ::memset(block->rawPtr(), 0, 8);
         writeOrDie(m_cp, (unsigned char*)block->rawPtr(), block->rawLength());
@@ -2285,7 +2207,7 @@ void ping(AeronConnectionPair * cp) {
     unsigned char buffer[150000];  
     unsigned char correct_buffer[150000];
     memset(buffer, 0, sizeof(buffer));
-    uint32_t times = 5000;
+    uint32_t times = 50000;
     std::size_t length = 1024;
     auto start = std::chrono::high_resolution_clock::now();
     for (uint32_t i = 0; i < times; ++i) {
@@ -2316,7 +2238,7 @@ void pong(AeronConnectionPair * cp) {
     unsigned char buffer[150000];  
     unsigned char correct_buffer[150000];
     memset(buffer, 0, sizeof(buffer));
-    uint32_t times = 5000;
+    uint32_t times = 50000;
     std::size_t length = 1024;
     for (uint32_t i = 0; i < times; ++i) {
         memset(buffer, i % 26 + 97, length);
@@ -2338,14 +2260,57 @@ void pong(AeronConnectionPair * cp) {
     printf("ping pong test for pong finished and succeeded\n");
 }
 
+void exchangeLAPICId(AeronConnectionPair * cp) {
+    writeOrDie(cp, (const unsigned char *)&cp->core_id, sizeof(cp->core_id));
+    __attribute__((unused))  auto ret = read(cp, &cp->dual_qemu_lapic_id, sizeof(cp->dual_qemu_lapic_id));
+    assert(ret == 4);
+    printf("this core_id %d, dual_qemu_lapic_id %d\n", cp->core_id, cp->dual_qemu_lapic_id);
+}
+
+
+
+static void bind_thread_to_core(int core_id) {
+    cpu_set_t cpuset;
+    pthread_t thread = pthread_self();
+    // Initialize the cpuset mask
+    CPU_ZERO(&cpuset);
+    CPU_SET(core_id, &cpuset);
+
+    // Bind the thread to the specified core
+    int result = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+    if (result != 0)
+    {
+        VOLT_ERROR("Error setting thread affinity");
+        exit(-1);
+    }
+}
+
+
+#include <fcntl.h>
+#include <unistd.h>
+#include<sys/ioctl.h>
+
+#define DBOS_WAIT _IOW('a','a',int32_t*)
+#define DBOS_NOTIFY _IOW('a','b',uint64_t*)
+
+int fd_hypervisor = -1;
+bool use_para_virt_notification = false;
+int32_t dual_qemu_pid = -1;
+
 void eethread2(int eeid, AeronConnectionPair * cp) {
     // pingpong test
     printf("ee %d started, ping pong test\n", eeid);
+    bind_thread_to_core(eeid);
+    cp->core_id = sched_getcpu();
+    bool use_para_virt_notification_temp = use_para_virt_notification;
+    cp->use_para_virt_notification = false;
+    exchangeLAPICId(cp);
+    cp->use_para_virt_notification = use_para_virt_notification_temp;
     unsigned char buffer[150000];  
     unsigned char correct_buffer[150000];
     memset(buffer, 0, sizeof(buffer));
-    uint32_t times = 1000000;
-    std::size_t length = 256;
+    uint32_t times = 10000;
+    std::size_t length = 128000;
     for (uint32_t i = 0; i < times; ++i) {
         memset(buffer, i % 26 + 97, length);
         memset(correct_buffer, i % 26 + 97, length);
@@ -2363,7 +2328,7 @@ void eethread2(int eeid, AeronConnectionPair * cp) {
         }
         //printf("Round %d passed\n", i);
     }
-    printf("ping pong test for ee %d finished and succeeded\n", eeid);
+    printf("ping pong test for ee %d finished and succeeded, pv_notify_count %lu, pv_wait_count %lu\n", eeid, cp->pv_notify_count, cp->pv_wait_count);
 
 
     /* max message size that can be read from java */
@@ -2444,6 +2409,67 @@ void eethread2(int eeid, AeronConnectionPair * cp) {
 
 }
 
+static int pv_notify(int fd, uint32_t dual_qemu_pid, uint32_t dual_qemu_lapic_id) {
+    uint64_t word = ((uint64_t) dual_qemu_pid << 32) | dual_qemu_lapic_id;
+    return ioctl(fd, DBOS_NOTIFY, &word);
+}
+
+static void pv_wait(int fd) {
+    uint32_t dummy = 0;
+    ioctl(fd, DBOS_WAIT, &dummy);
+}
+
+static void writeOrDie(AeronConnectionPair * cp, const unsigned char *data, ssize_t sz, bool no_notify) {
+    int dual_qemu_lapic_id = cp->dual_qemu_lapic_id; 
+    bool notified = false;
+    while (cp->outgoing_ringbuffer->write_bytes(data, sz) == false)
+    {
+        //idleStrategy.idle(0);
+        no_notify = false;
+        if (no_notify == false && notified == false && fd_hypervisor >= 0 && cp->use_para_virt_notification && cp->outgoing_ringbuffer->get_is_halted()) {
+            int ret = pv_notify(fd_hypervisor, dual_qemu_pid, dual_qemu_lapic_id);
+            ++cp->pv_notify_count;
+            notified = true;
+            if (ret < 0) {
+                perror(strerror(errno));
+                exit(-1);
+            }
+        }
+    }
+    if (no_notify == false && notified == false && fd_hypervisor >= 0 && cp->use_para_virt_notification && cp->outgoing_ringbuffer->get_is_halted()) {
+        int ret = pv_notify(fd_hypervisor, dual_qemu_pid, dual_qemu_lapic_id);
+        ++cp->pv_notify_count;
+        if (ret < 0) {
+            perror(strerror(errno));
+            exit(-1);
+        }
+        //printf("para noitify return %d\n", ret);
+    }
+}
+
+
+static ssize_t read(AeronConnectionPair * cp, void *buf, size_t sz) {
+    static constexpr int kCountDownCycles = 30;
+    int count_down = kCountDownCycles;
+    while (cp->incoming_ringbuffer->read_bytes(buf, sz) == false)
+    {
+        if (--count_down < 0 && cp->use_para_virt_notification && fd_hypervisor >= 0) {
+            assert(fd_hypervisor >= 0);
+            assert(cp->incoming_ringbuffer->get_is_halted() == false);
+            if (cp->outgoing_ringbuffer->readable_bytes() > 0 && cp->outgoing_ringbuffer->get_is_halted()) {
+                pv_notify(fd_hypervisor, dual_qemu_pid, cp->dual_qemu_lapic_id);
+            }
+
+            cp->incoming_ringbuffer->set_halted();
+            pv_wait(fd_hypervisor);
+            cp->incoming_ringbuffer->clear_halted();
+            ++cp->pv_wait_count;
+            count_down = kCountDownCycles;
+        }
+    }
+    return sz;
+}
+
 int main(int argc, char **argv) {
     //Create a pool ref to init the thread local in case a poll message comes early
     voltdb::ThreadLocalPool poolRef;
@@ -2470,7 +2496,7 @@ int main(int argc, char **argv) {
     //boost::shared_array<pthread_t> eeThreads(new pthread_t[eecount]);
 
     // allow caller to override port with the second argument
-    if (argc == 3) {
+    if (argc >= 3) {
         char *portStr = argv[2];
         vassert(portStr);
         port = atoi(portStr);
@@ -2478,42 +2504,25 @@ int main(int argc, char **argv) {
         vassert(port <= 65535);
     }
     printf("== port = %d ==\n", port);
+
+    if (argc >= 4) {
+        char *dual_qemu_pid_str = argv[3];
+        assert(dual_qemu_pid_str);
+        dual_qemu_pid = atoi(dual_qemu_pid_str);
+    }
+
+    if (argc >= 5) {
+        char *para_virt_not_str = argv[4];
+        assert(para_virt_not_str);
+        use_para_virt_notification = atoi(para_virt_not_str);
+        assert(eecount >= 0);    
+    }
+
+    printf("== dual_qemu_pid = %d ==\n", dual_qemu_pid);
+    printf("== use_para_virt_notification = %d ==\n", use_para_virt_notification);
     fflush(stdout);
 
     const std::string aeronChannel = "aeron:ipc";
-    // const std::string aeronDirectory = "/dev/shm/voltdb_frontend_aeron";
-    // const std::string aeronDirectory = "/dev/shm/voltdb_frontend_aeron";
-    // aeron::Context context;
-    // context.aeronDir(aeronDirectory);
-    // context.newPublicationHandler(
-    // [](const std::string &channel, std::int32_t streamId, std::int32_t sessionId, std::int64_t correlationId)
-    //     {
-    //         printf("Publication: %s %ld %d\n", channel.c_str(), correlationId, streamId);
-    //         fflush(stdout);
-    //     });
-    // context.newSubscriptionHandler(
-    //     [](const std::string &channel, std::int32_t streamId, std::int64_t correlationId)
-    //     {
-    //         printf("Subscription: %s %ld %d\n", channel.c_str(), correlationId, streamId);
-    //         fflush(stdout);
-    //     });
-    // context.availableImageHandler(
-    //     [](aeron::Image &image)
-    //     {
-    //         printf("Available image correlationId=%ld  sessionId=%d at position=%ld from %s\n", image.correlationId(), image.sessionId(), image.position(), image.sourceIdentity().c_str());
-    //         fflush(stdout);
-    //     });
-    // context.unavailableImageHandler(
-    //     [](aeron::Image &image)
-    //     {
-    //         printf("Unavailable image correlationId=%ld  sessionId=%d at position=%ld from %s\n", image.correlationId(), image.sessionId(), image.position(), image.sourceIdentity().c_str());
-    //         fflush(stdout);
-    //     });
-
-    // std::shared_ptr<aeron::Aeron> aeron = aeron::Aeron::connect(context);
-
-    //std::vector<std::shared_ptr<aeron::Subscription>> subscriptions;
-    //std::vector<std::shared_ptr<aeron::Publication>> publications;
     std::vector<std::shared_ptr<AeronConnectionPair>> aeronConns;
 
     {
@@ -2534,62 +2543,10 @@ int main(int argc, char **argv) {
         t4.join();
 
     }
-
-    // {
-    //     std::string outgoing_shared_memory_file = "/dev/shm/volt_backend_pingpong_out";
-    //     remove(outgoing_shared_memory_file.c_str());
-    //     int fd = open(outgoing_shared_memory_file.c_str(), O_CREAT|O_RDWR);
-    //     if (fd < 0) {
-    //         printf("Failed to open %s : %s\n", outgoing_shared_memory_file.c_str(), strerror(errno));
-    //         fflush(stdout);
-    //         exit(1);
-    //     }
-    //     posix_fallocate(fd, 0, RING_BUFFER_CAP);
-    //     void * addr1 = mmap(nullptr, RING_BUFFER_CAP, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    //     if (addr1 == MAP_FAILED) {
-    //         printf("Failed to mmap %s : %s\n", outgoing_shared_memory_file.c_str(), strerror(errno));
-    //         fflush(stdout);
-    //         exit(1);
-    //     }
-    //     close(fd);
-    //     auto outgoing_ringbuffer = new RingByteBuffer((char*)addr1, RING_BUFFER_CAP);
-    //     outgoing_ringbuffer->clear();
-
-    //     auto incoming_ringbuffer_2 = new RingByteBuffer((char*)addr1, RING_BUFFER_CAP);
-
-    //     std::string incoming_shared_memory_file = "/dev/shm/volt_backend_pingpong_in";
-    //     remove(incoming_shared_memory_file.c_str());
-    //     fd = open(incoming_shared_memory_file.c_str(), O_CREAT|O_RDWR);
-    //     if (fd < 0) {
-    //         printf("Failed to open %s : %s\n", incoming_shared_memory_file.c_str(), strerror(errno));
-    //         fflush(stdout);
-    //         exit(1);
-    //     }
-    //     posix_fallocate(fd, 0, RING_BUFFER_CAP);
-    //     auto addr2 = mmap(nullptr, RING_BUFFER_CAP, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    //     if (addr2 == MAP_FAILED) {
-    //         printf("Failed to mmap %s : %s\n", incoming_shared_memory_file.c_str(), strerror(errno));
-    //         fflush(stdout);
-    //         exit(1);
-    //     }
-    //     close(fd);
-    //     auto incoming_ringbuffer = new RingByteBuffer((char*)addr2, RING_BUFFER_CAP);
-    //     incoming_ringbuffer->clear();
-    //     auto outgoing_ringbuffer_2 = new RingByteBuffer((char*)addr2, RING_BUFFER_CAP);
-    //     std::thread t1(ping, new AeronConnectionPair(outgoing_ringbuffer, incoming_ringbuffer));
-    //     std::thread t2(pong, new AeronConnectionPair(outgoing_ringbuffer_2, incoming_ringbuffer_2));
-    //     t1.join();
-    //     t2.join();
-
-        
-    //     //exit(0);
-    // }
-
     
-
     for (int ee = 0; ee < eecount; ee++) {
-        std::string outgoing_shared_memory_file = "/dev/shm/voltdb_backend_out";
-        int fd = open(outgoing_shared_memory_file.c_str(), O_CREAT|O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+        std::string outgoing_shared_memory_file = "/sys/bus/pci/devices/0000:00:04.0/resource2";
+        int fd = open(outgoing_shared_memory_file.c_str(), O_RDWR);
         if (fd < 0) {
             printf("Failed to open %s : %s\n", outgoing_shared_memory_file.c_str(), strerror(errno));
             fflush(stdout);
@@ -2604,8 +2561,8 @@ int main(int argc, char **argv) {
         close(fd);
         auto outgoing_ringbuffer = new RingByteBuffer((char*)addr1, RING_BUFFER_CAP);
 
-        std::string incoming_shared_memory_file = "/dev/shm/voltdb_frontend_out";
-        fd = open(incoming_shared_memory_file.c_str(), O_CREAT|O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+        std::string incoming_shared_memory_file = "/sys/bus/pci/devices/0000:00:05.0/resource2";
+        fd = open(incoming_shared_memory_file.c_str(), O_RDWR);
         if (fd < 0) {
             printf("Failed to open %s : %s\n", incoming_shared_memory_file.c_str(), strerror(errno));
             fflush(stdout);
@@ -2624,46 +2581,23 @@ int main(int argc, char **argv) {
         printf("%p for %s, %p for %s\n", addr1, outgoing_shared_memory_file.c_str(), addr2, incoming_shared_memory_file.c_str());
     }
 
-    //printf("All %d subscriptions connected to backend.\n", eecount);
-
-    //printf("Starting %d publications from backend.\n", eecount);
     fflush(stdout);
 
-    //printf("All %d publications have been connected by frontend.\n", eecount);
+    fd_hypervisor = open("/dev/etx_device", O_RDWR);
+
+    if(fd_hypervisor < 0) {
+        printf("Cannot open hypervisor device file...\n");
+        return 0;
+    }
+
+    printf("/dev/etx_device opened...\n");
+
     g_cleanUpCountdownLatch = eecount;
 
     std::vector<std::thread> threads;
     for (int ee = 0; ee < eecount; ee++) {
         threads.emplace_back(std::thread(eethread2, ee, aeronConns[ee].get()));
     }
-    // // connect to each Site from Java over a new socket
-    // for (int ee = 0; ee < eecount; ee++) {
-    //     struct sockaddr_in client_addr;
-    //     socklen_t addr_size = sizeof(struct sockaddr_in);
-    //     fd = accept(sock, (struct sockaddr*) (&client_addr), &addr_size);
-    //     if (fd < 0) {
-    //         printf("Failed to accept socket.\n");
-    //         exit(-6);
-    //     }
-
-    //     int flag = 1;
-    //     int ret = setsockopt( fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag) );
-    //     if (ret == -1) {
-    //         printf("Couldn't setsockopt(TCP_NODELAY)\n");
-    //         exit( EXIT_FAILURE );
-    //     }
-
-    //     // make a heap file descriptor to pass to the thread (which it will free)
-    //     int *fdPtr = new int;
-    //     *fdPtr = fd;
-
-    //     int status = pthread_create(&eeThreads[ee], NULL, eethread, fdPtr);
-    //     if (status) {
-    //         // error
-    //     }
-    // }
-
-    // close(sock);
 
     // wait for all of the EEs to finish
     for (int ee = 0; ee < eecount; ee++) {

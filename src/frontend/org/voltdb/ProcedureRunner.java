@@ -17,6 +17,7 @@
 
 package org.voltdb;
 
+import com.google_voltpatches.common.base.Charsets;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -35,7 +36,6 @@ import java.util.Map.Entry;
 import java.util.Random;
 import java.util.concurrent.ExecutionException;
 import java.util.function.IntFunction;
-
 import org.voltcore.logging.VoltLogger;
 import org.voltcore.network.VoltPort;
 import org.voltcore.utils.CoreUtils;
@@ -72,9 +72,10 @@ import org.voltdb.types.TimestampType;
 import org.voltdb.utils.CompressionService;
 import org.voltdb.utils.Encoder;
 import org.voltdb.utils.MiscUtils;
+import org.voltdb.utils.SerializationHelper;
 import org.voltdb.utils.VoltTrace;
 
-import com.google_voltpatches.common.base.Charsets;
+
 
 public class ProcedureRunner {
 
@@ -86,13 +87,16 @@ public class ProcedureRunner {
 
     // SQL statement queue info
     //
-    // This must be less than or equal to MAX_BATCH_COUNT in src/ee/execution/VoltDBEngine.h
+    // This must be less than or equal to MAX_BATCH_COUNT in
+    // src/ee/execution/VoltDBEngine.h
     final static int MAX_BATCH_SIZE = 200;
+
     static class QueuedSQL {
         SQLStmt stmt;
         ParameterSet params;
         Expectation expectation = null;
     }
+
     protected final ArrayList<QueuedSQL> m_batch = new ArrayList<QueuedSQL>(100);
     // cached fake SQLStmt array for single statement non-java procs
     protected final ArrayList<QueuedSQL> m_sqlStmts = new ArrayList<QueuedSQL>(100);
@@ -106,9 +110,21 @@ public class ProcedureRunner {
     // leverages the default procs' plan.
     // UTF-8 encoded string bytes
     byte[] m_procNameToLoadForFragmentTasks = null;
-
+    
+    public static ThreadLocal<org.nustaq.serialization.FSTConfiguration> fstConf = new ThreadLocal() { 
+        @Override
+        public org.nustaq.serialization.FSTConfiguration initialValue() {
+            org.nustaq.serialization.FSTConfiguration conf = org.nustaq.serialization.FSTConfiguration.createUnsafeBinaryConfiguration();
+            conf.registerClass(ArrayList.class);
+            conf.registerClass(VMProcedureCall.class);
+            conf.registerClass(VMInformation.class);
+            conf.setShareReferences(false);
+            return conf;
+        }
+    };
     // reflected info
     //
+    protected final String m_procedureClassName;
     protected final String m_procedureName;
     protected final VoltProcedure m_procedure;
     protected Method m_procMethod;
@@ -119,7 +135,8 @@ public class ProcedureRunner {
     protected TransactionState m_txnState; // used for sysprocs only
     protected byte m_statusCode = ClientResponse.SUCCESS;
     protected String m_statusString = null;
-    // Status code that can be set by stored procedure upon invocation that will be returned with the response.
+    // Status code that can be set by stored procedure upon invocation that will be
+    // returned with the response.
     protected byte m_appStatusCode = ClientResponse.UNINITIALIZED_APP_STATUS_CODE;
     protected String m_appStatusString = null;
     // cached txnid-seeded RNG so all calls to getSeededRandomNumberGenerator() for
@@ -134,6 +151,7 @@ public class ProcedureRunner {
     // per procedure state and catalog info
     //
     protected ArrayList<String> m_stmtList;
+    protected Map<String, SQLStmt> m_stmtMap;
     protected ProcedureStatsCollector m_statsCollector;
     protected SingleCallStatsToken m_perCallStats;
     protected final Procedure m_catProc;
@@ -151,10 +169,13 @@ public class ProcedureRunner {
     protected final DeterminismHash m_determinismHash = new DeterminismHash();
 
     // running procedure info
-    //  - track the current call to voltExecuteSQL for logging progress
+    // - track the current call to voltExecuteSQL for logging progress
     protected int m_batchIndex;
 
-    /** boolean flag to mark whether the previous batch execution has EE exception or not.*/
+    /**
+     * boolean flag to mark whether the previous batch execution has EE exception or
+     * not.
+     */
     private long m_spBigBatchBeginToken;
 
     // Used to get around the "abstract" for StmtProcedures.
@@ -164,11 +185,13 @@ public class ProcedureRunner {
     }
 
     ProcedureRunner(VoltProcedure procedure,
-                    SiteProcedureConnection site,
-                    Procedure catProc) {
+            SiteProcedureConnection site,
+            Procedure catProc) {
         if (catProc.getHasjava() == false) {
             m_procedureName = catProc.getTypeName().intern();
+            m_procedureClassName = null;
         } else {
+            m_procedureClassName = procedure.getClass().getCanonicalName();
             m_procedureName = procedure.getClass().getSimpleName();
         }
         m_procedure = procedure;
@@ -192,10 +215,12 @@ public class ProcedureRunner {
 
         m_procedure.init(this);
 
+        m_stmtMap = new HashMap<>();
         // Analyze and process the stored procedure, return a list of variable names of
         // the SQLStmts defined in the stored procedure.
         // The variable names are used in the granular statistics.
         m_stmtList = reflect();
+        
 
         if (site != null) {
             initSiteAndStats(m_site);
@@ -204,20 +229,23 @@ public class ProcedureRunner {
 
     public void initSiteAndStats(SiteProcedureConnection site) {
         m_site = site;
-        // Normally m_statsCollector is returned as it is and there is no affect to assign it to itself.
-        // Sometimes when this procedure statistics needs to reuse the existing one, the old stats gets returned.
+        // Normally m_statsCollector is returned as it is and there is no affect to
+        // assign it to itself.
+        // Sometimes when this procedure statistics needs to reuse the existing one, the
+        // old stats gets returned.
         m_statsCollector = new ProcedureStatsCollector(
-                                    site.getCorrespondingSiteId(),
-                                    site.getCorrespondingPartitionId(),
-                                    m_catProc,
-                                    m_stmtList,
-                                    ProcedureStatsCollector.ProcType.TRANS);
+                site.getCorrespondingSiteId(),
+                site.getCorrespondingPartitionId(),
+                m_catProc,
+                m_stmtList,
+                ProcedureStatsCollector.ProcType.TRANS);
         VoltDB.instance().getStatsAgent().registerStatsSource(StatsSelector.PROCEDURE,
-                                                              site.getCorrespondingSiteId(),
-                                                              m_statsCollector);
+                site.getCorrespondingSiteId(),
+                m_statsCollector);
 
         // Read the ProcStatsOption annotation from the procedure class.
-        // Basically, it is about setting the sampling interval for this stored procedure.
+        // Basically, it is about setting the sampling interval for this stored
+        // procedure.
         ProcStatsOption statsOption = m_procedure.getClass().getAnnotation(ProcStatsOption.class);
         if (statsOption != null) {
             m_statsCollector.setProcSamplingInterval(statsOption.procSamplingInterval());
@@ -228,11 +256,12 @@ public class ProcedureRunner {
     /**
      * This function returns the ExecutionEngine for this site.
      * ProcedureRunner needs the access to the ExecutionEngine for two purposes:
-     *     - Telling the C++ side to turn on/off the per-fragment time measurement.
-     *     - Collecting the time measurements and the failure indicator from
-     *       the per-fragment stats shared buffer.
-     * The ExecutionEngine may not have been initialized when a ProcedureRunner is created,
-     *     (See BaseInitiator.java, the configureCommon() function)
+     * - Telling the C++ side to turn on/off the per-fragment time measurement.
+     * - Collecting the time measurements and the failure indicator from
+     * the per-fragment stats shared buffer.
+     * The ExecutionEngine may not have been initialized when a ProcedureRunner is
+     * created,
+     * (See BaseInitiator.java, the configureCommon() function)
      * so we do not find this engine in the constructor.
      */
     public ExecutionEngine getExecutionEngine() {
@@ -243,7 +272,7 @@ public class ProcedureRunner {
         // SiteProcedureConnection only has two implementations: Site and MpRoSite.
         // Only SP site has an underlying ExecutionEngine, MpRoSite does not.
         if (m_site instanceof Site) {
-            m_ee = ((Site)m_site).getExecutionEngine();
+            m_ee = ((Site) m_site).getExecutionEngine();
             return m_ee;
         }
         return null;
@@ -262,7 +291,9 @@ public class ProcedureRunner {
     }
 
     /**
-     * Note this fails for Sysprocs that use it in non-coordinating fragment work. Don't.
+     * Note this fails for Sysprocs that use it in non-coordinating fragment work.
+     * Don't.
+     * 
      * @return The transaction id for determinism, not for ordering.
      */
     long getTransactionId() {
@@ -281,7 +312,7 @@ public class ProcedureRunner {
      * Wraps coreCall
      */
     public ClientResponseImpl call(Object[] paramListIn, boolean returnResults,
-                                   boolean keepParamsImmutable) {
+            boolean keepParamsImmutable) {
         return call(true, paramListIn, returnResults, keepParamsImmutable);
     }
 
@@ -293,21 +324,24 @@ public class ProcedureRunner {
     }
 
     /**
-     * Wraps coreCall with statistics code and allows the caller to choose if the determinism hash is reset prior to
+     * Wraps coreCall with statistics code and allows the caller to choose if the
+     * determinism hash is reset prior to
      * calling the procedure.
      * <p>
-     * NOTE: {@code resetHash} should almost always be true unless this a subsequent execution of the procedure in a
+     * NOTE: {@code resetHash} should almost always be true unless this a subsequent
+     * execution of the procedure in a
      * batch procedure call
      *
-     * @param resetHash   if {@code true} {@link #m_determinismHash} will be reset prior to the procedure call
-     * @param paramListIn array of parameters to pass to the procedure
+     * @param resetHash     if {@code true} {@link #m_determinismHash} will be reset
+     *                      prior to the procedure call
+     * @param paramListIn   array of parameters to pass to the procedure
      * @param returnResults if it is true, return result tables in the response
      * @return result of the procedure being invoked
      */
     private ClientResponseImpl call(boolean resetHash,
-                                    Object[] paramListIn,
-                                    boolean returnResults,
-                                    boolean keepParamsImmutable) {
+            Object[] paramListIn,
+            boolean returnResults,
+            boolean keepParamsImmutable) {
         m_perCallStats = m_statsCollector.beginProcedure();
 
         // if we're keeping track, calculate parameter size
@@ -335,22 +369,82 @@ public class ProcedureRunner {
      * @return Custom batch timeout value or 0 if there isn't one.
      */
     private int getBatchTimeout() {
-        return m_txnState == null ? 0 :
-            m_txnState.getInvocation() == null ? 0 :
-                m_txnState.getInvocation().getBatchTimeout();
+        return m_txnState == null ? 0
+                : m_txnState.getInvocation() == null ? 0 : m_txnState.getInvocation().getBatchTimeout();
+    }
+    private ByteBuffer VMReadbuffer = null;
+    //private byte[] outBytes = new byte[1024];
+    private Object handleVMProcedureCall(Object[] paramList) throws IOException,ClassNotFoundException {
+
+        // try {
+        //     org.nustaq.serialization.FSTObjectOutput objectOutput = fstConf.get().getObjectOutput();
+        //     objectOutput.writeObject(m_procedureClassName);
+        //     objectOutput.writeObject(paramList);
+        ((Site) m_site).getInterVMMessagingProtocol().writeProcedureCallRequestMessage(fstConf.get().asByteArray(new VMProcedureCall(m_procedureClassName, paramList)));
+        //((Site) m_site).getInterVMMessagingProtocol()
+        //    .writeProcedureCallRequestMessage(m_procedureClassName, fstConf.get().asByteArray(paramList)); 
+        InterVMMessage oldMessage = null;
+        while (true) {
+            InterVMMessage msg = ((Site) m_site).getInterVMMessagingProtocol().getNextMessage(oldMessage, VMReadbuffer);
+            //System.out.printf("Recv message of type %d \n", msg.type);
+            if (msg.type == InterVMMessage.kProcedureCallRespReturnVoid) {
+                return null;
+            } else if (msg.type == InterVMMessage.kProcedureCallRespReturnObject) {
+                return fstConf.get().asObject(msg.data.array());
+            } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTables) {
+                return (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
+            } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTable) {
+                VoltTable[] tables = (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
+                assert tables.length == 1;
+                return tables[0];
+            } else if (msg.type == InterVMMessage.kProcedureCallSQLQueryReq) {
+                org.nustaq.serialization.FSTObjectInput objectsInput = fstConf.get().getObjectInput(msg.data.array(), msg.data.limit());
+
+                boolean isFinalSQL = (Boolean)objectsInput.readObject();
+                List<String> sqlStmtVarNames = (List<String>)objectsInput.readObject();
+                List<Object[]> sqlParams = (List<Object[]>)objectsInput.readObject();
+                //objectsInput.close();
+                //System.out.printf("Recv message of type InterVMMessage.kProcedureCallSQLQueryReq\n");
+                // int isFinalSQL = msg.data.getInt();
+                // int queriesLength = msg.data.getInt();
+                // byte[] queries = new byte[queriesLength];
+                // msg.data.get(queries);
+                // int argsLength = msg.data.getInt();
+                // byte[] args = new byte[argsLength];
+                // msg.data.get(args);
+                // List<String> sqlStmtVarNames = (List<String>)fstConf.get().asObject(queries);
+                // List<Object[]> sqlParams = (List<Object[]>)fstConf.get().asObject(args);
+                assert(sqlStmtVarNames.size() == sqlParams.size());
+                //System.out.printf("Recv %d queries\n", sqlStmtVarNames.size());
+                for (int i = 0; i < sqlStmtVarNames.size(); ++i) {
+                    String sqlStmtVarName = sqlStmtVarNames.get(i);
+                    voltQueueSQL(m_stmtMap.get(sqlStmtVarName), null, sqlParams.get(i));
+                }
+                VoltTable[] result = voltExecuteSQL(isFinalSQL);
+                //System.out.printf("Executed %d queries, result has %d tables\n", sqlStmtVarNames.size(), result.length);
+                ((Site) m_site).getInterVMMessagingProtocol().writeExecuteQueryRequestResponse(result);
+            }
+
+            if (msg.data != null) {
+                if (VMReadbuffer == null || msg.data.capacity() > VMReadbuffer.capacity()) {
+                    VMReadbuffer = msg.data;
+                }
+            }
+            oldMessage = msg;
+        }
     }
 
     @SuppressWarnings("finally")
     private ClientResponseImpl coreCall(boolean resetHash,
-                                        Object[] paramListIn,
-                                        boolean returnResults,
-                                        boolean keepParamsImmutable) {
+            Object[] paramListIn,
+            boolean returnResults,
+            boolean keepParamsImmutable) {
         // verify per-txn state has been reset
-        assert(m_statusCode == ClientResponse.SUCCESS);
-        assert(m_statusString == null);
-        assert(m_appStatusCode == ClientResponse.UNINITIALIZED_APP_STATUS_CODE);
-        assert(m_appStatusString == null);
-        assert(m_cachedRNG == null);
+        assert (m_statusCode == ClientResponse.SUCCESS);
+        assert (m_statusString == null);
+        assert (m_appStatusCode == ClientResponse.UNINITIALIZED_APP_STATUS_CODE);
+        assert (m_appStatusString == null);
+        assert (m_cachedRNG == null);
 
         // reset batch context info
         m_batchIndex = -1;
@@ -365,26 +459,28 @@ public class ProcedureRunner {
         Object[] paramList = paramListIn;
 
         if (resetHash) {
-            // catalog version and statement count are part of the CRC, reset them for a new call
+            // catalog version and statement count are part of the CRC, reset them for a new
+            // call
             m_determinismHash.reset(m_site.getSystemProcedureExecutionContext().getCatalogVersion());
         }
 
         ClientResponseImpl retval = null;
         // assert no sql is queued
-        assert(m_batch.size() == 0);
+        assert (m_batch.size() == 0);
 
         try {
             VoltTable[] results = null;
 
             // inject sysproc execution context as the first parameter.
             if (isSystemProcedure()) {
-                // Regardless of what the systemsettings says all sysprocs dont require a copy of the parameter.
+                // Regardless of what the systemsettings says all sysprocs dont require a copy
+                // of the parameter.
                 // If you write a new sysproc that modifies param you are doing it wrong.
                 keepParamsImmutable = false;
                 final Object[] combinedParams = new Object[paramList.length + 1];
                 combinedParams[0] = m_site.getSystemProcedureExecutionContext();
-                for (int i=0; i < paramList.length; ++i) {
-                    combinedParams[i+1] = paramList[i];
+                for (int i = 0; i < paramList.length; ++i) {
+                    combinedParams[i + 1] = paramList[i];
                 }
                 // swap the lists.
                 paramList = combinedParams;
@@ -392,16 +488,17 @@ public class ProcedureRunner {
 
             if (paramList.length != m_paramTypes.length) {
                 String msg = "PROCEDURE " + m_procedureName + " EXPECTS " + String.valueOf(m_paramTypes.length) +
-                    " PARAMS, BUT RECEIVED " + String.valueOf(paramList.length);
+                        " PARAMS, BUT RECEIVED " + String.valueOf(paramList.length);
                 m_statusCode = ClientResponse.GRACEFUL_FAILURE;
                 return getErrorResponse(m_statusCode, m_appStatusCode, m_appStatusString, msg, null);
             }
 
             for (int i = 0; i < m_paramTypes.length; i++) {
                 try {
-                    paramList[i] = ParameterConverter.tryToMakeCompatible(m_paramTypes[i], paramList[i], keepParamsImmutable);
+                    paramList[i] = ParameterConverter.tryToMakeCompatible(m_paramTypes[i], paramList[i],
+                            keepParamsImmutable);
                     // check the result type in an assert
-                    assert(ParameterConverter.verifyParameterConversion(paramList[i], m_paramTypes[i]));
+                    assert (ParameterConverter.verifyParameterConversion(paramList[i], m_paramTypes[i]));
                 } catch (Exception e) {
                     String msg = "PROCEDURE " + m_procedureName + " TYPE ERROR FOR PARAMETER " + i +
                             ": " + e.toString();
@@ -414,53 +511,71 @@ public class ProcedureRunner {
             if (m_hasJava) {
                 try {
                     if (HOST_TRACE_ENABLED) {
-                        log.trace("invoking... procMethod=" + m_procMethod.getName() + ", class=" + m_procMethod.getDeclaringClass().getName());
+                        log.trace("invoking... procMethod=" + m_procMethod.getName() + ", class="
+                                + m_procMethod.getDeclaringClass().getName());
                     }
-                    try {
-                        Object rawResult = m_procMethod.invoke(m_procedure, paramList);
-                        if (returnResults) {
-                            results = ParameterConverter.getResultsFromRawResults(m_procedureName, rawResult);
+                    if (m_site instanceof Site && m_procedure instanceof VoltVMProcedure) {
+                        try {
+                            //((Site) m_site).getInterVMMessagingProtocol().pingpong();
+                            //Object rawResult = m_procMethod.invoke(m_procedure, paramList);
+                            Object rawResult = handleVMProcedureCall(paramList);
+                            if (returnResults) {
+                                results = ParameterConverter.getResultsFromRawResults(m_procedureName, rawResult);
+                            }
+                        } catch (Exception e) {
+                            // If reflection fails, invoke the same error handling that other exceptions do
+                            e.printStackTrace();
+                            throw new InvocationTargetException(e);
                         }
-                    } catch (IllegalAccessException e) {
-                        // If reflection fails, invoke the same error handling that other exceptions do
-                        throw new InvocationTargetException(e);
+                    } else {
+                        try {
+                            Object rawResult = m_procMethod.invoke(m_procedure, paramList);
+                            if (returnResults) {
+                                results = ParameterConverter.getResultsFromRawResults(m_procedureName, rawResult);
+                            }
+                        } catch (IllegalAccessException e) {
+                            // If reflection fails, invoke the same error handling that other exceptions do
+                            throw new InvocationTargetException(e);
+                        }
                     }
+                    //System.out.println("calling " + m_procedureClassName);
                     log.trace("invoked");
-                }
-                catch (InvocationTargetException itex) {
+                } catch (InvocationTargetException itex) {
                     Throwable ex = itex.getCause();
                     if (CoreUtils.isStoredProcThrowableFatalToServer(ex)) {
-                        // If the stored procedure attempted to do something other than linklibraray or instantiate
-                        // a missing object that results in an error, throw the error and let the server deal with
+                        // If the stored procedure attempted to do something other than linklibraray or
+                        // instantiate
+                        // a missing object that results in an error, throw the error and let the server
+                        // deal with
                         // the condition as best as it can (usually a crashLocalVoltDB).
                         try {
                             m_statsCollector.endProcedure(false, true, m_perCallStats);
-                        }
-                        finally {
+                        } finally {
                             // allow the GC to collect per-call stats if this proc isn't called for a while
                             m_perCallStats = null;
                             // Ensure that ex is always re-thrown even if endProcedure throws an exception.
-                            throw (Error)ex;
+                            throw (Error) ex;
                         }
                     }
 
                     retval = getErrorResponse(m_procedureName,
-                                              m_isReadOnly,
-                                              getBatchTimeout(),
-                                              m_appStatusCode,
-                                              m_appStatusString,
-                                              getNonVoltDBBackendIfExists(),
-                                              ex);
+                            m_isReadOnly,
+                            getBatchTimeout(),
+                            m_appStatusCode,
+                            m_appStatusString,
+                            getNonVoltDBBackendIfExists(),
+                            ex);
                 }
             }
             // single statement only work - now extended to multiple statements
             // (this could be made faster, but with less code re-use)
             else {
-                 assert(m_catProc.getStatements().size() >= 1);
+                assert (m_catProc.getStatements().size() >= 1);
                 int curParamOffset = 0;
                 try {
                     // get all the statements and their corresponding parameters
-                    // the parameter offset ensures the right parameters are obtained for each statement
+                    // the parameter offset ensures the right parameters are obtained for each
+                    // statement
                     for (int i = 0; i < m_catProc.getStatements().size(); i++) {
                         QueuedSQL curStmt = m_sqlStmts.get(i);
                         int numStmtParams = curStmt.stmt.statementParamTypes.length;
@@ -484,12 +599,12 @@ public class ProcedureRunner {
                     }
                 } catch (SerializableException ex) {
                     retval = getErrorResponse(m_procedureName,
-                                              m_isReadOnly,
-                                              getBatchTimeout(),
-                                              m_appStatusCode,
-                                              m_appStatusString,
-                                              getNonVoltDBBackendIfExists(),
-                                              ex);
+                            m_isReadOnly,
+                            getBatchTimeout(),
+                            m_appStatusCode,
+                            m_appStatusString,
+                            getNonVoltDBBackendIfExists(),
+                            ex);
                 }
             }
 
@@ -497,7 +612,8 @@ public class ProcedureRunner {
             if (results == null) {
                 results = new VoltTable[0];
             } else if (results.length > Short.MAX_VALUE) {
-                String statusString = "Stored procedure returns too much data. Exceeded maximum number of VoltTables: " + Short.MAX_VALUE;
+                String statusString = "Stored procedure returns too much data. Exceeded maximum number of VoltTables: "
+                        + Short.MAX_VALUE;
                 retval = new ClientResponseImpl(
                         ClientResponse.GRACEFUL_FAILURE,
                         ClientResponse.GRACEFUL_FAILURE,
@@ -515,7 +631,8 @@ public class ProcedureRunner {
                         m_statusString);
             }
 
-            // Even when the transaction fails, the computed hashes are valuable for diagnostic purpose,
+            // Even when the transaction fails, the computed hashes are valuable for
+            // diagnostic purpose,
             // so always return the hashes.
             int[] hashes = m_determinismHash.get();
             retval.setHashes(hashes);
@@ -524,7 +641,7 @@ public class ProcedureRunner {
             // garbage collected and that the queue will be empty for
             // the next call
             m_batch.clear();
-            for ( QueuedSQL stmt: m_sqlStmts ) {
+            for (QueuedSQL stmt : m_sqlStmts) {
                 stmt.params = null;
                 stmt.expectation = null;
             }
@@ -548,6 +665,7 @@ public class ProcedureRunner {
 
     /**
      * Check if the txn hashes to this partition. If not, it should be restarted.
+     * 
      * @param txnState
      * @return true if the txn hashes to the current partition, false otherwise
      */
@@ -559,15 +677,18 @@ public class ProcedureRunner {
      * Check if the partition parameter hashes to this partition
      *
      * @param txnState           current {@link TransactionState}
-     * @param hashinator         current {@link TheHashinator} to be used to calculate the partition
-     * @param parameterRetriever {@link IntFunction} to retrieve parameters that are part of the invocation
+     * @param hashinator         current {@link TheHashinator} to be used to
+     *                           calculate the partition
+     * @param parameterRetriever {@link IntFunction} to retrieve parameters that are
+     *                           part of the invocation
      * @return {@code true} if the partition parameter matches this partition
      */
     public boolean checkPartition(TransactionState txnState, TheHashinator hashinator,
             IntFunction<Object> parameterRetriever) {
         if (m_isSinglePartition) {
             if (m_partitionColumn == -1) {
-                // Procedure doesn't have a partition column so this is always the correct partition
+                // Procedure doesn't have a partition column so this is always the correct
+                // partition
                 return true;
             }
             // can happen when a proc changes from multi-to-single after it's routed
@@ -609,8 +730,10 @@ public class ProcedureRunner {
 
             // Note that @LoadSinglepartitionTable has problems if the parititoning param
             // uses integers as bytes and isn't padded to 8b or using the right byte order.
-            // Since this is not exposed to users, we're ok for now. The right fix is to probably
-            // accept the right partitioning type from the user, then rewrite the params internally
+            // Since this is not exposed to users, we're ok for now. The right fix is to
+            // probably
+            // accept the right partitioning type from the user, then rewrite the params
+            // internally
             // before we initiate the proc (like adhocs).
 
             try {
@@ -647,11 +770,14 @@ public class ProcedureRunner {
                 throw new ExpectedProcedureException("Multi-partition procedure routed to single-partition initiator");
             }
 
-            // For n-partition transactions, we need to rehash the partitioning values and check
+            // For n-partition transactions, we need to rehash the partitioning values and
+            // check
             // if they still hash to the assigned partitions.
             //
-            // Note that when n-partition transaction runs, it's run on the MPI site, so calling
-            // m_site.getCorrespondingPartitionId() will return the MPI's partition ID. We need
+            // Note that when n-partition transaction runs, it's run on the MPI site, so
+            // calling
+            // m_site.getCorrespondingPartitionId() will return the MPI's partition ID. We
+            // need
             // another way of getting what partitions were assigned to this transaction.
             return true;
         }
@@ -662,7 +788,7 @@ public class ProcedureRunner {
     }
 
     public TransactionState getTxnState() {
-        assert(m_isSysProc);
+        assert (m_isSysProc);
         return m_txnState;
     }
 
@@ -685,15 +811,15 @@ public class ProcedureRunner {
     public void setProcNameToLoadForFragmentTasks(String procName) {
         if (procName != null) {
             m_procNameToLoadForFragmentTasks = procName.getBytes(Charsets.UTF_8);
-        }
-        else {
+        } else {
             m_procNameToLoadForFragmentTasks = null;
         }
     }
 
     /*
      * Extract the timestamp from the timestamp field we have been passing around
-     * that is now a unique id with a timestamp encoded in the most significant bits ala
+     * that is now a unique id with a timestamp encoded in the most significant bits
+     * ala
      * a pre-IV2 transaction id.
      */
     public Date getTransactionTime() {
@@ -701,9 +827,12 @@ public class ProcedureRunner {
     }
 
     /*
-     * The timestamp field is no longer really a timestamp, it is a unique id that is time based
-     * and is similar to a pre-IV2 transaction ID except the less significant bits are set
-     * to allow matching partition counts with IV2. It's OK, still can do 512k txns/second per
+     * The timestamp field is no longer really a timestamp, it is a unique id that
+     * is time based
+     * and is similar to a pre-IV2 transaction ID except the less significant bits
+     * are set
+     * to allow matching partition counts with IV2. It's OK, still can do 512k
+     * txns/second per
      * partition so plenty of headroom.
      */
     public long getUniqueId() {
@@ -722,7 +851,8 @@ public class ProcedureRunner {
             throw new IllegalArgumentException("SQLStmt parameter to voltQueueSQL(..) was null.");
         }
         if (stmt.statementParamTypes == null) {
-            // reflected SQLStmt is not initialized, this means the SQLStmt is not declared as public final StmtSQL
+            // reflected SQLStmt is not initialized, this means the SQLStmt is not declared
+            // as public final StmtSQL
             throw new IllegalArgumentException("SQLStmt is not declared as final or initialized at compile time.");
         }
 
@@ -747,7 +877,7 @@ public class ProcedureRunner {
                 throw new VoltAbortException("Attempted to queue DML adhoc sql '" + sql + "' from read only procedure");
             }
 
-            assert(1 == batch.plannedStatements.size());
+            assert (1 == batch.plannedStatements.size());
 
             QueuedSQL queuedSQL = new QueuedSQL();
             AdHocPlannedStatement plannedStatement = batch.plannedStatements.get(0);
@@ -923,7 +1053,7 @@ public class ProcedureRunner {
     }
 
     public byte[] voltLoadTable(String tableName, VoltTable data, LoadTableCaller caller)
-                    throws VoltAbortException {
+            throws VoltAbortException {
         if (data == null || data.getRowCount() == 0) {
             return null;
         }
@@ -949,7 +1079,7 @@ public class ProcedureRunner {
     }
 
     private void throwIfInfeasibleTypeConversion(SQLStmt stmt, Class<?> argClass, int argInd,
-                                                 VoltType expectedType) {
+            VoltType expectedType) {
         if (argClass.isArray()) {
             // The statement parameter model doesn't currently support a
             // general concept of an array-typed parameter. Instead, it
@@ -1007,11 +1137,11 @@ public class ProcedureRunner {
         String argTypeName = argClass.getSimpleName();
         String preferredType = expectedType.getMostCompatibleJavaTypeName();
 
-        throw new VoltTypeException( "Procedure " + m_procedureName +
-                        ": Incompatible parameter type: can not convert type '" + argTypeName +
-                        "' to '" + expectedType.getName() + "' for arg " + argInd +
-                        " for SQL stmt: " + stmt.getText() + "." +
-                        " Try explicitly using a " + preferredType + " parameter.");
+        throw new VoltTypeException("Procedure " + m_procedureName +
+                ": Incompatible parameter type: can not convert type '" + argTypeName +
+                "' to '" + expectedType.getName() + "' for arg " + argInd +
+                " for SQL stmt: " + stmt.getText() + "." +
+                " Try explicitly using a " + preferredType + " parameter.");
     }
 
     private final ParameterSet getCleanParams(SQLStmt stmt, boolean verifyTypeConv, Object... inArgs) {
@@ -1029,7 +1159,7 @@ public class ProcedureRunner {
             // handle non-null values
             if (inArgs[ii] != null) {
                 args[ii] = inArgs[ii];
-                assert(type != VoltType.INVALID);
+                assert (type != VoltType.INVALID);
                 if (verifyTypeConv && type != VoltType.INVALID) {
                     throwIfInfeasibleTypeConversion(stmt, args[ii].getClass(), ii, type);
                 }
@@ -1038,43 +1168,43 @@ public class ProcedureRunner {
 
             // handle null values
             switch (type) {
-            case TINYINT:
-                args[ii] = Byte.MIN_VALUE;
-                break;
-            case SMALLINT:
-                args[ii] = Short.MIN_VALUE;
-                break;
-            case INTEGER:
-                args[ii] = Integer.MIN_VALUE;
-                break;
-            case BIGINT:
-                args[ii] = Long.MIN_VALUE;
-                break;
-            case FLOAT:
-                args[ii] = VoltType.NULL_FLOAT;
-                break;
-            case TIMESTAMP:
-                args[ii] = new TimestampType(Long.MIN_VALUE);
-                break;
-            case STRING:
-                args[ii] = VoltType.NULL_STRING_OR_VARBINARY;
-                break;
-            case VARBINARY:
-                args[ii] = VoltType.NULL_STRING_OR_VARBINARY;
-                break;
-            case DECIMAL:
-                args[ii] = VoltType.NULL_DECIMAL;
-                break;
-            case GEOGRAPHY_POINT:
-                args[ii] = VoltType.NULL_POINT;
-                break;
-            case GEOGRAPHY:
-                args[ii] = VoltType.NULL_GEOGRAPHY;
-                break;
-            default:
-                throw new VoltAbortException(
-                        "Unknown type " + type + " can not be converted to NULL representation for arg " + ii
-                                + " for SQL stmt: " + stmt.getText());
+                case TINYINT:
+                    args[ii] = Byte.MIN_VALUE;
+                    break;
+                case SMALLINT:
+                    args[ii] = Short.MIN_VALUE;
+                    break;
+                case INTEGER:
+                    args[ii] = Integer.MIN_VALUE;
+                    break;
+                case BIGINT:
+                    args[ii] = Long.MIN_VALUE;
+                    break;
+                case FLOAT:
+                    args[ii] = VoltType.NULL_FLOAT;
+                    break;
+                case TIMESTAMP:
+                    args[ii] = new TimestampType(Long.MIN_VALUE);
+                    break;
+                case STRING:
+                    args[ii] = VoltType.NULL_STRING_OR_VARBINARY;
+                    break;
+                case VARBINARY:
+                    args[ii] = VoltType.NULL_STRING_OR_VARBINARY;
+                    break;
+                case DECIMAL:
+                    args[ii] = VoltType.NULL_DECIMAL;
+                    break;
+                case GEOGRAPHY_POINT:
+                    args[ii] = VoltType.NULL_POINT;
+                    break;
+                case GEOGRAPHY:
+                    args[ii] = VoltType.NULL_GEOGRAPHY;
+                    break;
+                default:
+                    throw new VoltAbortException(
+                            "Unknown type " + type + " can not be converted to NULL representation for arg " + ii
+                                    + " for SQL stmt: " + stmt.getText());
             }
         }
         return ParameterSet.fromArrayNoCopy(args);
@@ -1198,6 +1328,7 @@ public class ProcedureRunner {
         }
 
         ArrayList<String> stmtNames = new ArrayList<String>(stmtMap.entrySet().size());
+        
         for (final Entry<String, SQLStmt> entry : stmtMap.entrySet()) {
             String name = entry.getKey();
             stmtNames.add(name);
@@ -1209,6 +1340,7 @@ public class ProcedureRunner {
             entry.getValue().setStmtName(name);
             Statement s = m_catProc.getStatements().get(name);
             if (s != null) {
+                
                 /*
                  * Cache all the information we need about the statements in this stored
                  * procedure locally instead of pulling them from the catalog on
@@ -1217,7 +1349,8 @@ public class ProcedureRunner {
                 SQLStmt stmt = entry.getValue();
                 // done in a static method in an abstract class so users don't call it
                 initSQLStmt(stmt, s);
-                //LOG.fine("Found statement " + name);
+                // LOG.fine("Found statement " + name);
+                m_stmtMap.put(name, stmt);
             }
         }
         return stmtNames;
@@ -1225,8 +1358,9 @@ public class ProcedureRunner {
 
     /**
      * Test whether or not the given stack frame is within a procedure invocation
+     * 
      * @param procedureName name of the procedure
-     * @param stel a stack trace element
+     * @param stel          a stack trace element
      * @return true if it is, false it is not
      */
     public static boolean isProcedureStackTraceElement(String procedureName, StackTraceElement stel) {
@@ -1251,12 +1385,12 @@ public class ProcedureRunner {
      * @return A ClientResponse containing error information
      */
     public static ClientResponseImpl getErrorResponse(String procedureName,
-                                                      boolean readOnly,
-                                                      int individualTimeout,
-                                                      byte appStatus,
-                                                      String appStatusString,
-                                                      NonVoltDBBackend nonVoltDBBackend,
-                                                      Throwable e) {
+            boolean readOnly,
+            int individualTimeout,
+            byte appStatus,
+            String appStatusString,
+            NonVoltDBBackend nonVoltDBBackend,
+            Throwable e) {
         boolean expected_failure = true;
 
         byte status = ClientResponse.UNEXPECTED_FAILURE;
@@ -1328,7 +1462,7 @@ public class ProcedureRunner {
 
     protected static ClientResponseImpl getErrorResponse(byte status, byte appStatus, String appStatusString,
             String msg, SerializableException e) {
-        ClientResponseImpl response =  new ClientResponseImpl(
+        ClientResponseImpl response = new ClientResponseImpl(
                 status,
                 appStatus,
                 appStatusString,
@@ -1338,7 +1472,7 @@ public class ProcedureRunner {
             e.setClientResponseResults(response);
         }
 
-       return response;
+        return response;
     }
 
     final private VoltTable[] convertTablesToHeapBuffers(VoltTable[] results) {
@@ -1445,14 +1579,16 @@ public class ProcedureRunner {
 
             // the data and message for locally processed fragments
             m_localTask = new FragmentTaskMessage(m_txnState.initiatorHSId, siteId, m_txnState.txnId,
-                    m_txnState.uniqueId, m_txnState.isReadOnly(), false, txnState.isForReplay(), txnState.isNPartTxn(), txnState.getTimetamp());
+                    m_txnState.uniqueId, m_txnState.isReadOnly(), false, txnState.isForReplay(), txnState.isNPartTxn(),
+                    txnState.getTimetamp());
             m_localTask.setProcedureName(procedureName);
             m_localTask.setBatchTimeout(m_txnState.getInvocation().getBatchTimeout());
             m_localTask.setPerFragmentStatsRecording(perFragmentStatsRecording);
 
             // the data and message for all sites in the transaction
             m_distributedTask = new FragmentTaskMessage(m_txnState.initiatorHSId, siteId, m_txnState.txnId,
-                    m_txnState.uniqueId, m_txnState.isReadOnly(), finalTask, txnState.isForReplay(), txnState.isNPartTxn(), txnState.getTimetamp());
+                    m_txnState.uniqueId, m_txnState.isReadOnly(), finalTask, txnState.isForReplay(),
+                    txnState.isNPartTxn(), txnState.getTimetamp());
             m_distributedTask.setProcedureName(procedureName);
             // this works fine if procToLoad is NULL
             m_distributedTask.setProcNameToLoad(procToLoad);
@@ -1513,8 +1649,8 @@ public class ProcedureRunner {
      * Execute a batch of homogeneous queries, i.e. all reads or all writes.
      */
     VoltTable[] executeSlowHomogeneousBatch(final List<QueuedSQL> batch, final boolean finalTask) {
-        MpTransactionState txnState = (MpTransactionState)m_txnState;
-        assert(txnState != null);
+        MpTransactionState txnState = (MpTransactionState) m_txnState;
+        assert (txnState != null);
         long perPartitionMaxResponse = m_site.getMaxTotalMpResponseSize() / txnState.getMasterHSIDs().size();
         BatchState state = new BatchState(batch.size(), txnState, m_site.getCorrespondingSiteId(), finalTask,
                 m_procedureName, m_procNameToLoadForFragmentTasks, m_perCallStats.samplingStmts(),
