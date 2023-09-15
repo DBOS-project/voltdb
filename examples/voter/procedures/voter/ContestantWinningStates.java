@@ -30,13 +30,13 @@ package voter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-
 import org.voltdb.SQLStmt;
-import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltType;
+import org.voltdb.VoltVMProcedure;
 
-public class ContestantWinningStates extends VoltProcedure
+
+public class ContestantWinningStates extends VoltVMProcedure
 {
     public final SQLStmt resultStmt = new SQLStmt(
             "SELECT contestant_number, state, SUM(num_votes) AS num_votes " +

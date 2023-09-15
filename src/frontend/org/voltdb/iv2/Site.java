@@ -23,6 +23,7 @@ import com.google_voltpatches.common.collect.Lists;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.HashMap;
@@ -904,8 +905,36 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         System.out.printf("This core %d received dual_qemu_pid %d, lapic id %d\n", coreId, i.VMPid, i.VMCoreId);
     }
 
+
+    ArrayDeque<SiteTasker> stagedTasks = new ArrayDeque<>();
+    public ArrayDeque<SiteTasker> getStagedTasks() {
+        return stagedTasks;
+    }
+
+    public SiteTasker peekPendingTasks() {
+        SiteTasker task = m_pendingSiteTasks.peek();
+        return task;
+    }
+    static final int stageTaskMaxNum = 300;
+    public boolean tryQueueOneSPTaskInVM(boolean notify) {
+        if (stagedTasks.size() >= stageTaskMaxNum) {
+            return false;
+        }
+        SiteTasker task = m_pendingSiteTasks.poll();
+        if (task instanceof SpProcedureTask) {
+            ((SpProcedureTask)task).queueSPInVM(this, notify);
+        }
+        if (task != null) {
+            stagedTasks.offer(task);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     @Override
     final public void run() {
+        
         if (m_partitionId == MpInitiator.MP_INIT_PID) {
             Thread.currentThread().setName("MP Site - " + CoreUtils.hsIdToString(m_siteId));
         } else {
@@ -915,7 +944,6 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
             PosixJNAAffinity.INSTANCE.setAffinity(m_coreBindIds);
         }
         initialize();
-        System.out.printf("Site %d with VM PID %d pv_accel=%b started to sync with SP VM\n", m_siteId, VMPid, getInterVMMessagingProtocol().PVAccelerationenabled());
         if (getInterVMMessagingProtocol().PVAccelerationenabled()) {
             coreIdBound = coreIdCounter.incrementAndGet() - 1;
             int ret = ExecutionEngine.DBOSBindCurrentThreadToCore(coreIdBound);
@@ -928,6 +956,7 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
             VMPid = ExecutionEngine.DBOSPVGetVMId(hypervisorFd);
             exchangeVMInfo(VMPid, coreIdBound);
         }
+        System.out.printf("Site %d with VM PID %d pv_accel=%b started to sync with SP VM\n", m_siteId, VMPid, getInterVMMessagingProtocol().PVAccelerationenabled());
 
         getInterVMMessagingProtocol().pingpongTest();
         System.out.printf("Site %d synced with VM\n", m_siteId);
@@ -937,11 +966,17 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         // Maintain a minimum ratio of task log (unrestricted) to live (restricted)
         // transactions
         final MinimumRatioMaintainer mrm = new MinimumRatioMaintainer(m_taskLogReplayRatio);
+        int count = 0;
         try {
             while (m_shouldContinue) {
                 if (m_runningState.isRunning()) {
                     // Normal operation blocks the site thread on the sitetasker queue.
-                    SiteTasker task = m_pendingSiteTasks.take();
+                    
+                    if (stagedTasks.isEmpty()) {
+                        stagedTasks.offer(m_pendingSiteTasks.take());
+                    }
+                    SiteTasker task = stagedTasks.poll();
+                    //SiteTasker task = m_pendingSiteTasks.take();
                     if (task instanceof TransactionTask) {
                         m_currentTxnId = ((TransactionTask) task).getTxnId();
                         m_lastTxnTime = EstTime.currentTimeMillis();
@@ -1764,6 +1799,9 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         m_loadedProcedures.loadProcedures(m_context, isReplay);
         m_ee.loadFunctions(m_context);
 
+        getInterVMMessagingProtocol().writeCatalogUpdateRequestMessage(m_context.m_catalogInfo);
+        getInterVMMessagingProtocol().readCatalogUpdateResponseMessage();
+        
         Cluster newCluster = m_context.catalog.getClusters().get("cluster");
         if (isMPI) {
             m_tickProducer.changeTickInterval(newCluster.getGlobalflushinterval());
@@ -1828,9 +1866,6 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
             generateDREvent(EventType.CATALOG_UPDATE, txnId, uniqueId, m_lastCommittedSpHandle,
                     spHandle, catalogCommands.commands.getBytes(Charsets.UTF_8));
         }
-
-        getInterVMMessagingProtocol().writeCatalogUpdateRequestMessage(m_context.m_catalogInfo);
-        getInterVMMessagingProtocol().readCatalogUpdateResponseMessage();
 
         return true;
     }

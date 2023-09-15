@@ -23,6 +23,8 @@
 
 package bankoffers;
 
+import com.google_voltpatches.common.collect.ConcurrentHashMultiset;
+import com.google_voltpatches.common.collect.Multiset;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -30,7 +32,6 @@ import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.CountDownLatch;
-
 import org.voltdb.CLIConfig;
 import org.voltdb.client.Client;
 import org.voltdb.client.ClientConfig;
@@ -42,8 +43,7 @@ import org.voltdb.client.ClientStatusListenerExt;
 import org.voltdb.client.ProcedureCallback;
 import org.voltdb.types.TimestampType;
 
-import com.google_voltpatches.common.collect.ConcurrentHashMultiset;
-import com.google_voltpatches.common.collect.Multiset;
+
 
 public class OfferBenchmark {
 

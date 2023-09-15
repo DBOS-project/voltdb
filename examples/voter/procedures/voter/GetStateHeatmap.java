@@ -27,12 +27,10 @@
 
 package voter;
 
-import java.util.ArrayList;
-
 import org.voltdb.SQLStmt;
-import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
-import org.voltdb.VoltType;
+import org.voltdb.VoltVMProcedure;
+
 
 /**
  * This procedure returns two VoltTables as results.  The first is a list of states,
@@ -40,7 +38,7 @@ import org.voltdb.VoltType;
  * contestant in that state.  The second is a table of contestants and all votes
  * for that contestant globally.
  */
-public class GetStateHeatmap extends VoltProcedure {
+public class GetStateHeatmap extends VoltVMProcedure {
 
     public final SQLStmt stateHeatMap = new SQLStmt(
                                                     "  SELECT state"                                                     +

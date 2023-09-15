@@ -122,6 +122,7 @@ class JavaRunner(object):
         java_args.extend(java_opts)
         java_args.append('-Dlog4j.configuration=file://%s' % self.find_log4j_config())
         java_args.append('-Djava.library.path=default')
+        java_args.append('-XX:+PreserveFramePointer')
         java_args.extend(('-classpath', classpath))
         java_args.append(java_class)
         for arg in args:

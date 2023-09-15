@@ -31,10 +31,10 @@
 package voter;
 
 import org.voltdb.SQLStmt;
-import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
+import org.voltdb.VoltVMProcedure;
 
-public class Vote extends VoltProcedure {
+public class Vote extends VoltVMProcedure {
 
     // potential return codes (synced with client app)
     static final long VOTE_SUCCESSFUL = 0;

@@ -17,17 +17,18 @@
 
 package org.voltdb.types;
 
+import java.io.Serializable;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.TimeZone;
-
 import org.json_voltpatches.JSONString;
 import org.voltdb.common.Constants;
+
 
 /**
  * Represent a microsecond-accurate VoltDB timestamp type.
  */
-public class TimestampType implements JSONString, Comparable<TimestampType> {
+public class TimestampType implements JSONString, Comparable<TimestampType>, Serializable {
     /**
      * Create a TimestampType from microseconds from epoch.
      * @param timestamp microseconds since epoch.

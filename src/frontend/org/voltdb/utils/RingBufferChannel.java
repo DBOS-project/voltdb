@@ -59,23 +59,6 @@ public class RingBufferChannel {
         // is_hypervisor_pv_notification_enabled, core_id, dual_qemu_pid);
     }
 
-    /**
-     * Read and deserialize a byte from the wire.
-     */
-    public byte readByte() throws IOException {
-        final ByteBuffer bytes = ByteBuffer.allocate(1);
-
-        while (bytes.hasRemaining()) {
-            int read = read(bytes);
-            if (read == -1) {
-                throw new EOFException();
-            }
-        }
-        bytes.flip();
-
-        final byte retval = bytes.get();
-        return retval;
-    }
 
     /**
      * Read and deserialize a byte from the wire.
@@ -94,24 +77,6 @@ public class RingBufferChannel {
         return retval;
     }
 
-    /**
-     * Read and deserialize an int from the wire.
-     */
-    public int readInt() throws IOException {
-        final ByteBuffer intBytes = ByteBuffer.allocate(4);
-
-        // resultTablesLengthBytes.order(ByteOrder.LITTLE_ENDIAN);
-        while (intBytes.hasRemaining()) {
-            int read = read(intBytes);
-            if (read == -1) {
-                throw new EOFException();
-            }
-        }
-        intBytes.flip();
-
-        final int retval = intBytes.getInt();
-        return retval;
-    }
 
     /**
      * Read and deserialize an int from the wire.
@@ -131,6 +96,10 @@ public class RingBufferChannel {
         return retval;
     }
 
+    public boolean hasAtLeastNBytesToRead(int n) {
+        return incomingRingBuffer.readableBytes() >= n;
+    }
+
     public int read(ByteBuffer buffer) {
         final int kCountDownCycles = 30;
         int countDown = kCountDownCycles;
@@ -146,6 +115,8 @@ public class RingBufferChannel {
                 countDown = kCountDownCycles;
                 wait_time += t2 - t;
                 wait_count++;
+            } else {
+                //Thread.yield();
             }
         }
         if (hypervisorPVSupport && wait_count % 100000 == 0 &&
@@ -169,7 +140,7 @@ public class RingBufferChannel {
     // }
 
     // UnsafeBuffer writeBuffer = new UnsafeBuffer();
-    public void write(ByteBuffer buffer) {
+    public void write(ByteBuffer buffer, boolean notify) {
         boolean notified = false;
         while (outgoingRingBuffer.writeBytes(buffer) == false) {
             // if (notified == false && is_hypervisor_pv_notification_enabled &&
@@ -177,14 +148,19 @@ public class RingBufferChannel {
             // notify_if_needed();
             // notified = true;
             // }
+            //Thread.yield();
         }
-        if (notified == false && hypervisorPVSupport &&
-            outgoingRingBuffer.getHalted() == 1) {
+        // if (notified == false && hypervisorPVSupport &&
+        //     outgoingRingBuffer.getHalted() == 1 && notify) {
+        if (notified == false && hypervisorPVSupport && notify) {
             long t1 = System.nanoTime();
-            //ExecutionEngine.DBOSPVNotify(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
-            incomingRingBuffer.setHalted(1);
-            ExecutionEngine.DBOSPVNotifyAndWait(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
-            incomingRingBuffer.setHalted(0);
+            //if (incomingRingBuffer.readableBytes() > 0) {
+               ExecutionEngine.DBOSPVNotify(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
+            //} else {
+                // incomingRingBuffer.setHalted(1);
+                // ExecutionEngine.DBOSPVNotifyAndWait(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
+                // incomingRingBuffer.setHalted(0);
+            //}
             long t2 = System.nanoTime();
             notify_count++;
             notify_time += t2 - t1;
@@ -196,5 +172,9 @@ public class RingBufferChannel {
             (double) notify_time / 1000 / ((double) notify_count));
             notify_count = notify_time = 0;
         }
+    }
+
+    public void write(ByteBuffer buffer) {
+        write(buffer, true);
     }
 };

@@ -20,8 +20,6 @@ package org.voltdb.iv2;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.Writer;
-import java.util.concurrent.TimeUnit;
-
 import org.voltcore.messaging.Mailbox;
 import org.voltdb.ClientResponseImpl;
 import org.voltdb.ExpectedProcedureException;
@@ -36,10 +34,20 @@ import org.voltdb.dtxn.TransactionState;
 import org.voltdb.messaging.InitiateResponseMessage;
 import org.voltdb.messaging.Iv2InitiateTaskMessage;
 
+
 abstract public class ProcedureTask extends TransactionTask
 {
     final Mailbox m_initiator;
     final String m_procName;
+    private boolean m_hasBeenQueuedInSPVM = false;
+    public boolean getHasBeenQueuedInSPVM() {
+        return m_hasBeenQueuedInSPVM;
+    }
+
+    public void setQueuedInSPVM() {
+        this.m_hasBeenQueuedInSPVM = true;
+    }
+    
     ProcedureTask(Mailbox initiator, String procName, TransactionState txn,
                   TransactionTaskQueue queue)
     {
@@ -48,6 +56,9 @@ abstract public class ProcedureTask extends TransactionTask
         m_procName = procName;
     }
 
+    public String getProcedureName() {
+        return m_procName;
+    }
     /** Run is invoked by a run-loop to execute this transaction. */
     @Override
     abstract public void run(SiteProcedureConnection siteConnection);
@@ -63,26 +74,30 @@ abstract public class ProcedureTask extends TransactionTask
 
         try {
             Object[] callerParams = null;
-            /*
-             * Parameters are lazily deserialized. We may not find out until now
-             * that the parameter set is corrupt
-             */
-            try {
-                callerParams = taskMessage.getParameters();
-            } catch (RuntimeException e) {
-                Writer result = new StringWriter();
-                PrintWriter pw = new PrintWriter(result);
-                e.printStackTrace(pw);
-                response.setResults(
-                        new ClientResponseImpl(ClientResponse.GRACEFUL_FAILURE,
-                            new VoltTable[] {},
-                                "Exception while deserializing procedure params, procedure="
-                                + m_procName + "\n"
-                                + result.toString()));
-            }
-            if (callerParams == null) {
-                return response;
-            }
+
+            //if (getHasBeenQueuedInSPVM() == false) {
+                /*
+                * Parameters are lazily deserialized. We may not find out until now
+                * that the parameter set is corrupt
+                */
+                try {
+                    callerParams = taskMessage.getParameters();
+                } catch (RuntimeException e) {
+                    Writer result = new StringWriter();
+                    PrintWriter pw = new PrintWriter(result);
+                    e.printStackTrace(pw);
+                    response.setResults(
+                            new ClientResponseImpl(ClientResponse.GRACEFUL_FAILURE,
+                                new VoltTable[] {},
+                                    "Exception while deserializing procedure params, procedure="
+                                    + m_procName + "\n"
+                                    + result.toString()));
+                }
+                if (callerParams == null) {
+                    return response;
+                }
+            //}
+            
 
             ClientResponseImpl cr = null;
             ProcedureRunner runner = siteConnection.getProcedureRunner(m_procName);
@@ -110,7 +125,7 @@ abstract public class ProcedureTask extends TransactionTask
                 boolean keepImmutable = taskMessage.getStoredProcedureInvocation().getKeepParamsImmutable() &&
                                         ( procedureSetting == null || procedureSetting.isCopyparameters() );
                 cr = runner.call(callerParams, (taskMessage.shouldReturnResultTables() || taskMessage.isEveryPartition()),
-                                 keepImmutable);
+                                 keepImmutable, getHasBeenQueuedInSPVM());
 
                 // pass in the first value in the hashes array if it's not null
                 Integer hash = null;

@@ -34,7 +34,7 @@ public class RingByteBuffer {
     // private final static int kReadPosOffset = 0;
     // private final static int kWritePosOffset = 4096;
     // private final static int kIsHaltedOffset = 4096*2;
-    private final static int kMetadataSize = 4096 * 3;
+    private final static int kMetadataSize = 4096;
     private long readPosCached = 0;
     private long writePosCached = 0;
 
@@ -88,12 +88,16 @@ public class RingByteBuffer {
     public boolean readBytes(ByteBuffer buf) {
         int n = buf.remaining();
         long readPos = getReadPos();
-        if (writePosCached - readPos < n) {
-            writePosCached = getWritePos();
-            if (writePosCached - readPos < n) {
-                return false;
-            }
+        long writePos = getWritePos();
+        if (writePos - readPos < n) {
+            return false;
         }
+        // if (writePosCached - readPos < n) {
+        //     writePosCached = getWritePos();
+        //     if (writePosCached - readPos < n) {
+        //         return false;
+        //     }
+        // }
         long realReadPos = readPos % effectiveCapacity;
 
         if (realReadPos + n <= effectiveCapacity) {
@@ -112,12 +116,15 @@ public class RingByteBuffer {
     public boolean writeBytes(ByteBuffer buf) {
         int n = buf.remaining();
         long writePos = getWritePos();
-        if (effectiveCapacity - (writePos - readPosCached) < n) {
-            readPosCached = getReadPos();
-            if (effectiveCapacity - (writePos - readPosCached) < n) {
-                return false;
-            }
+        if (effectiveCapacity - (writePos - getReadPos()) < n) {
+            return false;
         }
+        // if (effectiveCapacity - (writePos - readPosCached) < n) {
+        //     readPosCached = getReadPos();
+        //     if (effectiveCapacity - (writePos - readPosCached) < n) {
+        //         return false;
+        //     }
+        // }
         long realWritePos = writePos % effectiveCapacity;
 
         if (realWritePos + n <= effectiveCapacity) {

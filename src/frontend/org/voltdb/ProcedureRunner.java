@@ -118,6 +118,7 @@ public class ProcedureRunner {
             conf.registerClass(ArrayList.class);
             conf.registerClass(VMProcedureCall.class);
             conf.registerClass(VMInformation.class);
+            conf.registerClass(org.voltdb.types.TimestampType.class);
             conf.setShareReferences(false);
             return conf;
         }
@@ -178,15 +179,22 @@ public class ProcedureRunner {
      */
     private long m_spBigBatchBeginToken;
 
+    private org.nustaq.serialization.FSTConfiguration fstConfLocal = null;
+
     // Used to get around the "abstract" for StmtProcedures.
     // Path of least resistance?
     static class StmtProcedure extends VoltProcedure {
         public final SQLStmt sql = new SQLStmt("TBD");
     }
 
+    public boolean isVMProcedure() {
+        return m_procedure instanceof VoltVMProcedure;
+    }
+
     ProcedureRunner(VoltProcedure procedure,
             SiteProcedureConnection site,
             Procedure catProc) {
+        fstConfLocal = fstConf.get();
         if (catProc.getHasjava() == false) {
             m_procedureName = catProc.getTypeName().intern();
             m_procedureClassName = null;
@@ -308,19 +316,44 @@ public class ProcedureRunner {
         return m_cachedRNG;
     }
 
+    public void queueSPInVM(Object[] paramList, boolean notify) {
+        for (int i = 0; i < m_paramTypes.length; i++) {
+            try {
+                paramList[i] = ParameterConverter.tryToMakeCompatible(m_paramTypes[i], paramList[i],
+                        false);
+                // check the result type in an assert
+                assert (ParameterConverter.verifyParameterConversion(paramList[i], m_paramTypes[i]));
+            } catch (Exception e) {
+                String msg = "PROCEDURE " + m_procedureName + " TYPE ERROR FOR PARAMETER " + i +
+                        ": " + e.toString();
+                e.printStackTrace();
+            }
+        }
+        ((Site) m_site).getInterVMMessagingProtocol().writeProcedureCallRequestMessage(fstConfLocal.asByteArray(new VMProcedureCall(m_procedureClassName, paramList)), notify);
+    }
+
     /**
      * Wraps coreCall
      */
     public ClientResponseImpl call(Object[] paramListIn, boolean returnResults,
-            boolean keepParamsImmutable) {
-        return call(true, paramListIn, returnResults, keepParamsImmutable);
+            boolean keepParamsImmutable, boolean queuedInSPVM) {
+        return call(true, paramListIn, returnResults, keepParamsImmutable, queuedInSPVM);
     }
+
+        /**
+     * Wraps coreCall
+     */
+    public ClientResponseImpl call(Object[] paramListIn, boolean returnResults,
+            boolean keepParamsImmutable) {
+        return call(true, paramListIn, returnResults, keepParamsImmutable, false);
+    }
+
 
     /**
      * Wraps coreCall with statistics code.
      */
     public ClientResponseImpl call(boolean resetHash, Object[] paramListIn) {
-        return call(true, paramListIn, true, false);
+        return call(true, paramListIn, true, false, false);
     }
 
     /**
@@ -341,7 +374,8 @@ public class ProcedureRunner {
     private ClientResponseImpl call(boolean resetHash,
             Object[] paramListIn,
             boolean returnResults,
-            boolean keepParamsImmutable) {
+            boolean keepParamsImmutable,
+            boolean queuedInSPVM) {
         m_perCallStats = m_statsCollector.beginProcedure();
 
         // if we're keeping track, calculate parameter size
@@ -351,7 +385,7 @@ public class ProcedureRunner {
             m_perCallStats.setParameterSize(params.getSerializedSize());
         }
 
-        ClientResponseImpl result = coreCall(resetHash, paramListIn, returnResults, keepParamsImmutable);
+        ClientResponseImpl result = coreCall(resetHash, paramListIn, returnResults, keepParamsImmutable, queuedInSPVM);
 
         // if we're keeping track, calculate result size
         if (m_perCallStats != null) {
@@ -373,24 +407,39 @@ public class ProcedureRunner {
                 : m_txnState.getInvocation() == null ? 0 : m_txnState.getInvocation().getBatchTimeout();
     }
     private ByteBuffer VMReadbuffer = null;
-    //private byte[] outBytes = new byte[1024];
-    private Object handleVMProcedureCall(Object[] paramList) throws IOException,ClassNotFoundException {
-
-        // try {
-        //     org.nustaq.serialization.FSTObjectOutput objectOutput = fstConf.get().getObjectOutput();
-        //     objectOutput.writeObject(m_procedureClassName);
-        //     objectOutput.writeObject(paramList);
-        ((Site) m_site).getInterVMMessagingProtocol().writeProcedureCallRequestMessage(fstConf.get().asByteArray(new VMProcedureCall(m_procedureClassName, paramList)));
-        //((Site) m_site).getInterVMMessagingProtocol()
-        //    .writeProcedureCallRequestMessage(m_procedureClassName, fstConf.get().asByteArray(paramList)); 
+    long queueLengthSum = 0;
+    long queueLengthCnt = 0;
+    long lastRecordingTime = 0;
+    long lastPrintTime = 0;
+    long vmCallCnt = 0;
+    private Object handleVMProcedureCall(Object[] paramList, boolean queuedInSPVM) throws IOException,ClassNotFoundException {
+        if (++vmCallCnt >= 1000) {
+            queueLengthSum += ((Site) m_site).getStagedTasks().size();
+            queueLengthCnt++;
+            lastRecordingTime =  System.nanoTime();
+            if (lastRecordingTime >= lastPrintTime + 5000000000l) {
+                System.out.printf("average queue length %f\n", ((double)queueLengthSum / queueLengthCnt));
+                queueLengthCnt = queueLengthSum = 0;
+                lastPrintTime = System.nanoTime();
+            }
+            vmCallCnt = 0;
+        }
+        if (queuedInSPVM == false) {
+            ((Site) m_site).getInterVMMessagingProtocol().writeProcedureCallRequestMessage(fstConfLocal.asByteArray(new VMProcedureCall(m_procedureClassName, paramList)), true);
+        }
         InterVMMessage oldMessage = null;
         while (true) {
+            while (((Site) m_site).getInterVMMessagingProtocol().hasMessage() == false) {
+                if (((Site) m_site).tryQueueOneSPTaskInVM(false) == false) {
+                    break;
+                }
+            }
             InterVMMessage msg = ((Site) m_site).getInterVMMessagingProtocol().getNextMessage(oldMessage, VMReadbuffer);
             //System.out.printf("Recv message of type %d \n", msg.type);
             if (msg.type == InterVMMessage.kProcedureCallRespReturnVoid) {
                 return null;
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnObject) {
-                return fstConf.get().asObject(msg.data.array());
+                return fstConfLocal.asObject(msg.data.array());
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTables) {
                 return (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTable) {
@@ -398,31 +447,22 @@ public class ProcedureRunner {
                 assert tables.length == 1;
                 return tables[0];
             } else if (msg.type == InterVMMessage.kProcedureCallSQLQueryReq) {
-                org.nustaq.serialization.FSTObjectInput objectsInput = fstConf.get().getObjectInput(msg.data.array(), msg.data.limit());
+                org.nustaq.serialization.FSTObjectInput objectsInput = fstConfLocal.getObjectInput(msg.data.array(), msg.data.limit());
 
                 boolean isFinalSQL = (Boolean)objectsInput.readObject();
+                boolean ignoreResults = (Boolean)objectsInput.readObject();
                 List<String> sqlStmtVarNames = (List<String>)objectsInput.readObject();
                 List<Object[]> sqlParams = (List<Object[]>)objectsInput.readObject();
-                //objectsInput.close();
-                //System.out.printf("Recv message of type InterVMMessage.kProcedureCallSQLQueryReq\n");
-                // int isFinalSQL = msg.data.getInt();
-                // int queriesLength = msg.data.getInt();
-                // byte[] queries = new byte[queriesLength];
-                // msg.data.get(queries);
-                // int argsLength = msg.data.getInt();
-                // byte[] args = new byte[argsLength];
-                // msg.data.get(args);
-                // List<String> sqlStmtVarNames = (List<String>)fstConf.get().asObject(queries);
-                // List<Object[]> sqlParams = (List<Object[]>)fstConf.get().asObject(args);
                 assert(sqlStmtVarNames.size() == sqlParams.size());
-                //System.out.printf("Recv %d queries\n", sqlStmtVarNames.size());
                 for (int i = 0; i < sqlStmtVarNames.size(); ++i) {
                     String sqlStmtVarName = sqlStmtVarNames.get(i);
                     voltQueueSQL(m_stmtMap.get(sqlStmtVarName), null, sqlParams.get(i));
                 }
                 VoltTable[] result = voltExecuteSQL(isFinalSQL);
+                if (ignoreResults == false) {
+                    ((Site) m_site).getInterVMMessagingProtocol().writeExecuteQueryRequestResponse(result, true);    
+                }
                 //System.out.printf("Executed %d queries, result has %d tables\n", sqlStmtVarNames.size(), result.length);
-                ((Site) m_site).getInterVMMessagingProtocol().writeExecuteQueryRequestResponse(result);
             }
 
             if (msg.data != null) {
@@ -438,7 +478,8 @@ public class ProcedureRunner {
     private ClientResponseImpl coreCall(boolean resetHash,
             Object[] paramListIn,
             boolean returnResults,
-            boolean keepParamsImmutable) {
+            boolean keepParamsImmutable,
+            boolean queuedInSPVM) {
         // verify per-txn state has been reset
         assert (m_statusCode == ClientResponse.SUCCESS);
         assert (m_statusString == null);
@@ -472,7 +513,7 @@ public class ProcedureRunner {
             VoltTable[] results = null;
 
             // inject sysproc execution context as the first parameter.
-            if (isSystemProcedure()) {
+            if (queuedInSPVM == false && isSystemProcedure()) {
                 // Regardless of what the systemsettings says all sysprocs dont require a copy
                 // of the parameter.
                 // If you write a new sysproc that modifies param you are doing it wrong.
@@ -486,24 +527,29 @@ public class ProcedureRunner {
                 paramList = combinedParams;
             }
 
-            if (paramList.length != m_paramTypes.length) {
-                String msg = "PROCEDURE " + m_procedureName + " EXPECTS " + String.valueOf(m_paramTypes.length) +
-                        " PARAMS, BUT RECEIVED " + String.valueOf(paramList.length);
-                m_statusCode = ClientResponse.GRACEFUL_FAILURE;
-                return getErrorResponse(m_statusCode, m_appStatusCode, m_appStatusString, msg, null);
-            }
-
-            for (int i = 0; i < m_paramTypes.length; i++) {
-                try {
-                    paramList[i] = ParameterConverter.tryToMakeCompatible(m_paramTypes[i], paramList[i],
-                            keepParamsImmutable);
-                    // check the result type in an assert
-                    assert (ParameterConverter.verifyParameterConversion(paramList[i], m_paramTypes[i]));
-                } catch (Exception e) {
-                    String msg = "PROCEDURE " + m_procedureName + " TYPE ERROR FOR PARAMETER " + i +
-                            ": " + e.toString();
+            if (queuedInSPVM == false) {
+                if (paramList.length != m_paramTypes.length) {
+                    String msg = "PROCEDURE " + m_procedureName + " EXPECTS " + String.valueOf(m_paramTypes.length) +
+                            " PARAMS, BUT RECEIVED " + String.valueOf(paramList.length);
                     m_statusCode = ClientResponse.GRACEFUL_FAILURE;
                     return getErrorResponse(m_statusCode, m_appStatusCode, m_appStatusString, msg, null);
+                }
+            }
+            
+
+            if (queuedInSPVM == false) {
+                for (int i = 0; i < m_paramTypes.length; i++) {
+                    try {
+                        paramList[i] = ParameterConverter.tryToMakeCompatible(m_paramTypes[i], paramList[i],
+                                keepParamsImmutable);
+                        // check the result type in an assert
+                        assert (ParameterConverter.verifyParameterConversion(paramList[i], m_paramTypes[i]));
+                    } catch (Exception e) {
+                        String msg = "PROCEDURE " + m_procedureName + " TYPE ERROR FOR PARAMETER " + i +
+                                ": " + e.toString();
+                        m_statusCode = ClientResponse.GRACEFUL_FAILURE;
+                        return getErrorResponse(m_statusCode, m_appStatusCode, m_appStatusString, msg, null);
+                    }
                 }
             }
 
@@ -514,11 +560,9 @@ public class ProcedureRunner {
                         log.trace("invoking... procMethod=" + m_procMethod.getName() + ", class="
                                 + m_procMethod.getDeclaringClass().getName());
                     }
-                    if (m_site instanceof Site && m_procedure instanceof VoltVMProcedure) {
+                    if (m_site instanceof Site && isVMProcedure()) {
                         try {
-                            //((Site) m_site).getInterVMMessagingProtocol().pingpong();
-                            //Object rawResult = m_procMethod.invoke(m_procedure, paramList);
-                            Object rawResult = handleVMProcedureCall(paramList);
+                            Object rawResult = handleVMProcedureCall(paramList, queuedInSPVM);
                             if (returnResults) {
                                 results = ParameterConverter.getResultsFromRawResults(m_procedureName, rawResult);
                             }

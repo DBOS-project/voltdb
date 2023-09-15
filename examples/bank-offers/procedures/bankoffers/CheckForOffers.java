@@ -24,12 +24,13 @@
 package bankoffers;
 
 import org.voltdb.SQLStmt;
-import org.voltdb.VoltProcedure;
+import org.voltdb.VoltProcedure.VoltAbortException;
 import org.voltdb.VoltTable;
+import org.voltdb.VoltVMProcedure;
 import org.voltdb.client.ClientResponse;
 import org.voltdb.types.TimestampType;
 
-public class CheckForOffers extends VoltProcedure {
+public class CheckForOffers extends VoltVMProcedure {
 
     public final SQLStmt insertActivity = new SQLStmt(
         "INSERT INTO activity VALUES ( ?,?,?,?,?,?,?);");
@@ -78,7 +79,7 @@ public class CheckForOffers extends VoltProcedure {
             String offerText = results0[1].fetchRow(0).getString(0);
             voltQueueSQL(insertOffer, acctNo, vendorId, offerText);
             voltQueueSQL(insertOffer_export, acctNo, vendorId, offerText);
-            voltExecuteSQL();
+            voltExecuteSQLIgnoreResults();
         }
 
         return ClientResponse.SUCCESS;

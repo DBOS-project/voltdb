@@ -96,7 +96,7 @@ function async-benchmark() {
         --servers=$SERVERS \
         --poolsize=$POOLSIZE \
         --preload=true \
-        --getputratio=0.90 \
+        --getputratio=1.0 \
         --keysize=32 \
         --minvaluesize=$PAYLOAD_SIZE \
         --maxvaluesize=$PAYLOAD_SIZE \
@@ -122,7 +122,7 @@ function sync-benchmark() {
         --servers=$SERVERS \
         --poolsize=100000 \
         --preload=true \
-        --getputratio=0.90 \
+        --getputratio=1.0 \
         --keysize=32 \
         --minvaluesize=$PAYLOAD_SIZE \
         --maxvaluesize=$PAYLOAD_SIZE \
@@ -146,7 +146,7 @@ function jdbc-benchmark() {
         --servers=$SERVERS \
         --poolsize=100000 \
         --preload=true \
-        --getputratio=0.90 \
+        --getputratio=1.0 \
         --keysize=32 \
         --minvaluesize=5120 \
         --maxvaluesize=5120 \

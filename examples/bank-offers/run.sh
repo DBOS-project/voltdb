@@ -4,7 +4,8 @@
 # (once running, all nodes are the same -- no leaders)
 STARTUPLEADERHOST="localhost"
 # list of cluster nodes separated by commas in host:[port] format
-SERVERS="localhost"
+#SERVERS="localhost"
+SERVERS="172.16.0.2"
 
 # WEB SERVER variables
 WEB_PORT=8081
@@ -88,7 +89,7 @@ function client() {
     java -classpath bankoffers-client.jar:$APPCLASSPATH bankoffers.OfferBenchmark \
          --displayinterval=5 \
          --warmup=3 \
-         --duration=120 \
+         --duration=180 \
          --servers=$SERVERS \
          --custcount=100000
 }

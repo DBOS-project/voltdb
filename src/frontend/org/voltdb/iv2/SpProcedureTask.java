@@ -18,13 +18,13 @@
 package org.voltdb.iv2;
 
 import java.io.IOException;
-
 import org.apache.commons.lang3.StringUtils;
 import org.voltcore.messaging.Mailbox;
 import org.voltcore.utils.CoreUtils;
 import org.voltcore.utils.LatencyWatchdog;
 import org.voltdb.ClientResponseImpl;
 import org.voltdb.PartitionDRGateway;
+import org.voltdb.ProcedureRunner;
 import org.voltdb.SiteProcedureConnection;
 import org.voltdb.StoredProcedureInvocation;
 import org.voltdb.VoltTable;
@@ -35,6 +35,7 @@ import org.voltdb.messaging.Iv2InitiateTaskMessage;
 import org.voltdb.rejoin.TaskLog;
 import org.voltdb.utils.MiscUtils;
 import org.voltdb.utils.VoltTrace;
+
 
 /**
  * Implements the single partition procedure ProcedureTask.
@@ -77,6 +78,23 @@ public class SpProcedureTask extends ProcedureTask
         if (traceLog != null) {
             traceLog.add(() -> VoltTrace.endAsync("durability",
                                                   MiscUtils.hsIdTxnIdToString(m_initiator.getHSId(), getSpHandle())));
+        }
+    }
+
+    public void queueSPInVM(SiteProcedureConnection siteConnection, boolean notify) {
+        if (getHasBeenQueuedInSPVM()) {
+            return;
+        }
+        ProcedureRunner runner = siteConnection.getProcedureRunner(m_procName);
+        if (runner.isVMProcedure() && !runner.isSystemProcedure()) {
+            Object[] callerParams = null;
+            try {
+                callerParams = ((SpTransactionState)m_txnState).m_initiationMsg.getParameters();
+            } catch (RuntimeException e) {
+                e.printStackTrace();
+            }
+            runner.queueSPInVM(callerParams, notify);
+            setQueuedInSPVM();
         }
     }
 

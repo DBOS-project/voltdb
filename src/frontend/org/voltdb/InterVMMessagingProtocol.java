@@ -31,6 +31,10 @@ public class InterVMMessagingProtocol {
         return enablePVAcceleration;
     }
 
+    public boolean hasMessage() {
+        return channel.hasAtLeastNBytesToRead(4);
+    }
+
     public InterVMMessage getNextMessage(InterVMMessage oldMessage, ByteBuffer oldBuffer) {
         
         InterVMMessage newMessage = oldMessage == null ? new InterVMMessage() : oldMessage;
@@ -80,6 +84,23 @@ public class InterVMMessagingProtocol {
         }
     }
 
+    public void writeMessageNoNotify(byte type) throws IOException {
+        writeBuffer.clear();
+        final int amt = userWriteBuffer.remaining();
+        writeBuffer.putInt(5 + amt);
+        writeBuffer.put(type);
+        if (writeBuffer.capacity() < (5 + amt)) {
+            throw new IOException("Catalog data size (" + (4 + amt) +
+                    ") exceeds InterVMMessagingProtocol's hard-coded data buffer capacity (" +
+                    writeBuffer.capacity() + ")");
+        }
+        writeBuffer.limit(5 + amt);
+        writeBuffer.rewind();
+        while (writeBuffer.hasRemaining()) {
+            this.channel.write(writeBuffer, false);
+        }
+    }
+
     public void writeCatalogUpdateRequestMessage(CatalogInfo catalog) {
         try {
             getWriteBuffer().clear();
@@ -117,55 +138,78 @@ public class InterVMMessagingProtocol {
         }
     }
 
-    public void writeProcedureCallRequestMessage(byte[] data) {
+    public void writeProcedureCallRequestMessage(byte[] data, boolean notify) {
         try {
             getWriteBuffer().clear();
             getWriteBuffer().put(data);
             getWriteBuffer().flip();
-            writeMessage(InterVMMessage.kProcedureCallReq);
+            if (notify) {
+                writeMessage(InterVMMessage.kProcedureCallReq);
+            } else {
+                writeMessageNoNotify(InterVMMessage.kProcedureCallReq);
+            }
+            
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public void writeProcedureCallResponseReturnVoidMessage() {
+    public void writeProcedureCallResponseReturnVoidMessage(boolean notify) {
         try {
             getWriteBuffer().clear();
             getWriteBuffer().flip();
-            writeMessage(InterVMMessage.kProcedureCallRespReturnVoid);
+            if (notify) {
+                writeMessage(InterVMMessage.kProcedureCallRespReturnVoid);
+            } else {
+                writeMessageNoNotify(InterVMMessage.kProcedureCallRespReturnVoid);
+            }
+            
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public void writeProcedureCallResponseReturnVoltTablesMessage(VoltTable[] result) {
+    public void writeProcedureCallResponseReturnVoltTablesMessage(VoltTable[] result, boolean notify) {
         try {
             getWriteBuffer().clear();
             SerializationHelper.writeArray(result, getWriteBuffer());
             getWriteBuffer().flip();
-            writeMessage(InterVMMessage.kProcedureCallRespReturnVoltTables);
+            if (notify) {
+                writeMessage(InterVMMessage.kProcedureCallRespReturnVoltTables);
+            } else {
+                writeMessageNoNotify(InterVMMessage.kProcedureCallRespReturnVoltTables);
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public void writeProcedureCallResponseReturnVoltTableMessage(VoltTable result) {
+    public void writeProcedureCallResponseReturnVoltTableMessage(VoltTable result, boolean notify) {
         try {
             getWriteBuffer().clear();
             SerializationHelper.writeArray(new VoltTable[]{result}, getWriteBuffer());
             getWriteBuffer().flip();
-            writeMessage(InterVMMessage.kProcedureCallRespReturnVoltTables);
+            if (notify) {
+                writeMessage(InterVMMessage.kProcedureCallRespReturnVoltTables);
+            } else {
+                writeMessageNoNotify(InterVMMessage.kProcedureCallRespReturnVoltTables);
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public void writeProcedureCallResponseReturnObjectMessage(byte[] objData) {
+    public void writeProcedureCallResponseReturnObjectMessage(byte[] objData, boolean notify) {
         try {
             getWriteBuffer().clear();
             getWriteBuffer().put(objData);
             getWriteBuffer().flip();
-            writeMessage(InterVMMessage.kProcedureCallRespReturnObject);
+            if (notify) {
+                writeMessage(InterVMMessage.kProcedureCallRespReturnObject);
+            } else {
+                writeMessageNoNotify(InterVMMessage.kProcedureCallRespReturnObject);
+            }
+            
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -197,6 +241,22 @@ public class InterVMMessagingProtocol {
         }
     }
 
+    public void writeExecuteQueryRequestResponse(VoltTable[] result, boolean notify) {
+        try {
+            getWriteBuffer().clear();
+            SerializationHelper.writeArray(result, getWriteBuffer());
+            getWriteBuffer().flip();
+            if (notify) {
+                writeMessage(InterVMMessage.kProcedureCallSQLQueryResp);
+            } else {
+                writeMessageNoNotify(InterVMMessage.kProcedureCallSQLQueryResp);
+            }
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
     public void writeExecuteQueryRequestResponse(VoltTable[] result) {
         try {
             getWriteBuffer().clear();
