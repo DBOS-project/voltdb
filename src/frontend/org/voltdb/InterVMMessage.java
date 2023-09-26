@@ -18,4 +18,5 @@ public class InterVMMessage {
     public static byte kPingPongReq = 9;
     public static byte kPingPongResp = 10;
     public static byte kVMInfoUpdateReq = 11;
+    public static byte kProcedureCallRespReturnError = 12;
 };

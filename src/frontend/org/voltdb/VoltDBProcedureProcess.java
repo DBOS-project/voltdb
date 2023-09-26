@@ -151,6 +151,7 @@ class ProcedureRunnerProxy{
         queuedSQLStmtVarNames.clear();
         queuedSQLParams.clear();
         VoltTable[] result = null; 
+        buffer = null;
         while (true) {
             InterVMMessage msg = protocol.getNextMessage(oldMessage, buffer);
             if (msg.type == InterVMMessage.kProcedureCallReq) {
@@ -258,7 +259,20 @@ public class VoltDBProcedureProcess {
             currentJar.getLoader()), protocol, queuedCalls);
             procedures.put(procedureClassName, context);
         }
-        Object ret = context.runMethod.invoke(context.procedure, paramList);
+        Object ret = null;
+        try {
+            ret = context.runMethod.invoke(context.procedure, paramList);
+        } catch (Exception e) {
+            // System.out.println("THIS IS AN EXCEPTION FROM THE PROCESS, AND IT SHOULD BE RETHROWN!");
+            // System.out.println(e.getCause().toString()); // exception and message
+            // System.out.println(e.getCause().getMessage()); // just message
+            // System.out.println(e.getCause().getClass().getCanonicalName()); // package, just dots
+            // System.out.println(e.getCause().getClass().getSimpleName()); // just the class
+
+            ret = "ERROR: " + e.getCause().getClass().getCanonicalName();
+            protocol.writeProcedureCallResponseReturnErrorMessage(fstConf.asByteArray(ret), queuedCalls.isEmpty());
+            return;
+        }
         boolean notify = queuedCalls.isEmpty();
         if (ret == null) {
             protocol.writeProcedureCallResponseReturnVoidMessage(notify);    

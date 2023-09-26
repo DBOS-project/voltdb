@@ -215,6 +215,22 @@ public class InterVMMessagingProtocol {
         }
     }
 
+    public void writeProcedureCallResponseReturnErrorMessage(byte[] objData, boolean notify) {
+        try {
+            getWriteBuffer().clear();
+            getWriteBuffer().put(objData);
+            getWriteBuffer().flip();
+            if (notify) {
+                writeMessage(InterVMMessage.kProcedureCallRespReturnError);
+            } else {
+                writeMessageNoNotify(InterVMMessage.kProcedureCallRespReturnError);
+            }
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     public void writeExecuteQueryRequestMessage(boolean isFinalSQL, byte[] queries, byte[] args) {
         try {
             getWriteBuffer().clear();

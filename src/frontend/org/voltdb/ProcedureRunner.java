@@ -440,6 +440,10 @@ public class ProcedureRunner {
                 return null;
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnObject) {
                 return fstConfLocal.asObject(msg.data.array());
+            } else if (msg.type == InterVMMessage.kProcedureCallRespReturnError) {
+                // TODO: is this the way to be rethrowing the error? as a  generic error?
+                // or is there a way to replicate the error here
+                throw new Error((String) fstConfLocal.asObject(msg.data.array()));
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTables) {
                 return (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTable) {
