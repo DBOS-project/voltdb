@@ -443,7 +443,7 @@ public class ProcedureRunner {
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnError) {
                 // TODO: is this the way to be rethrowing the error? as a  generic error?
                 // or is there a way to replicate the error here
-                throw new Error((String) fstConfLocal.asObject(msg.data.array()));
+                throw new VoltAbortException((String) fstConfLocal.asObject(msg.data.array()));
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTables) {
                 return (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTable) {
@@ -572,6 +572,7 @@ public class ProcedureRunner {
                             }
                         } catch (Exception e) {
                             // If reflection fails, invoke the same error handling that other exceptions do
+                            System.out.println("TRY TO INVOKE THE SAME ERROR");
                             e.printStackTrace();
                             throw new InvocationTargetException(e);
                         }
