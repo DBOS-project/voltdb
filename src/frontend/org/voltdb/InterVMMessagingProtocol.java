@@ -171,6 +171,21 @@ public class InterVMMessagingProtocol {
 
     public void writeProcedureCallResponseReturnVoltTablesMessage(VoltTable[] result, boolean notify) {
         try {
+            // this did not do anything different to the bug of invalid volttables
+            // try to clear the buffer
+            // writeBufferOrigin.discard();
+            // writeBufferOrigin = org.voltcore.utils.DBBPool.allocateDirect(1024 * 1024 * 2);
+            // writeBuffer = writeBufferOrigin.b();
+            // writeBuffer.position(5);
+            // userWriteBuffer = writeBuffer.slice();
+            // end try to clear the buffer
+
+            System.out.println("WRITE VOLT TABLE " + result.length);
+            for(int i = 0; i < result.length; i++) {
+                System.out.println("INDEX = " + i);
+                System.out.println(result[i].toString());
+            }
+
             getWriteBuffer().clear();
             SerializationHelper.writeArray(result, getWriteBuffer());
             getWriteBuffer().flip();

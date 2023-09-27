@@ -208,7 +208,11 @@ public class ClientResponseImpl implements ClientResponse, JSONString {
         int count = 0;
         try {
             results = new VoltTable[tableCount];
+            if(tableCount > 0) {
+                System.out.println("RECEIVE VOLT TABLE " + tableCount);
+            }
             for (int i = 0; i < tableCount; i++) {
+                // System.out.println("PARSING TABLE INDEX " + i);
                 int tableSize = buf.getInt();
                 final int originalLimit = buf.limit();
                 buf.limit(buf.position() + tableSize);
@@ -217,6 +221,9 @@ public class ClientResponseImpl implements ClientResponse, JSONString {
                 buf.limit(originalLimit);
                 results[i] = new VoltTable(slice, false);
                 count = i;
+
+                System.out.println("INDEX = " + i);
+                System.out.println(results[i].toString());
             }
         } catch (Throwable t) {
             StringBuilder builder = new StringBuilder("Unexpected errors in response. status: ");
@@ -227,6 +234,8 @@ public class ClientResponseImpl implements ClientResponse, JSONString {
             builder.append(getAppStatusString() == null ? "" : " " + getAppStatusString());
             builder.append(" table count:");
             builder.append(tableCount + "\n");
+            builder.append(" error:");
+            builder.append(t.toString() + "\n");
             while (count > 0) {
                 builder.append(results[count--].toFormattedString());
             }

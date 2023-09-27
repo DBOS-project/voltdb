@@ -443,7 +443,8 @@ public class ProcedureRunner {
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnError) {
                 // TODO: is this the way to be rethrowing the error? as a  generic error?
                 // or is there a way to replicate the error here
-                throw new VoltAbortException((String) fstConfLocal.asObject(msg.data.array()));
+                // return fstConfLocal.asObject(msg.data.array());
+                throw new VoltAbortException("Item number is not valid");
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTables) {
                 return (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTable) {
@@ -572,8 +573,8 @@ public class ProcedureRunner {
                             }
                         } catch (Exception e) {
                             // If reflection fails, invoke the same error handling that other exceptions do
-                            System.out.println("TRY TO INVOKE THE SAME ERROR");
-                            e.printStackTrace();
+                            // System.out.println("TRY TO INVOKE THE SAME ERROR " + e.toString());
+                            // e.printStackTrace();
                             throw new InvocationTargetException(e);
                         }
                     } else {
@@ -614,6 +615,10 @@ public class ProcedureRunner {
                             m_appStatusString,
                             getNonVoltDBBackendIfExists(),
                             ex);
+                    if(!retval.getStatusString().equals("VOLTDB ERROR: USER ABORT Item number is not valid")) {
+                        System.out.println("ERROR RESPONSE IS ");
+                        System.out.println(retval.toJSONString());
+                    }
                 }
             }
             // single statement only work - now extended to multiple statements

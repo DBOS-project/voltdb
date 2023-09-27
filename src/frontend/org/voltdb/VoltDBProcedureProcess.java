@@ -151,8 +151,8 @@ class ProcedureRunnerProxy{
         queuedSQLStmtVarNames.clear();
         queuedSQLParams.clear();
         VoltTable[] result = null; 
-        buffer = null;
         while (true) {
+            buffer = null; // reset buffer before running again
             InterVMMessage msg = protocol.getNextMessage(oldMessage, buffer);
             if (msg.type == InterVMMessage.kProcedureCallReq) {
                 VMProcedureCall call = null;
@@ -269,8 +269,7 @@ public class VoltDBProcedureProcess {
             // System.out.println(e.getCause().getClass().getCanonicalName()); // package, just dots
             // System.out.println(e.getCause().getClass().getSimpleName()); // just the class
 
-            ret = "ERROR: " + e.getCause().getClass().getCanonicalName();
-            protocol.writeProcedureCallResponseReturnErrorMessage(fstConf.asByteArray(ret), queuedCalls.isEmpty());
+            protocol.writeProcedureCallResponseReturnErrorMessage(fstConf.asByteArray(e.getCause().getClass().getCanonicalName()), queuedCalls.isEmpty());
             return;
         }
         boolean notify = queuedCalls.isEmpty();
