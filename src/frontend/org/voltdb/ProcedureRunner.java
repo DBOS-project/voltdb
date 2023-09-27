@@ -434,7 +434,7 @@ public class ProcedureRunner {
                     break;
                 }
             }
-            InterVMMessage msg = ((Site) m_site).getInterVMMessagingProtocol().getNextMessage(oldMessage, VMReadbuffer);
+            InterVMMessage msg = ((Site) m_site).getInterVMMessagingProtocol().getNextMessage(oldMessage, null);
             //System.out.printf("Recv message of type %d \n", msg.type);
             if (msg.type == InterVMMessage.kProcedureCallRespReturnVoid) {
                 return null;
@@ -446,8 +446,10 @@ public class ProcedureRunner {
                 // return fstConfLocal.asObject(msg.data.array());
                 throw new VoltAbortException("Item number is not valid");
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTables) {
+                VMReadbuffer = null; // clear the reference to the read buffer as it might be owned by tables below
                 return (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTable) {
+                VMReadbuffer = null; // clear the reference to the read buffer as it might be owned by tables below
                 VoltTable[] tables = (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
                 assert tables.length == 1;
                 return tables[0];

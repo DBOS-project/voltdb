@@ -20,7 +20,6 @@ package org.voltdb;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.TimeUnit;
-
 import org.json_voltpatches.JSONException;
 import org.json_voltpatches.JSONString;
 import org.json_voltpatches.JSONStringer;
@@ -28,6 +27,7 @@ import org.voltcore.utils.Pair;
 import org.voltdb.client.ClientResponse;
 import org.voltdb.common.Constants;
 import org.voltdb.utils.SerializationHelper;
+
 
 /**
  * Packages up the data to be sent back to the client as a stored
@@ -209,7 +209,7 @@ public class ClientResponseImpl implements ClientResponse, JSONString {
         try {
             results = new VoltTable[tableCount];
             if(tableCount > 0) {
-                System.out.println("RECEIVE VOLT TABLE " + tableCount);
+                //System.out.println("RECEIVE VOLT TABLE " + tableCount);
             }
             for (int i = 0; i < tableCount; i++) {
                 // System.out.println("PARSING TABLE INDEX " + i);
@@ -222,8 +222,8 @@ public class ClientResponseImpl implements ClientResponse, JSONString {
                 results[i] = new VoltTable(slice, false);
                 count = i;
 
-                System.out.println("INDEX = " + i);
-                System.out.println(results[i].toString());
+                //System.out.println("INDEX = " + i);
+                //System.out.println(results[i].toString());
             }
         } catch (Throwable t) {
             StringBuilder builder = new StringBuilder("Unexpected errors in response. status: ");

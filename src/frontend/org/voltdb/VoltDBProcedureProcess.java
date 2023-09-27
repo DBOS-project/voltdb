@@ -152,8 +152,7 @@ class ProcedureRunnerProxy{
         queuedSQLParams.clear();
         VoltTable[] result = null; 
         while (true) {
-            buffer = null; // reset buffer before running again
-            InterVMMessage msg = protocol.getNextMessage(oldMessage, buffer);
+            InterVMMessage msg = protocol.getNextMessage(oldMessage, null);
             if (msg.type == InterVMMessage.kProcedureCallReq) {
                 VMProcedureCall call = null;
                 try {
@@ -163,18 +162,19 @@ class ProcedureRunnerProxy{
                     e.printStackTrace();
                 }
                 this.queuedCalls.offer(call);
+                if (msg.data != null) {
+                    if (buffer == null || msg.data.capacity() > buffer.capacity()) {
+                        buffer = msg.data;
+                    }
+                }
             } else {
                 assert msg.type == InterVMMessage.kProcedureCallSQLQueryResp;
                 //System.out.println("msg type" + msg.type);
                 try {
                     result = (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
+                    buffer = null; // reset buffer as it is held by the result
                 } catch (Exception e) {
                     e.printStackTrace();
-                }
-                if (msg.data != null) {
-                    if (buffer == null || msg.data.capacity() > buffer.capacity()) {
-                        buffer = msg.data;
-                    }
                 }
                 oldMessage = msg;
                 break;
@@ -348,7 +348,7 @@ public class VoltDBProcedureProcess {
             while (protocol.hasMessage()) {
                 InterVMMessage msg = null;
                 try {
-                    msg = protocol.getNextMessage(oldMessage, buffer);
+                    msg = protocol.getNextMessage(oldMessage, null);
                     assert (msg != null);
                     processMessage(msg, protocol, vmId);
                 } catch (Exception e) {
@@ -386,7 +386,7 @@ public class VoltDBProcedureProcess {
             if (protocol.hasMessage() == false) {
                 InterVMMessage msg = null;
                 try {
-                    msg = protocol.getNextMessage(oldMessage, buffer);
+                    msg = protocol.getNextMessage(oldMessage, null);
                     assert (msg != null);
                     processMessage(msg, protocol, vmId);
                 } catch (Exception e) {

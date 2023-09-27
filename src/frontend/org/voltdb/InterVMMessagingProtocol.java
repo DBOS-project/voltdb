@@ -36,7 +36,6 @@ public class InterVMMessagingProtocol {
     }
 
     public InterVMMessage getNextMessage(InterVMMessage oldMessage, ByteBuffer oldBuffer) {
-        
         InterVMMessage newMessage = oldMessage == null ? new InterVMMessage() : oldMessage;
         try {
             int messageLength = this.channel.readInt(intBytes);
@@ -48,13 +47,12 @@ public class InterVMMessagingProtocol {
             if (messageLength > 0) {
                 if (oldBuffer != null && oldBuffer.capacity() >= messageLength) {
                     oldBuffer.clear();
-                    oldBuffer.limit(messageLength);
                     newMessage.data = oldBuffer;
                 } else {
                     newMessage.data = ByteBuffer.allocate(messageLength);
                 }
-                this.channel.read(newMessage.data);
-                newMessage.data.flip();// flip for reading
+                this.channel.read(newMessage.data); // writes data to the buffer
+                newMessage.data.flip();// flip the buffer for reading
             }
         } catch (Exception e) {
             // TODO: handle exception
@@ -180,11 +178,11 @@ public class InterVMMessagingProtocol {
             // userWriteBuffer = writeBuffer.slice();
             // end try to clear the buffer
 
-            System.out.println("WRITE VOLT TABLE " + result.length);
-            for(int i = 0; i < result.length; i++) {
-                System.out.println("INDEX = " + i);
-                System.out.println(result[i].toString());
-            }
+            // System.out.println("WRITE VOLT TABLE " + result.length);
+            // for(int i = 0; i < result.length; i++) {
+            //     System.out.println("INDEX = " + i);
+            //     System.out.println(result[i].toString());
+            // }
 
             getWriteBuffer().clear();
             SerializationHelper.writeArray(result, getWriteBuffer());

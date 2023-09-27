@@ -23,7 +23,8 @@ source $VOLTDB_BIN/voltenv
 # (once running, all nodes are the same -- no leaders)
 STARTUPLEADERHOST="localhost"
 # list of cluster nodes separated by commas in host:[port] format
-SERVERS="localhost"
+#SERVERS="localhost"
+SERVERS="172.16.0.2"
 
 # remove build artifacts
 function clean() {
@@ -58,14 +59,14 @@ function server() {
 # load schema and procedures
 function init() {
     jars-ifneeded
-    sqlcmd < ddl.sql
+    sqlcmd --servers=$SERVERS < ddl.sql
 }
 
 # run the client that drives the example
 function client() {
     jars-ifneeded
     java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH com.MyTPCC \
-        --servers=localhost \
+        --servers=$SERVERS \
         --duration=180 \
         --warehouses=256 \
         --scalefactor=22
