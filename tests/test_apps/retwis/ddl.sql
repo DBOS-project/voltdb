@@ -1,0 +1,38 @@
+DROP PROCEDURE CreateUser       IF EXISTS;
+DROP PROCEDURE Follow           IF EXISTS;
+DROP PROCEDURE GetFollowers     IF EXISTS;
+DROP PROCEDURE GetPosts         IF EXISTS;
+DROP PROCEDURE GetTimeline      IF EXISTS;
+DROP PROCEDURE Post             IF EXISTS;
+DROP TABLE RetwisUsers          IF EXISTS;
+DROP TABLE RetwisPosts          IF EXISTS;
+DROP TABLE RetwisFollowers      IF EXISTS;
+
+CREATE TABLE RetwisUsers (
+    u_id INTEGER NOT NULL,
+    username VARCHAR(32) NOT NULL,
+    CONSTRAINT PK_Users PRIMARY KEY (u_id)
+);
+
+CREATE TABLE RetwisPosts (
+    post_id INTEGER NOT NULL,
+    u_id INTEGER NOT NULL,
+    post VARCHAR(128) NOT NULL,
+    posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT PK_Posts PRIMARY KEY (post_id)
+);
+
+CREATE TABLE RetwisFollowers (
+    u_id INTEGER NOT NULL,
+    follower_u_id INTEGER NOT NULL,
+    CONSTRAINT PK_Follow PRIMARY KEY (u_id, follower_u_id)
+);
+
+LOAD CLASSES retwis-procs.jar;
+
+CREATE PROCEDURE FROM CLASS retwis.CreateUser;
+CREATE PROCEDURE FROM CLASS retwis.Follow;
+CREATE PROCEDURE FROM CLASS retwis.GetFollowers;
+CREATE PROCEDURE FROM CLASS retwis.GetPosts;
+CREATE PROCEDURE FROM CLASS retwis.GetTimeline;
+CREATE PROCEDURE FROM CLASS retwis.Post;
