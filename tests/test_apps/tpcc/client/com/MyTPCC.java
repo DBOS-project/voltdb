@@ -98,6 +98,8 @@ public class MyTPCC
             try
             {
                 tpccSim.doOne();
+                // int trans = tpccSim.doOne();
+                // System.out.println("^ DOING TRANSACTION " + trans);
             }
             catch (IOException e)
             {}
@@ -164,6 +166,9 @@ public class MyTPCC
                     counterLock.unlock();
                 }
             }
+
+            // END FAST
+            // break;
         }
 
         try

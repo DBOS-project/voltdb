@@ -53,6 +53,7 @@ import org.voltdb.DeprecatedProcedureAPIAccess;
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
+import org.voltdb.VoltVMProcedure;
 
 /**
  * Loads initial data into TPCC tables.
