@@ -18,6 +18,9 @@
 package org.voltdb;
 
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
@@ -117,7 +120,7 @@ rely on the garbage collector.
  * t.addRow(-9, "moreData");
  * </code>
  */
-public final class VoltTable extends VoltTableRow implements JSONString {
+public final class VoltTable extends VoltTableRow implements JSONString, Serializable {
 
     /**
      * Size in bytes of the maximum length for a VoltDB tuple.
@@ -1847,6 +1850,156 @@ public final class VoltTable extends VoltTableRow implements JSONString {
         JSONObject jsonObj = new JSONObject(json);
         return fromJSONObject(jsonObj);
     }
+
+    // serializable extensions
+
+    private void writeObject(ObjectOutputStream out) throws JSONException, IOException {
+        out.writeObject(toJSONString());
+        out.flush();
+    }
+
+    private void readObject(ObjectInputStream in) throws JSONException, IOException, ClassNotFoundException {
+        String obj = (String) in.readObject();
+        JSONObject json = new JSONObject(obj);
+
+        // extract the schema and creat an empty table
+        JSONArray jsonCols = json.getJSONArray(JSON_SCHEMA_KEY);
+        ColumnInfo[] columns = new ColumnInfo[jsonCols.length()];
+        for (int i = 0; i < jsonCols.length(); i++) {
+            JSONObject jsonCol = jsonCols.getJSONObject(i);
+            String name = jsonCol.getString(JSON_NAME_KEY);
+            VoltType type = VoltType.get((byte) jsonCol.getInt(JSON_TYPE_KEY));
+            columns[i] = new ColumnInfo(name, type);
+        }
+
+        // CUSTOM REPEAT CONSTRUCTOR
+
+        // allocate a 1K table backing for starters
+        int allocationSize = 1024;
+        m_buffer = ByteBuffer.allocate(allocationSize);
+
+        // while not successful at initializing,
+        //  use a bigger and bigger backing
+        int columnCount = columns.length;
+        boolean success = false;
+        while (!success) {
+            try {
+                // inside the try block, do initialization
+
+                m_colCount = columnCount;
+                m_rowCount = 0;
+
+                // do some trivial checks to make sure the schema is not totally wrong
+                if (columns == null) {
+                    throw new RuntimeException("VoltTable(..) constructor passed null schema.");
+                }
+                if (columnCount <= 0) {
+                    throw new RuntimeException("VoltTable(..) constructor requires at least one column.");
+                }
+                if (columns.length < columnCount) {
+                    throw new RuntimeException("VoltTable(..) constructor passed truncated column schema array.");
+                }
+
+                // put a dummy value in for header size for now
+                m_buffer.putInt(0);
+
+                //Put in 0 for the status code
+                m_buffer.put(Byte.MIN_VALUE);
+
+                m_buffer.putShort((short) columnCount);
+
+                for (int i = 0; i < columnCount; i++) {
+                    m_buffer.put(columns[i].type.getValue());
+                }
+                for (int i = 0; i < columnCount; i++) {
+                    if (columns[i].name == null) {
+                        m_buffer.position(0);
+                        throw new IllegalArgumentException("VoltTable column names can not be null.");
+                    }
+                    writeStringToBuffer(columns[i].name, METADATA_ENCODING, m_buffer);
+                }
+                // write the header size to the first 4 bytes (length-prefixed non-inclusive)
+                m_rowStart = m_buffer.position();
+                m_buffer.putInt(0, m_rowStart - 4);
+                // write the row count to the next 4 bytes after the header
+                m_buffer.putInt(0);
+                m_buffer.limit(m_buffer.position());
+
+                success = true;
+            }
+            catch (BufferOverflowException e) {
+                // if too small buffer, grow
+                allocationSize *= 4;
+                m_buffer = ByteBuffer.allocate(allocationSize);
+            }
+        }
+        assert(verifyTableInvariants());
+
+        // END CUSTOM REPEAT CONSTRUCTOR
+
+        // START REPEAT LOADJSONOBJECT 
+        
+        // set the status byte
+        byte status = (byte) json.getInt(JSON_STATUS_KEY);
+        this.setStatusCode(status);
+
+        // load the row data
+        JSONArray data = json.getJSONArray(JSON_DATA_KEY);
+        for (int i = 0; i < data.length(); i++) {
+            JSONArray jsonRow = data.getJSONArray(i);
+            assert(jsonRow.length() == jsonCols.length());
+            Object[] row = new Object[jsonRow.length()];
+            for (int j = 0; j < jsonRow.length(); j++) {
+                row[j] = jsonRow.get(j);
+                if (row[j] == JSONObject.NULL) {
+                    row[j] = null;
+                }
+                VoltType type = columns[j].type;
+
+                // convert strings to numbers
+                if (row[j] != null) {
+                    switch (type) {
+                    case BIGINT:
+                    case INTEGER:
+                    case SMALLINT:
+                    case TINYINT:
+                    case TIMESTAMP:
+                        if (row[j] instanceof String) {
+                            row[j] = Long.parseLong((String) row[j]);
+                        }
+                        assert(row[j] instanceof Number);
+                        break;
+                    case DECIMAL:
+                        String decVal;
+                        if (row[j] instanceof String) {
+                            decVal = (String) row[j];
+                        } else {
+                            decVal = row[j].toString();
+                        }
+                        if (decVal.compareToIgnoreCase("NULL") == 0) {
+                            row[j] = null;
+                        } else {
+                            row[j] = VoltDecimalHelper.deserializeBigDecimalFromString(decVal);
+                        }
+                        break;
+                    case FLOAT:
+                        if (row[j] instanceof String) {
+                            row[j] = Double.parseDouble((String) row[j]);
+                        }
+                        assert(row[j] instanceof Number);
+                        break;
+                    default:
+                        // empty fallthrough to make the warning go away
+                    }
+                }
+            }
+            this.addRow(row);
+        }
+
+        // END REPEAT LOADJSONOBJECT
+    }
+
+    // end serializable extensions
 
     /**
      * <p>Construct a table from a JSON object. Only parses VoltDB VoltTable JSON format.</p>

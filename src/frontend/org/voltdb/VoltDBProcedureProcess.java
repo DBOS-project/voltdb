@@ -133,8 +133,11 @@ class ProcedureRunnerProxy{
         queuedSQLStmtVarNames.add(stmtToNames.get(stmt));
         queuedSQLParams.add(args);
     }
+
+    // public static int globalCount = 0;
     
     public VoltTable[] voltExecuteSQL(boolean isFinalSQL, boolean ignoreResults) {
+        // System.out.println("VOLTEXECUTESQL " + (++globalCount));
         try {
             org.nustaq.serialization.FSTObjectOutput objectOutput = fstConf.getObjectOutput();
             objectOutput.writeObject(isFinalSQL);

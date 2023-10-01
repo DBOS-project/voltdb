@@ -58,7 +58,7 @@ import org.voltdb.VoltVMProcedure;
 /**
  * Loads initial data into TPCC tables.
  */
-public class LoadWarehouse extends VoltProcedure {
+public class LoadWarehouse extends VoltVMProcedure {
 
     public static final SQLStmt writeStmt = new SQLStmt("INSERT INTO WAREHOUSE VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);");
 
