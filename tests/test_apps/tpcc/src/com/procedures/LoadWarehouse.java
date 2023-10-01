@@ -53,12 +53,12 @@ import org.voltdb.DeprecatedProcedureAPIAccess;
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
-import org.voltdb.VoltVMProcedure;
 
 /**
  * Loads initial data into TPCC tables.
  */
-public class LoadWarehouse extends VoltVMProcedure {
+// only use DBVM since it is just loading data
+public class LoadWarehouse extends VoltProcedure {
 
     public static final SQLStmt writeStmt = new SQLStmt("INSERT INTO WAREHOUSE VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);");
 

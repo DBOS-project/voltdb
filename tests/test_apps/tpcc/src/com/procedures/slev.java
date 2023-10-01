@@ -52,13 +52,14 @@ package com.procedures;
 
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
+import org.voltdb.VoltVMProcedure;
 import org.voltdb.VoltTable;
 
 //Notes on Stored Procedure:
 //return VoltTable[] has 1 element:
 //1) stock_count, represented as a 1x1 table representing a Long.
 
-public class slev extends VoltProcedure {
+public class slev extends VoltVMProcedure {
 
     public final SQLStmt GetOId = new SQLStmt("SELECT D_NEXT_O_ID FROM DISTRICT WHERE D_W_ID = ? AND D_ID = ?;");
 
