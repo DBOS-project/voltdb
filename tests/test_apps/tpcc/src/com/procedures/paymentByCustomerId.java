@@ -54,6 +54,7 @@ import java.util.Arrays;
 
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
+import org.voltdb.VoltVMProcedure;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltTableRow;
 import org.voltdb.VoltType;
@@ -65,7 +66,7 @@ import org.voltdb.types.TimestampType;
 //return VoltTable[] has N element(s):
 //1) var_name, represented as a NxN table representing typeFOOBAR.
 
-public class paymentByCustomerId extends VoltProcedure {
+public class paymentByCustomerId extends VoltVMProcedure {
 
     final int misc_expected_string_len = 32 + 2 + 32 + 32 + 32 + 32 + 2 + 9 + 32 + 2 + 500;
 

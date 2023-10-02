@@ -52,6 +52,7 @@ package com.procedures;
 
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
+import org.voltdb.VoltVMProcedure;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltTableRow;
 import org.voltdb.types.TimestampType;
@@ -63,7 +64,7 @@ import org.voltdb.types.TimestampType;
  * in original paymentByCustomerName.
  */
 
-public class paymentByCustomerNameW extends VoltProcedure {
+public class paymentByCustomerNameW extends VoltVMProcedure {
     public final SQLStmt getCidByLastName = new SQLStmt("SELECT C_ID FROM CUSTOMER_NAME WHERE C_LAST = ? AND C_D_ID = ? AND C_W_ID = ? ORDER BY C_FIRST;");// c_last, d_id, w_id
 
     public final SQLStmt getWarehouse = new SQLStmt("SELECT W_NAME, W_STREET_1, W_STREET_2, W_CITY, W_STATE, W_ZIP FROM WAREHOUSE WHERE W_ID = ?;"); //w_id
