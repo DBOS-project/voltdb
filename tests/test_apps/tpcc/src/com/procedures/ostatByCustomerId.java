@@ -52,6 +52,7 @@ package com.procedures;
 
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
+import org.voltdb.VoltVMProcedure;
 import org.voltdb.VoltTable;
 
 //Notes on Stored Procedure:
@@ -60,7 +61,7 @@ import org.voltdb.VoltTable;
 //2) Set of Repeating data, represented as a Nx5 table representing several order-lines each with fields ol_supply_w_id, ol_i_id, ol_quantity, ol_amount, ol_delivery_d.
 //See TPC-C (Revision 5.9) Section 2.6.3.4 for more
 
-public class ostatByCustomerId extends VoltProcedure {
+public class ostatByCustomerId extends VoltVMProcedure {
     // Parameters: w_id, d_id, c_id
     public final SQLStmt getCustomerByCustomerId = new SQLStmt("SELECT C_ID, C_FIRST, C_MIDDLE, C_LAST, C_BALANCE FROM CUSTOMER WHERE C_W_ID = ? AND C_D_ID = ? AND C_ID = ?;");
 
