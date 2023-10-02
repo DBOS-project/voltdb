@@ -25,11 +25,13 @@ package com.procedures;
 
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
+import org.voltdb.VoltVMProcedure;
 import org.voltdb.VoltTable;
 
 /**
  * Loads initial data into replicated TPCC tables.
  */
+// only use DBVM since it is just loading data
 public class LoadWarehouseReplicated extends VoltProcedure {
 
     public final static SQLStmt insertIntoItem = new SQLStmt("INSERT INTO ITEM VALUES (?, ?, ?, ?, ?);");
