@@ -11,9 +11,9 @@ public class GetPosts extends VoltProcedure {
                     "FROM RetwisPosts " + 
                     "WHERE u_id = ? LIMIT 20");
 
-    public VoltTable[] run(int userID) throws VoltAbortException
+    public VoltTable[] run(int u_id) throws VoltAbortException
     {
-        voltQueueSQL(getPosts, userID);
+        voltQueueSQL(getPosts, u_id);
         return voltExecuteSQL(true);
     }
 }

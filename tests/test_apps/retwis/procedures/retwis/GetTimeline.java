@@ -11,9 +11,9 @@ public class GetTimeline extends VoltProcedure {
                     "FROM RetwisFollowers JOIN RetwisPosts ON RetwisFollowers.u_id = RetwisPosts.u_id " + 
                     "WHERE RetwisFollowers.follower_u_id = ? LIMIT 20");
 
-    public VoltTable[] run(int userID) throws VoltAbortException
+    public VoltTable[] run(int u_id) throws VoltAbortException
     {
-        voltQueueSQL(getTimeline, userID);
+        voltQueueSQL(getTimeline, u_id);
         return voltExecuteSQL(true);
     }
 }

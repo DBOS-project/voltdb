@@ -13,26 +13,31 @@ CREATE TABLE RetwisUsers (
     username VARCHAR(32) NOT NULL,
     CONSTRAINT PK_Users PRIMARY KEY (u_id)
 );
+PARTITION TABLE RetwisUsers ON COLUMN u_id;
 
 CREATE TABLE RetwisPosts (
     post_id INTEGER NOT NULL,
     u_id INTEGER NOT NULL,
     post VARCHAR(128) NOT NULL,
     posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT PK_Posts PRIMARY KEY (post_id)
+    CONSTRAINT PK_Posts PRIMARY KEY (u_id, post_id)
 );
+PARTITION TABLE RetwisPosts ON COLUMN u_id;
+CREATE INDEX RetwisPostsIndex ON RetwisPosts (u_id);
 
 CREATE TABLE RetwisFollowers (
     u_id INTEGER NOT NULL,
     follower_u_id INTEGER NOT NULL,
     CONSTRAINT PK_Follow PRIMARY KEY (u_id, follower_u_id)
 );
+PARTITION TABLE RetwisFollowers ON COLUMN u_id;
+CREATE INDEX RetwisFollowersIndex ON RetwisFollowers (u_id);
 
 LOAD CLASSES retwis-procs.jar;
 
-CREATE PROCEDURE FROM CLASS retwis.CreateUser;
-CREATE PROCEDURE FROM CLASS retwis.Follow;
-CREATE PROCEDURE FROM CLASS retwis.GetFollowers;
-CREATE PROCEDURE FROM CLASS retwis.GetPosts;
-CREATE PROCEDURE FROM CLASS retwis.GetTimeline;
-CREATE PROCEDURE FROM CLASS retwis.Post;
+CREATE PROCEDURE PARTITION ON TABLE RetwisUsers COLUMN u_id FROM CLASS retwis.CreateUser;
+CREATE PROCEDURE PARTITION ON TABLE RetwisUsers COLUMN u_id FROM CLASS retwis.Follow;
+CREATE PROCEDURE PARTITION ON TABLE RetwisUsers COLUMN u_id FROM CLASS retwis.GetFollowers;
+CREATE PROCEDURE PARTITION ON TABLE RetwisUsers COLUMN u_id FROM CLASS retwis.GetPosts;
+CREATE PROCEDURE PARTITION ON TABLE RetwisUsers COLUMN u_id FROM CLASS retwis.GetTimeline;
+CREATE PROCEDURE PARTITION ON TABLE RetwisUsers COLUMN u_id FROM CLASS retwis.Post;

@@ -9,9 +9,9 @@ public class CreateUser extends VoltProcedure {
     public final SQLStmt insertUser =
         new SQLStmt("INSERT INTO RetwisUsers (u_id, username) VALUES (?, ?);");
 
-    public long run(int userID, String name) throws VoltAbortException
+    public long run(int u_id, String name) throws VoltAbortException
     {
-        voltQueueSQL(insertUser, userID, name);
+        voltQueueSQL(insertUser, u_id, name);
         VoltTable[] result = voltExecuteSQL(true);
         return result[0].fetchRow(0).getLong(0);
     }

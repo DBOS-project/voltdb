@@ -90,11 +90,11 @@ public class RetwisSimulation {
             doCreateUser(cb);
         } else if (n <= 65) { // 60%
             doGetTimeline(cb);
-        } else if (n <= 65 + 10) { // 10%
+        } else if (n <= 65 + 15) { // 15%
             doGetPosts(cb);
-        } else if (n <= 65 + 10 + 5) { // 5%
+        } else if (n <= 65 + 15 + 5) { // 5%
             doGetFollowers(cb);
-        } else if (n <= 65 + 10 + 5 + 15) { // 15%
+        } else if (n <= 65 + 15 + 5 + 10) { // 10%
             doPost(cb);
         } else { // 5%
             assert n > 100 - 90;

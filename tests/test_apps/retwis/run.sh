@@ -91,16 +91,13 @@ function client-help() {
 # run the client that drives the example
 function client() {
     jars-ifneeded
-    # java $add_open \
-	# -classpath retwis-client.jar:$CLIENTCLASSPATH retwis.Benchmark \
-    #     --displayinterval=5 \
-    #     --warmup=5 \
-    #     --duration=120 \
-    #     --servers=$SERVERS \
-    #     --contestants=6 \
-    #     --maxvotes=2 \
-    #     --affinityreport=false
     java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH retwis.Benchmark 
+}
+
+function all() {
+    jars
+    sqlcmd < ddl.sql
+    client
 }
 
 function help() {

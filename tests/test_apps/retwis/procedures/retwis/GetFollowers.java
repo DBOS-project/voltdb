@@ -11,9 +11,9 @@ public class GetFollowers extends VoltProcedure {
                     "FROM RetwisFollowers " + 
                     "WHERE u_id = ? LIMIT 20");
 
-    public VoltTable[] run(int userID) throws VoltAbortException
+    public VoltTable[] run(int u_id) throws VoltAbortException
     {
-        voltQueueSQL(getFollowers, userID);
+        voltQueueSQL(getFollowers, u_id);
         return voltExecuteSQL(true);
     }
 }

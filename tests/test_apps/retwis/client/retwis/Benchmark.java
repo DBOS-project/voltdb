@@ -7,6 +7,7 @@ import org.voltdb.client.ClientResponse;
 import org.voltdb.client.ProcedureCallback;
 import org.voltdb.client.exampleutils.ClientConnection;
 import org.voltdb.client.exampleutils.ClientConnectionPool;
+import org.voltdb.client.exampleutils.PerfCounterMap;
 
 public class Benchmark {
     final RetwisSimulation simulator;
@@ -43,7 +44,7 @@ public class Benchmark {
         long currentTime = System.currentTimeMillis();
         while (currentTime < warmupEndTime) {
             try {
-                this.simulator.doOne(new RetwisCallback());
+                this.simulator.doOne(new RetwisCallback(true));
             }
             catch (IOException e) {}
             currentTime = System.currentTimeMillis();
@@ -56,7 +57,7 @@ public class Benchmark {
         while (currentTime < testEndTime) {
             numSPCalls += 1;
             try {
-                this.simulator.doOne(new RetwisCallback());
+                this.simulator.doOne(new RetwisCallback(false));
             }
             catch (IOException e) {}
             currentTime = System.currentTimeMillis();
@@ -69,30 +70,30 @@ public class Benchmark {
         System.out.printf("Total transactions: %d\n", numSPCalls);
         System.out.printf("Transactions per second: %.2f\n", (float)numSPCalls / (elapsedTime / 1000));
         System.out.println("===============================================================================\n");
-
-        System.out.println("\n");
-        System.out.println("*************************************************************************");
-        System.out.println("System Statistics");
-        System.out.println("*************************************************************************");
+        System.out.println("============================== SYSTEM STATISTICS ==============================");
         System.out.printf(" - Average Latency = %.2f ms\n", ((double) totExecutionMilliseconds / (double) totExecutions));
         System.out.printf(" - Min Latency = %.2f ms\n", (double) minExecutionMilliseconds);
-        System.out.printf(" - Max Latency = %.2f ms\n", (double) maxExecutionMilliseconds);
+        System.out.printf(" - Max Latency = %.2f ms\n\n", (double) maxExecutionMilliseconds);
 
-
-        // System.out.println(
-        //   "\n\n-------------------------------------------------------------------------------------\n"
-        // + " System Statistics\n"
-        // + "-------------------------------------------------------------------------------------\n\n");
-        // System.out.print(m_clientCon.getStatistics(Constants.TRANS_PROCS).toString(false));
+        PerfCounterMap map = ClientConnectionPool.getStatistics(m_clientCon);
+        System.out.println(map);
+        System.out.print(m_clientCon.getStatistics(Constants.TRANS_PROCS).toString(false));
+        System.out.println("===============================================================================\n");
     }
 
     class RetwisCallback
         implements ProcedureCallback
     {
+        boolean warmup;
+        public RetwisCallback(boolean warmup) {
+            this.warmup = warmup;
+        }
+
         @Override
         public void clientCallback(ClientResponse clientResponse)
         {
             assert clientResponse.getStatus() == ClientResponse.SUCCESS;
+            if (warmup) return;
             counterLock.lock();
             try {
                 long executionTime =  clientResponse.getClientRoundtrip();
