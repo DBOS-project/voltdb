@@ -7,7 +7,7 @@ import org.voltdb.VoltTable;
 
 public class Post extends VoltProcedure {
     public final SQLStmt insertPost =
-        new SQLStmt("INSERT INTO RetwisPosts (post_id, u_id, post) VALUES (?, ?, ?);");
+        new SQLStmt("INSERT INTO RetwisPosts (u_id, post_id, post) VALUES (?, ?, ?);");
 
     public long run(int u_id, int postID, String post) throws VoltAbortException
     {

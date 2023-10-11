@@ -11,7 +11,7 @@ DROP TABLE RetwisFollowers      IF EXISTS;
 CREATE TABLE RetwisUsers (
     u_id INTEGER NOT NULL,
     username VARCHAR(32) NOT NULL,
-    CONSTRAINT PK_Users PRIMARY KEY (u_id)
+    CONSTRAINT PK_RetwisUsers PRIMARY KEY (u_id)
 );
 PARTITION TABLE RetwisUsers ON COLUMN u_id;
 
@@ -20,7 +20,7 @@ CREATE TABLE RetwisPosts (
     u_id INTEGER NOT NULL,
     post VARCHAR(128) NOT NULL,
     posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT PK_Posts PRIMARY KEY (u_id, post_id)
+    CONSTRAINT PK_RetwisPosts PRIMARY KEY (u_id, post_id)
 );
 PARTITION TABLE RetwisPosts ON COLUMN u_id;
 CREATE INDEX RetwisPostsIndex ON RetwisPosts (u_id);
@@ -28,7 +28,7 @@ CREATE INDEX RetwisPostsIndex ON RetwisPosts (u_id);
 CREATE TABLE RetwisFollowers (
     u_id INTEGER NOT NULL,
     follower_u_id INTEGER NOT NULL,
-    CONSTRAINT PK_Follow PRIMARY KEY (u_id, follower_u_id)
+    CONSTRAINT PK_RetwisFollowers PRIMARY KEY (u_id, follower_u_id)
 );
 PARTITION TABLE RetwisFollowers ON COLUMN u_id;
 CREATE INDEX RetwisFollowersIndex ON RetwisFollowers (u_id);
