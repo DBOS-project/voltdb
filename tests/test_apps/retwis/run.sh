@@ -71,7 +71,7 @@ function server() {
 
 # load schema and procedures
 function init() {
-    jars-ifneeded
+    jars
     sqlcmd < ddl.sql
 }
 
@@ -81,23 +81,13 @@ if [[ $version == 11.0* ]] || [[ $version == 17.0* ]] ; then
         add_open="--add-opens java.base/sun.nio.ch=ALL-UNNAMED"
 fi
 
-# Asynchronous benchmark sample
-# Use this target for argument help
-function client-help() {
-    jars-ifneeded
-    java -classpath $APPNAME-client.jar:$CLIENTCLASSPATH retwis.Benchmark --help
+function sync() {
+    init
+    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH retwis.Benchmark sync $1
 }
-
-# run the client that drives the example
-function client() {
-    jars-ifneeded
-    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH retwis.Benchmark 
-}
-
-function all() {
-    jars
-    sqlcmd < ddl.sql
-    client
+function async() {
+    init
+    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH retwis.Benchmark async
 }
 
 function help() {
@@ -119,10 +109,11 @@ if [ $# -eq 0 ];
 then
     help
     exit 0
+elif [ $# -eq 1 ];
+then
+    echo "${0}: Performing ${1}..."
+    ${1}
+else
+    echo "${0}: Performing ${1} with parameter ${2}..."
+    ${1} ${2}
 fi
-
-for arg in "$@"
-do
-    echo "${0}: Performing $arg..."
-    $arg
-done
