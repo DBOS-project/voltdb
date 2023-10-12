@@ -11,6 +11,7 @@ import org.voltdb.client.exampleutils.ClientConnection;
 public class RetwisSimulation {
     private int next_u_id;
     private int next_post_id;
+    private boolean async;
 
     public class ProcCaller {
     }
@@ -18,10 +19,21 @@ public class RetwisSimulation {
     final ClientConnection client;
     private static Random rnd = new Random();
     
-    public RetwisSimulation(ClientConnection client) {
+    public RetwisSimulation(ClientConnection client, boolean async) {
         this.client = client;
         this.next_post_id = 0;
         this.next_u_id = 0;
+        this.async = async;
+    }
+
+    private void callProcedure(Benchmark.RetwisCallback cb, String procedure, Object... parameters) throws Exception {
+        cb.setProcedure(procedure);
+        if (this.async)
+            this.client.executeAsync(cb, procedure, parameters);
+        else {
+            ClientResponse response = this.client.execute(procedure, parameters);
+            cb.clientCallback(response);
+        }
     }
 
     private void doCreateUser(Benchmark.RetwisCallback cb) throws IOException {
@@ -29,7 +41,7 @@ public class RetwisSimulation {
         this.next_u_id += 1;
         String username = "user" + rnd.nextInt();
         try {
-            this.client.executeAsync(cb, "CreateUser", u_id, username);
+            this.callProcedure(cb, "CreateUser", u_id, username);
         } catch (Exception e) {
             throw new IOException(e);
         }
@@ -41,7 +53,7 @@ public class RetwisSimulation {
         int u_id = rnd.nextInt(this.next_u_id);
         String post = "This is a ReTweet!";
         try {
-            this.client.executeAsync(cb, "Post", post_id, u_id, post);
+            this.callProcedure(cb, "Post", post_id, u_id, post);
         } catch (Exception e) {
             throw new IOException(e);
         }
@@ -50,7 +62,7 @@ public class RetwisSimulation {
     private void doGetTimeline(Benchmark.RetwisCallback cb) throws IOException {
         int u_id = rnd.nextInt(this.next_u_id);
         try {
-            this.client.executeAsync(cb, "GetTimeline", u_id);
+            this.callProcedure(cb, "GetTimeline", u_id);
         } catch (Exception e) {
             throw new IOException(e);
         }
@@ -59,7 +71,7 @@ public class RetwisSimulation {
     private void doGetPosts(Benchmark.RetwisCallback cb) throws IOException {
         int u_id = rnd.nextInt(this.next_u_id);
         try {
-            this.client.executeAsync(cb, "GetPosts", u_id);
+            this.callProcedure(cb, "GetPosts", u_id);
         } catch (Exception e) {
             throw new IOException(e);
         }
@@ -69,7 +81,7 @@ public class RetwisSimulation {
         int u_id = rnd.nextInt(this.next_u_id);
         int follower_u_id = rnd.nextInt(this.next_u_id);
         try {
-            this.client.executeAsync(cb, "Follow", u_id, follower_u_id);
+            this.callProcedure(cb, "Follow", u_id, follower_u_id);
         } catch (Exception e) {
             throw new IOException(e);
         }
@@ -78,7 +90,7 @@ public class RetwisSimulation {
     private void doGetFollowers(Benchmark.RetwisCallback cb) throws IOException {
         int u_id = rnd.nextInt(this.next_u_id);
         try {
-            this.client.executeAsync(cb, "GetFollowers", u_id);
+            this.callProcedure(cb, "GetFollowers", u_id);
         } catch (Exception e) {
             throw new IOException(e);
         }

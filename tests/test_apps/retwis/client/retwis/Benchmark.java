@@ -1,6 +1,8 @@
 package retwis;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.voltdb.client.ClientResponse;
@@ -12,16 +14,20 @@ import org.voltdb.client.exampleutils.PerfCounterMap;
 public class Benchmark {
     final RetwisSimulation simulator;
     private ClientConnection m_clientCon;
+    private boolean async;
     public static final ReentrantLock counterLock = new ReentrantLock();
     public static long totExecutions = 0;
-    public static long totExecutionMilliseconds = 0;
-    public static long minExecutionMilliseconds = 999999999l;
-    public static long maxExecutionMilliseconds = 0;
+    public static long totExecutionNanoseconds = 0;
+    public static long minExecutionNanoseconds = 999999999l;
+    public static long maxExecutionNanoseconds = 0;
+    public static Map<String,Long> typeNumExecution = new HashMap<String, Long>();
+    public static Map<String,Long> typeExecutionTime = new HashMap<String, Long>();
 
     public Benchmark() {
         String servers = "localhost";
         System.out.printf("Connecting to servers: %s\n", servers);
         int sleep = 1000;
+        this.async = false;
         while(true) {
             try {
                 this.m_clientCon = ClientConnectionPool.get(servers, 21212);
@@ -34,7 +40,7 @@ public class Benchmark {
                     sleep += sleep;
             }
         }
-        this.simulator = new RetwisSimulation(this.m_clientCon);
+        this.simulator = new RetwisSimulation(this.m_clientCon, this.async);
     }
 
     public void run() {
@@ -53,8 +59,9 @@ public class Benchmark {
         long startTime = System.currentTimeMillis();
         long testEndTime = System.currentTimeMillis() + testDuration;
         int numSPCalls = 0;
+        int totalSPCalls = 500000;
 
-        while (currentTime < testEndTime) {
+        while (numSPCalls < totalSPCalls) {
             numSPCalls += 1;
             try {
                 this.simulator.doOne(new RetwisCallback(false));
@@ -71,22 +78,32 @@ public class Benchmark {
         System.out.printf("Transactions per second: %.2f\n", (float)numSPCalls / (elapsedTime / 1000));
         System.out.println("===============================================================================\n");
         System.out.println("============================== SYSTEM STATISTICS ==============================");
-        System.out.printf(" - Average Latency = %.2f ms\n", ((double) totExecutionMilliseconds / (double) totExecutions));
-        System.out.printf(" - Min Latency = %.2f ms\n", (double) minExecutionMilliseconds);
-        System.out.printf(" - Max Latency = %.2f ms\n\n", (double) maxExecutionMilliseconds);
+        System.out.printf(" - Average Latency = %.2f us\n", ((double) totExecutionNanoseconds / ((double) totExecutions * 1000)));
+        System.out.printf(" - Min Latency = %.2f us\n", (double) minExecutionNanoseconds / 1000);
+        System.out.printf(" - Max Latency = %.2f us\n\n", (double) maxExecutionNanoseconds / 1000);
 
         PerfCounterMap map = ClientConnectionPool.getStatistics(m_clientCon);
         System.out.println(map);
         System.out.print(m_clientCon.getStatistics(Constants.TRANS_PROCS).toString(false));
         System.out.println("===============================================================================\n");
+
+        System.out.println("Breakdown stats");
+        for (String procedure: typeNumExecution.keySet()) {
+            System.out.printf("%s: %.2f us\n", procedure, (double) typeExecutionTime.get(procedure) / (typeNumExecution.get(procedure) * 1000));
+        }
     }
 
     class RetwisCallback
         implements ProcedureCallback
     {
         boolean warmup;
+        String procedure;
         public RetwisCallback(boolean warmup) {
             this.warmup = warmup;
+        }
+
+        public void setProcedure(String procedure) {
+            this.procedure = procedure;
         }
 
         @Override
@@ -96,20 +113,28 @@ public class Benchmark {
             if (warmup) return;
             counterLock.lock();
             try {
-                long executionTime =  clientResponse.getClientRoundtrip();
-                totExecutionMilliseconds += executionTime;
+                long executionTime =  clientResponse.getClientRoundtripNanos();
+                totExecutionNanoseconds += executionTime;
                 totExecutions++;
 
-                if (executionTime < minExecutionMilliseconds) {
-                    minExecutionMilliseconds = executionTime;
+                if (executionTime < minExecutionNanoseconds) {
+                    minExecutionNanoseconds = executionTime;
                 }
 
-                if (executionTime > maxExecutionMilliseconds) {
-                    maxExecutionMilliseconds = executionTime;
+                if (executionTime > maxExecutionNanoseconds) {
+                    maxExecutionNanoseconds = executionTime;
                 }
+                // System.out.println("Procedure:"+ typeNumExecution);
+
+                typeNumExecution.put(this.procedure, typeNumExecution.getOrDefault(this.procedure, 0l) + 1);
+                typeExecutionTime.put(this.procedure, typeExecutionTime.getOrDefault(this.procedure, 0l) + executionTime);
+                // System.out.println("Nums:"+ typeNumExecution);
+            } catch (Exception e) {
+                System.out.println(e);
             }
             finally
             {
+                
                 counterLock.unlock();
             }
         }
