@@ -81,13 +81,21 @@ if [[ $version == 11.0* ]] || [[ $version == 17.0* ]] ; then
         add_open="--add-opens java.base/sun.nio.ch=ALL-UNNAMED"
 fi
 
+function run_sync() {
+    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH retwis.Benchmark sync $1
+}
+
+function run_async() {
+    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH retwis.Benchmark async
+}
+
 function sync() {
     init
-    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH retwis.Benchmark sync $1
+    run_sync $1
 }
 function async() {
     init
-    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH retwis.Benchmark async
+    run_async
 }
 
 function help() {

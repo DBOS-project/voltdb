@@ -31,7 +31,7 @@ public class Benchmark {
     public static Map<String,Long> typeExecutionTime = new HashMap<String, Long>();
 
     public Benchmark(String[] args) {
-        String servers = "localhost";
+        String servers = "18.26.2.124";
         System.out.printf("Connecting to %s\n", servers);
         int sleep = 1000;
         this.async = (args.length >= 1) ? (args[0].equals("async")) : false;
@@ -94,12 +94,12 @@ public class Benchmark {
 
         Map<String, Double> execTimes = this.getServerStats();
         System.out.println("----------------------- Breakdown --------------------------");
-        System.out.printf("%-15s%-15s%-15%-20s\n", "Procedure", "Transactions", "Latency(us)", "Execution Time(us)");
+        System.out.printf("%-15s%-20s%-15s%-20s\n", "Procedure", "Throughput(txns/s)", "Latency(us)", "Execution Time(us)");
         System.out.println("------------------------------------------------------------");
         for (String procedure: typeNumExecution.keySet()) {
-            System.out.printf("%-15s%-15s%-15.2f%-20.2f\n", 
+            System.out.printf("%-15s%-20.2f%-15.2f%-20.2f\n", 
                                 procedure,
-                                NumberFormat.getNumberInstance(Locale.US).format(typeNumExecution.get(procedure)),
+                                (double) typeNumExecution.get(procedure) * 1000 / elapsedTime,
                                 (double) typeExecutionTime.get(procedure) / (typeNumExecution.get(procedure) * 1000),
                                 execTimes.get(procedure));
         }
