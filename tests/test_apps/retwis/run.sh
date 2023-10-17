@@ -106,7 +106,7 @@ function async() {
 }
 
 function remote_init() {
-    res=$(curl -X POST "http://localhost:3001/?init_volt=1&init_db=1&app=retwis" -s)
+    res=$(curl -X POST "http://localhost:3001/?init_volt=1&init_db=1&record_perf=1&app=retwis" -s)
     echo "$res"
     sleep 0.2
 }
