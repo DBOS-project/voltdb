@@ -20,6 +20,9 @@ fi
 # java classpaths and binary paths
 source $VOLTDB_BIN/voltenv
 
+VOLTDB="$VOLTDB_BIN/voltdb"
+LOG4J="$VOLTDB_VOLTDB/log4j.xml"
+
 # leader host for startup purposes only
 # (once running, all nodes are the same -- no leaders)
 STARTUPLEADERHOST="localhost"
@@ -82,11 +85,15 @@ if [[ $version == 11.0* ]] || [[ $version == 17.0* ]] ; then
 fi
 
 function run_sync() {
-    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH retwis.Benchmark sync $1
+    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH\
+        -Dlog4j.configuration=file://$LOG4J\
+        retwis.Benchmark sync $1
 }
 
 function run_async() {
-    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH retwis.Benchmark async
+    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH\
+        -Dlog4j.configuration=file://$LOG4J\
+        retwis.Benchmark async
 }
 
 function sync() {
@@ -96,6 +103,22 @@ function sync() {
 function async() {
     init
     run_async
+}
+
+function remote_init() {
+    res=$(curl -X POST "http://localhost:3001/?init_volt=1&init_db=1&app=retwis" -s)
+    echo "$res"
+    sleep 0.2
+}
+
+function remote_async() {
+    remote_init
+    run_async
+}
+
+function remote_sync() {
+    remote_init
+    run_sync $1
 }
 
 function help() {
