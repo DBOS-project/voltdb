@@ -106,19 +106,33 @@ function async() {
 }
 
 function remote_init() {
-    res=$(curl -X POST "http://localhost:3001/?init_volt=1&init_db=1&record_perf=1&app=retwis" -s)
+    res=$(curl -X POST "http://18.26.2.124:3001/?init_volt=1&init_db=1&record_perf=1&app=retwis&id=$1" -s)
     echo "$res"
-    sleep 0.2
+}
+
+function stop_perf() {
+    res=$(curl -X POST "http://18.26.2.124:3001/stop-perf?id=$1" -s)
+    echo "$res"
+}
+
+function remote_bench() {
+    id=$RANDOM
+    jars
+    remote_init $id
+    if [ ${1} == "async" ]; then
+        run_async
+    else
+        run_sync $2
+    fi
+    stop_perf $id
 }
 
 function remote_async() {
-    remote_init
-    run_async
+    remote_bench "async"
 }
 
 function remote_sync() {
-    remote_init
-    run_sync $1
+    remote_bench "sync" $1
 }
 
 function help() {
