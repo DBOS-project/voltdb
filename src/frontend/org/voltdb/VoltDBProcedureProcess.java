@@ -50,6 +50,7 @@ class ProcedureRunnerProxy{
     private long runTimeMax = 0;
     private Map<String, Long> sqlStatementIterationCount = new HashMap<>();
     private Map<String, Long> sqlStatementAverageRuntime = new HashMap<>();
+    private Map<String, List<Long>> sqlStatementRuntimeTracker = new HashMap<>();
     private Map<String, Long> sqlStatementMin = new HashMap<>();
     private Map<String, Long> sqlStatementMax = new HashMap<>();
 
@@ -210,18 +211,34 @@ class ProcedureRunnerProxy{
         if(!sqlStatementIterationCount.containsKey(varNamesString)) {
             sqlStatementIterationCount.put(varNamesString, 1l);
             sqlStatementAverageRuntime.put(varNamesString, t2 - t);
+            sqlStatementRuntimeTracker.put(varNamesString, new ArrayList<>());
+            sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
             sqlStatementMin.put(varNamesString, t2 - t);
             sqlStatementMax.put(varNamesString, t2 - t);
         } else {
             sqlStatementIterationCount.put(varNamesString, sqlStatementIterationCount.get(varNamesString) + 1);
             sqlStatementAverageRuntime.put(varNamesString, sqlStatementAverageRuntime.get(varNamesString) + (t2 - t));
+            sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
             sqlStatementMin.put(varNamesString, Math.min((t2 - t), sqlStatementMin.get(varNamesString)));
             sqlStatementMax.put(varNamesString, Math.max((t2 - t), sqlStatementMax.get(varNamesString)));
         }
 
         if(printCount % 100000 == 0) {
             for(String key : sqlStatementIterationCount.keySet()) {
-                System.out.println(key + "=" + sqlStatementIterationCount.get(key) + " TOOK " + ((double) sqlStatementAverageRuntime.get(key) / sqlStatementIterationCount.get(key) / 1000.0) + " us (range:" + (sqlStatementMin.get(key) / 1000.0) + " - " + (sqlStatementMax.get(key) / 1000.0) + ") to execute");
+                // only print frequent ones
+                if(sqlStatementIterationCount.get(key) < 5) {
+                    continue;
+                }
+
+                // calculate sum of squared variance
+                double squaredVariance = 0;
+                double mean = (double) sqlStatementAverageRuntime.get(key) / sqlStatementIterationCount.get(key);
+                for(long time : sqlStatementRuntimeTracker.get(key)) {
+                    squaredVariance += (time - mean) * (time - mean);
+                }
+                double std = Math.sqrt(squaredVariance / sqlStatementIterationCount.get(key));
+
+                System.out.println(key + "=" + sqlStatementIterationCount.get(key) + " TOOK " + (mean / 1000.0) + " us (range:" + (sqlStatementMin.get(key) / 1000.0) + " - " + (sqlStatementMax.get(key) / 1000.0) + ", std: " + (std / 1000.0) + ") to execute");
                 System.out.println();
             }
         }
