@@ -315,7 +315,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             return transferSize;
         }
 
-        public int read(ByteBuffer buffer) {
+        public int read(ByteBuffer buffer) { //DBVM?
             final int kCountDownCycles = 30;
             int countDown = kCountDownCycles;
             assert (buffer.remaining() < readBuffer.capacity());
@@ -338,7 +338,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
                 }
             }
             if (is_hypervisor_pv_notification_enabled && wait_count % 100000 == 0 && wait_count != 0) {
-                System.out.printf("core_id %d, wait overhead %fus\n", core_id,
+                System.out.printf("core_id %d, wait overhead %fus (dbvm)\n", core_id,
                         (double) wait_time / 1000 / ((double) wait_count));
                 wait_count = wait_time = 0;
             }
@@ -369,7 +369,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
                 notified = true;
             }
             if (is_hypervisor_pv_notification_enabled && notify_count % 100000 == 0 && notify_count != 0) {
-                System.out.printf("core_id %d, notify overhead %fus\n", core_id,
+                System.out.printf("core_id %d, notify overhead %fus (dbvm)\n", core_id,
                         (double) notify_time / 1000 / ((double) notify_count));
                 notify_count = notify_time = 0;
             }

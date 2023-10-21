@@ -412,7 +412,7 @@ public class ProcedureRunner {
     long lastRecordingTime = 0;
     long lastPrintTime = 0;
     long vmCallCnt = 0;
-    private Object handleVMProcedureCall(Object[] paramList, boolean queuedInSPVM) throws IOException,ClassNotFoundException {
+    private Object handleVMProcedureCall(Object[] paramList, boolean queuedInSPVM) throws IOException,ClassNotFoundException { // this is run in DBVM
         if (++vmCallCnt >= 1000) {
             queueLengthSum += ((Site) m_site).getStagedTasks().size();
             queueLengthCnt++;
@@ -461,12 +461,14 @@ public class ProcedureRunner {
                 List<String> sqlStmtVarNames = (List<String>)objectsInput.readObject();
                 List<Object[]> sqlParams = (List<Object[]>)objectsInput.readObject();
                 assert(sqlStmtVarNames.size() == sqlParams.size());
+                // code where DBVM executes query
                 for (int i = 0; i < sqlStmtVarNames.size(); ++i) {
                     String sqlStmtVarName = sqlStmtVarNames.get(i);
                     voltQueueSQL(m_stmtMap.get(sqlStmtVarName), null, sqlParams.get(i));
                 }
                 VoltTable[] result = voltExecuteSQL(isFinalSQL);
                 if (ignoreResults == false) {
+                    // respond to query given, and give the results back
                     ((Site) m_site).getInterVMMessagingProtocol().writeExecuteQueryRequestResponse(result, true);    
                 }
                 //System.out.printf("Executed %d queries, result has %d tables\n", sqlStmtVarNames.size(), result.length);

@@ -105,11 +105,11 @@ public class RingBufferChannel {
         int countDown = kCountDownCycles;
         assert (buffer.remaining() < readBuffer.capacity());
         int transferSize = buffer.remaining();
-        while (incomingRingBuffer.readBytes(buffer) == false) {
+        while (incomingRingBuffer.readBytes(buffer) == false) { // while nothing to read, polling
             if (hypervisorPVSupport && --countDown < 0) {
                 incomingRingBuffer.setHalted(1);
                 long t = System.nanoTime();
-                ExecutionEngine.DBOSPVWait(hypervisor_fd);
+                // ExecutionEngine.DBOSPVWait(hypervisor_fd);
                 long t2 = System.nanoTime();
                 incomingRingBuffer.setHalted(0);
                 countDown = kCountDownCycles;
@@ -142,7 +142,7 @@ public class RingBufferChannel {
     // UnsafeBuffer writeBuffer = new UnsafeBuffer();
     public void write(ByteBuffer buffer, boolean notify) {
         boolean notified = false;
-        while (outgoingRingBuffer.writeBytes(buffer) == false) {
+        while (outgoingRingBuffer.writeBytes(buffer) == false) { // while not enough space, polling
             // if (notified == false && is_hypervisor_pv_notification_enabled &&
             // outgoingRingBuffer.getHalted() == 1) {
             // notify_if_needed();
@@ -152,10 +152,10 @@ public class RingBufferChannel {
         }
         // if (notified == false && hypervisorPVSupport &&
         //     outgoingRingBuffer.getHalted() == 1 && notify) {
-        if (notified == false && hypervisorPVSupport && notify) {
+        if (notified == false && hypervisorPVSupport && notify) { // notify the user that operation is complete
             long t1 = System.nanoTime();
             //if (incomingRingBuffer.readableBytes() > 0) {
-               ExecutionEngine.DBOSPVNotify(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
+            //    ExecutionEngine.DBOSPVNotify(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
             //} else {
                 // incomingRingBuffer.setHalted(1);
                 // ExecutionEngine.DBOSPVNotifyAndWait(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);

@@ -32,7 +32,7 @@ import org.voltcore.logging.VoltLogger;
 import org.voltdb.jni.ExecutionEngine;
 import org.voltdb.utils.InMemoryJarfile;
 import org.voltdb.utils.SerializationHelper;
-
+import java.util.Arrays;
 
 
 class ProcedureRunnerProxy{
@@ -40,6 +40,19 @@ class ProcedureRunnerProxy{
     private List<String> queuedSQLStmtVarNames;
     private List<Object[]> queuedSQLParams;
     private Map<SQLStmt, String> stmtToNames;
+    
+    // track how long each query takes on average to execute, in microseconds
+    private Map<String, Long> stmtNameToTotalExecutionTimes;
+    private Map<String, Long> stmtNameToExecutionTimeCount;
+    private long printCount = 0;
+    private long runTime = 0;
+    private long runTimeMin = 10000000;
+    private long runTimeMax = 0;
+    private Map<String, Long> sqlStatementIterationCount = new HashMap<>();
+    private Map<String, Long> sqlStatementAverageRuntime = new HashMap<>();
+    private Map<String, Long> sqlStatementMin = new HashMap<>();
+    private Map<String, Long> sqlStatementMax = new HashMap<>();
+
     InterVMMessagingProtocol protocol;
     org.nustaq.serialization.FSTConfiguration fstConf;
     ByteBuffer buffer = null;
@@ -53,6 +66,9 @@ class ProcedureRunnerProxy{
         this.queuedCalls = queuedCalls;
         this.stmtToNames = new HashMap<>();
         this.fstConf = fstConf;
+
+        this.stmtNameToTotalExecutionTimes = new HashMap<>();
+        this.stmtNameToExecutionTimeCount = new HashMap<>();
 
         Field[] fields = this.procedure.getClass().getDeclaredFields();
         for (Field f : fields) {
@@ -89,6 +105,8 @@ class ProcedureRunnerProxy{
             }
             
             stmtToNames.put(stmt, f.getName());
+            stmtNameToTotalExecutionTimes.put(f.getName(), 0L);
+            stmtNameToExecutionTimeCount.put(f.getName(), 0L);
         }
     }
 
@@ -136,8 +154,8 @@ class ProcedureRunnerProxy{
 
     // public static int globalCount = 0;
     
-    public VoltTable[] voltExecuteSQL(boolean isFinalSQL, boolean ignoreResults) {
-        // System.out.println("VOLTEXECUTESQL " + (++globalCount));
+    public VoltTable[] voltExecuteSQL(boolean isFinalSQL, boolean ignoreResults) { // runs in SPVM
+        // write the query(ies) to memory
         try {
             org.nustaq.serialization.FSTObjectOutput objectOutput = fstConf.getObjectOutput();
             objectOutput.writeObject(isFinalSQL);
@@ -151,9 +169,13 @@ class ProcedureRunnerProxy{
             e.printStackTrace();
         }
 
+        String[] varNames = queuedSQLStmtVarNames.toArray(new String[0]);
+        String varNamesString = Arrays.toString(varNames);
         queuedSQLStmtVarNames.clear();
         queuedSQLParams.clear();
         VoltTable[] result = null; 
+        // read the queries from memory
+        long t = System.nanoTime();
         while (true) {
             InterVMMessage msg = protocol.getNextMessage(oldMessage, null);
             if (msg.type == InterVMMessage.kProcedureCallReq) {
@@ -181,6 +203,26 @@ class ProcedureRunnerProxy{
                 }
                 oldMessage = msg;
                 break;
+            }
+        }
+        long t2 = System.nanoTime();
+
+        if(!sqlStatementIterationCount.containsKey(varNamesString)) {
+            sqlStatementIterationCount.put(varNamesString, 1l);
+            sqlStatementAverageRuntime.put(varNamesString, t2 - t);
+            sqlStatementMin.put(varNamesString, t2 - t);
+            sqlStatementMax.put(varNamesString, t2 - t);
+        } else {
+            sqlStatementIterationCount.put(varNamesString, sqlStatementIterationCount.get(varNamesString) + 1);
+            sqlStatementAverageRuntime.put(varNamesString, sqlStatementAverageRuntime.get(varNamesString) + (t2 - t));
+            sqlStatementMin.put(varNamesString, Math.min((t2 - t), sqlStatementMin.get(varNamesString)));
+            sqlStatementMax.put(varNamesString, Math.max((t2 - t), sqlStatementMax.get(varNamesString)));
+        }
+
+        if(printCount % 100000 == 0) {
+            for(String key : sqlStatementIterationCount.keySet()) {
+                System.out.println(key + "=" + sqlStatementIterationCount.get(key) + " TOOK " + ((double) sqlStatementAverageRuntime.get(key) / sqlStatementIterationCount.get(key) / 1000.0) + " us (range:" + (sqlStatementMin.get(key) / 1000.0) + " - " + (sqlStatementMax.get(key) / 1000.0) + ") to execute");
+                System.out.println();
             }
         }
         return result;
