@@ -80,6 +80,7 @@
 #include<sys/ioctl.h>
 
 #define DBOS_PV_WAIT _IOW('a','a',int32_t*)
+#define DBOS_PV_WAIT_TIMER _IOW('a','c',uint64_t*) // unique 2nd param https://docs.kernel.org/userspace-api/ioctl/ioctl-number.html
 #define DBOS_PV_NOTIFY _IOW('a','b',uint64_t*)
 #define DBOS_PV_GET_VM_ID _IOW('a','w',uint64_t*)
 #define DBOS_NOTIFY_AND_WAIT _IOW('a','q',uint64_t*)
@@ -301,6 +302,14 @@ SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_DBOSPVNotif
 SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_DBOSPVWait(JNIEnv *env, jclass obj, jint hypervisor_fd) {
     uint32_t dummy = 0;
     return reinterpret_cast<jint>(ioctl(hypervisor_fd, DBOS_PV_WAIT, &dummy));
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_DBOSPVWaitTimer(JNIEnv *env, jclass obj, jint hypervisor_fd, jint dual_qemu_pid, jint dual_qemu_lapic_id, jint wakeup_delay_us) {
+    uint64_t word = 
+              ((dual_qemu_pid & 0x00000000ffffffff) << 32L) 
+            | ((wakeup_delay_us & 0x0000000000ffffff) << 8L) 
+            | ((dual_qemu_lapic_id & 0x00000000000000ff) << 0L);
+    return reinterpret_cast<jint>(ioctl(hypervisor_fd, DBOS_PV_WAIT_TIMER, &word));
 }
 
 SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_DBOSBindCurrentThreadToCore(JNIEnv *env, jclass obj, jint core_id) {

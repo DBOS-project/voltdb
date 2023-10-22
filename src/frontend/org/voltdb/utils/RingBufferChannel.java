@@ -109,6 +109,7 @@ public class RingBufferChannel {
             if (hypervisorPVSupport && --countDown < 0) {
                 incomingRingBuffer.setHalted(1);
                 long t = System.nanoTime();
+                ExecutionEngine.DBOSPVWaitTimer(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id, 0);
                 // ExecutionEngine.DBOSPVWait(hypervisor_fd);
                 long t2 = System.nanoTime();
                 incomingRingBuffer.setHalted(0);
@@ -155,7 +156,7 @@ public class RingBufferChannel {
         if (notified == false && hypervisorPVSupport && notify) { // notify the user that operation is complete
             long t1 = System.nanoTime();
             //if (incomingRingBuffer.readableBytes() > 0) {
-            //    ExecutionEngine.DBOSPVNotify(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
+               ExecutionEngine.DBOSPVNotify(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
             //} else {
                 // incomingRingBuffer.setHalted(1);
                 // ExecutionEngine.DBOSPVNotifyAndWait(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);

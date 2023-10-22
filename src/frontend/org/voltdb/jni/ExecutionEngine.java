@@ -1025,6 +1025,8 @@ public abstract class ExecutionEngine implements FastDeserializer.Deserializatio
     
     public static native int DBOSPVWait(int hypervisorFD);
 
+    public static native int DBOSPVWaitTimer(int hypervisorFD, int dual_qemu_pid, int dual_qemu_lapic_id, int wakeup_delay_us);
+
     public static native int DBOSBindCurrentThreadToCore(int core_id);
     
     public static native int DBOSGetCPUId();
