@@ -80,7 +80,7 @@
 #include<sys/ioctl.h>
 
 #define DBOS_PV_WAIT _IOW('a','a',int32_t*)
-#define DBOS_PV_WAIT_TIMER _IOW('a','c',uint64_t*) // unique 2nd param https://docs.kernel.org/userspace-api/ioctl/ioctl-number.html
+#define DBOS_PV_WAIT_TIMER _IOW('a','g',uint64_t*) // unique 2nd param https://docs.kernel.org/userspace-api/ioctl/ioctl-number.html
 #define DBOS_PV_NOTIFY _IOW('a','b',uint64_t*)
 #define DBOS_PV_GET_VM_ID _IOW('a','w',uint64_t*)
 #define DBOS_NOTIFY_AND_WAIT _IOW('a','q',uint64_t*)
