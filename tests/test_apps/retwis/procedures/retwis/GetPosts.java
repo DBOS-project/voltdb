@@ -9,7 +9,7 @@ public class GetPosts extends VoltProcedure {
     public final SQLStmt getPosts =
         new SQLStmt("SELECT u_id, post, posted_at " + 
                     "FROM RetwisPosts " + 
-                    "WHERE u_id = ? LIMIT 20");
+                    "WHERE u_id = ? LIMIT 120");
 
     public VoltTable[] run(int u_id) throws VoltAbortException
     {

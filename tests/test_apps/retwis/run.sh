@@ -106,7 +106,7 @@ function async() {
 }
 
 function remote_init() {
-    res=$(curl -X POST "http://18.26.2.124:3001/?init_volt=1&init_db=1&record_perf=1&app=retwis&id=$1" -s)
+    res=$(curl -X POST "http://18.26.2.124:3001/?init_volt=1&init_db=1&record_perf=1&app=retwis&id=$1&num_cores=1" -s)
     echo "$res"
 }
 
@@ -120,7 +120,7 @@ function remote_bench() {
     jars
     remote_init $id
     if [ ${1} == "async" ]; then
-        run_async
+        run_async $2
     else
         run_sync $2
     fi
@@ -128,7 +128,7 @@ function remote_bench() {
 }
 
 function remote_async() {
-    remote_bench "async"
+    remote_bench "async" $1
 }
 
 function remote_sync() {

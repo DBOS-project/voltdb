@@ -7,6 +7,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.voltdb.client.ClientResponse;
 import org.voltdb.client.ProcedureCallback;
 import org.voltdb.client.exampleutils.ClientConnection;
+import org.voltdb.VoltTable;
 
 public class RetwisSimulation {
     private int next_u_id;
@@ -26,14 +27,17 @@ public class RetwisSimulation {
         this.async = async;
     }
 
-    private void callProcedure(Benchmark.RetwisCallback cb, String procedure, Object... parameters) throws Exception {
+    private VoltTable[] callProcedure(Benchmark.RetwisCallback cb, String procedure, Object... parameters) throws Exception {
         cb.setProcedure(procedure);
+        VoltTable[] results = null;
         if (this.async)
             this.client.executeAsync(cb, procedure, parameters);
         else {
             ClientResponse response = this.client.execute(procedure, parameters);
             cb.clientCallback(response);
+            results = response.getResults();
         }
+        return results;
     }
 
     private void doCreateUser(Benchmark.RetwisCallback cb) throws IOException {
@@ -53,7 +57,7 @@ public class RetwisSimulation {
         int u_id = rnd.nextInt(this.next_u_id);
         String post = "This is a ReTweet!";
         try {
-            this.callProcedure(cb, "Post", post_id, u_id, post);
+            this.callProcedure(cb, "Post", u_id, post_id, post);
         } catch (Exception e) {
             throw new IOException(e);
         }
@@ -68,7 +72,7 @@ public class RetwisSimulation {
         }
     }
 
-    private void doGetPosts(Benchmark.RetwisCallback cb) throws IOException {
+    public void doGetPosts(Benchmark.RetwisCallback cb) throws IOException {
         int u_id = rnd.nextInt(this.next_u_id);
         try {
             this.callProcedure(cb, "GetPosts", u_id);
@@ -110,6 +114,17 @@ public class RetwisSimulation {
             doPost(cb);
         } else { // 5%
             assert n > 100 - 90;
+            doFollow(cb);
+        }
+    }
+
+    public void doWarmupOne(Benchmark.RetwisCallback cb) throws IOException {
+        int n = rnd.nextInt(101);
+        if (this.next_u_id < 50 || n < 3) {
+            doCreateUser(cb);
+        } else if (n <= 3 + 90) {
+            doPost(cb);
+        } else {
             doFollow(cb);
         }
     }

@@ -22,7 +22,7 @@ public class Benchmark {
     private boolean async;
     private int numClients;
     public static final ReentrantLock counterLock = new ReentrantLock();
-    public static final int totalSPCalls = 500000;
+    public static final int totalSPCalls = 1000000;
     public static long totExecutions = 0;
     public static long totExecutionNanoseconds = 0;
     public static long minExecutionNanoseconds = 999999999l;
@@ -35,7 +35,8 @@ public class Benchmark {
         System.out.printf("Connecting to %s\n", servers);
         int sleep = 1000;
         this.async = (args.length >= 1) ? (args[0].equals("async")) : false;
-        this.numClients = (args.length == 2 || !this.async)? Integer.parseInt(args[1]) : 1;
+        this.numClients = (args.length == 2)? Integer.parseInt(args[1]) : 1;
+        System.out.printf("Running %d clients\n", this.numClients);
         
         while(true) {
             try {
@@ -53,16 +54,17 @@ public class Benchmark {
     }
 
     public void run() {
-        long warmupDuration = 2000; // in ms
+        long warmupDuration = 5000; // in ms
         long warmupEndTime = System.currentTimeMillis() + warmupDuration;
         long currentTime = System.currentTimeMillis();
         while (currentTime < warmupEndTime) {
             try {
-                this.simulator.doOne(new RetwisCallback(true));
+                this.simulator.doWarmupOne(new RetwisCallback(true));
             }
             catch (IOException e) {}
             currentTime = System.currentTimeMillis();
         }
+
 
         long startTime = System.currentTimeMillis();
         ThreadGroup workerClients = new ThreadGroup("clients");
@@ -124,9 +126,7 @@ public class Benchmark {
         return execTimes;
     }
 
-    class RetwisCallback
-        implements ProcedureCallback
-    {
+    class RetwisCallback implements ProcedureCallback {
         boolean warmup;
         String procedure;
         public RetwisCallback(boolean warmup) {
@@ -182,7 +182,9 @@ public class Benchmark {
         public void run() {
             for (int i = 0; i < this.totalSPCalls / numClients; i++) {
                 try {
-                    this.sim.doOne(new RetwisCallback(false));
+                    //
+                    this.sim.doGetPosts(new RetwisCallback(false));
+                    // this.sim.doOne(new RetwisCallback(false));
                 }
                 catch (IOException e) {}
             }
