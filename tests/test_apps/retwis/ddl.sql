@@ -16,8 +16,8 @@ CREATE TABLE RetwisUsers (
 PARTITION TABLE RetwisUsers ON COLUMN u_id;
 
 CREATE TABLE RetwisPosts (
-    post_id INTEGER NOT NULL,
     u_id INTEGER NOT NULL,
+    post_id INTEGER NOT NULL,
     post VARCHAR(128) NOT NULL,
     posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT PK_RetwisPosts PRIMARY KEY (u_id, post_id)
