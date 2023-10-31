@@ -105,7 +105,7 @@ function warmup() {
 }
 
 function remote_init() {
-    res=$(curl -X POST "http://18.26.2.124:3001/?init_volt=1&init_db=1&record_perf=1&app=retwis&id=$1&num_cores=1&warmup_time=$2" -s)
+    res=$(curl -X POST "http://18.26.2.124:3001/?init_volt=1&init_db=1&record_perf=1&app=retwis&id=$1&num_cores=$3&warmup_time=$2" -s)
     echo "$res"
 }
 
@@ -116,9 +116,10 @@ function stop_perf() {
 
 function remote_bench() {
     id=$RANDOM
-    warmup_time=20
+    warmup_time=300
+    num_cores=8
     jars
-    remote_init $id $warmup_time
+    remote_init $id $warmup_time $num_cores
     sleep $warmup_time
     run $@
     stop_perf $id

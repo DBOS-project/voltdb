@@ -27,7 +27,7 @@ public class Benchmark {
     private boolean async;
     private int numClients;
     public static final ReentrantLock counterLock = new ReentrantLock();
-    public static final int totalSPCalls = 10000;
+    public static final int totalSPCalls = 1_000_000;
     public static long totExecutions = 0;
     public static long totExecutionNanoseconds = 0;
     public static long minExecutionNanoseconds = 999999999l;
@@ -111,11 +111,12 @@ public class Benchmark {
 
         while (workerClients.activeCount() > 0) {} // Wait for all threads to join
         long elapsedTime = System.currentTimeMillis() - startTime;
+        Map<String, Double> execTimes = this.getServerStats();
 
         System.out.println("============================== BENCHMARK RESULTS ==============================");
         System.out.printf("Time: %d ms\n", elapsedTime);
         System.out.printf("Total transactions: %d\n", totExecutions);
-        System.out.printf("Transactions per second: %.2f\n", (float)totExecutions / (elapsedTime / 1000));
+        System.out.printf("Transactions per second: %.2f\n", (float)totExecutions * 1000 / elapsedTime);
         System.out.printf("Latency(us): %.2f < %.2f < %.2f\n",
                             (double) minExecutionNanoseconds / 1000,
                             ((double) totExecutionNanoseconds / ((double) totExecutions * 1000)),
@@ -126,7 +127,6 @@ public class Benchmark {
         // System.out.print(m_clientCon.getStatistics(Constants.TRANS_PROCS).toString(false));
         // System.out.println("===============================================================================\n");
 
-        Map<String, Double> execTimes = this.getServerStats();
         System.out.println("----------------------- Breakdown --------------------------");
         System.out.printf("%-15s%-20s%-15s%-20s\n", "Procedure", "Throughput(txns/s)", "Latency(us)", "Execution Time(us)");
         System.out.println("------------------------------------------------------------");
