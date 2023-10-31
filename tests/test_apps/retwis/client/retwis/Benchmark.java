@@ -5,7 +5,11 @@ import java.text.NumberFormat;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.concurrent.locks.ReentrantLock;
+import java.lang.IllegalArgumentException;
 
 import org.voltdb.VoltTable;
 import org.voltdb.client.ClientResponse;
@@ -22,7 +26,7 @@ public class Benchmark {
     private boolean async;
     private int numClients;
     public static final ReentrantLock counterLock = new ReentrantLock();
-    public static final int totalSPCalls = 1000000;
+    public static final int totalSPCalls = 10000;
     public static long totExecutions = 0;
     public static long totExecutionNanoseconds = 0;
     public static long minExecutionNanoseconds = 999999999l;
@@ -30,12 +34,12 @@ public class Benchmark {
     public static Map<String,Long> typeNumExecution = new HashMap<String, Long>();
     public static Map<String,Long> typeExecutionTime = new HashMap<String, Long>();
 
-    public Benchmark(String[] args) {
-        String servers = "18.26.2.124";
+    public Benchmark(Map<String, List<String>> args) {
+        String servers = args.get("s").get(0);
         System.out.printf("Connecting to %s\n", servers);
         int sleep = 1000;
-        this.async = (args.length >= 1) ? (args[0].equals("async")) : false;
-        this.numClients = (args.length == 2)? Integer.parseInt(args[1]) : 1;
+        this.async = args.get("t").get(0).equals("async");
+        this.numClients = Integer.parseInt(args.get("n").get(0));
         System.out.printf("Running %d clients\n", this.numClients);
         
         while(true) {
@@ -53,18 +57,36 @@ public class Benchmark {
         this.simulator = new RetwisSimulation(this.m_clientCon, this.async);
     }
 
-    public void run() {
-        long warmupDuration = 5000; // in ms
-        long warmupEndTime = System.currentTimeMillis() + warmupDuration;
+    public void init_data() {
+        System.out.println("Initializing data in db");
+        long initDuration = 5000; // in ms
+        long initEndTime = System.currentTimeMillis() + initDuration;
         long currentTime = System.currentTimeMillis();
-        while (currentTime < warmupEndTime) {
+        while (currentTime < initEndTime) {
             try {
-                this.simulator.doWarmupOne(new RetwisCallback(true));
+                this.simulator.doInsertOne(new RetwisCallback(true));
             }
             catch (IOException e) {}
             currentTime = System.currentTimeMillis();
         }
+    }
 
+    public void warmup_db(int warmupDuration) {
+        this.simulator.set_next_ids(51000, 3000);
+        System.out.println("Warming up the db");
+        long warmupEndTime = System.currentTimeMillis() + warmupDuration * 1000;
+        long currentTime = System.currentTimeMillis();
+        while (currentTime < warmupEndTime) {
+            try {
+                this.simulator.doOne(new RetwisCallback(true));
+            }
+            catch (IOException e) {}
+            currentTime = System.currentTimeMillis();
+        }
+    }
+
+    public void run() {
+        this.simulator.set_next_ids(51000, 3000);
 
         long startTime = System.currentTimeMillis();
         ThreadGroup workerClients = new ThreadGroup("clients");
@@ -190,6 +212,44 @@ public class Benchmark {
             }
         }
     }
+
+    private static Map<String, List<String>> getDefaultArgs() {
+        final Map<String, List<String>> args = new HashMap<>();
+        args.put("t", Arrays.asList("async")); // Type of operations
+        args.put("n", Arrays.asList("8")); // Number of clients
+        args.put("s", Arrays.asList("localhost")); // Host IP
+        args.put("a", Arrays.asList("run")); // Action: one of init, warmup, run
+        args.put("d", Arrays.asList("20")); // Run duration in case of warmup
+        return args;
+    }
+
+    private static Map<String, List<String>> parseArgs(String[] args) throws IllegalArgumentException {
+        final Map<String, List<String>> params = Benchmark.getDefaultArgs();
+
+        List<String> options = null;
+        for (int i = 0; i < args.length; i++) {
+            final String a = args[i];
+
+            if (a.charAt(0) == '-') {
+                if (a.length() < 2) {
+                    System.err.println("Error at argument " + a);
+                    throw new IllegalArgumentException();
+                }
+
+                options = new ArrayList<>();
+                params.put(a.substring(1), options);
+            }
+            else if (options != null) {
+                options.add(a);
+            }
+            else {
+                System.err.println("Illegal parameter usage");
+                throw new IllegalArgumentException();
+            }
+        }
+
+        return params;
+    }
     
     /**
      * Main routine creates a benchmark instance and kicks off the run method.
@@ -199,9 +259,15 @@ public class Benchmark {
      * @see {@link VoterConfig}
      */
     public static void main(String[] args) throws Exception {
-        assert args.length >= 1;
-        System.out.println("Running " + args[0] + " benchmark");
-        Benchmark benchmark = new Benchmark(args);
-        benchmark.run();
+        Map<String, List<String>> parsedArgs = parseArgs(args);
+        System.out.println(parsedArgs.entrySet());
+        Benchmark benchmark = new Benchmark(parsedArgs);
+        String action = parsedArgs.get("a").get(0);
+        if (action.equals("init"))
+            benchmark.init_data();
+        else if (action.equals("warmup"))
+            benchmark.warmup_db(Integer.parseInt(parsedArgs.get("d").get(0)));
+        else
+            benchmark.run();
     }
 }

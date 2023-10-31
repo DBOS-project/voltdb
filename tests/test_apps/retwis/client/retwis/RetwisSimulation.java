@@ -27,6 +27,11 @@ public class RetwisSimulation {
         this.async = async;
     }
 
+    public void set_next_ids(int post_id, int u_id) {
+        this.next_post_id = post_id;
+        this.next_u_id = u_id;
+    }
+
     private VoltTable[] callProcedure(Benchmark.RetwisCallback cb, String procedure, Object... parameters) throws Exception {
         cb.setProcedure(procedure);
         VoltTable[] results = null;
@@ -118,7 +123,7 @@ public class RetwisSimulation {
         }
     }
 
-    public void doWarmupOne(Benchmark.RetwisCallback cb) throws IOException {
+    public void doInsertOne(Benchmark.RetwisCallback cb) throws IOException {
         int n = rnd.nextInt(101);
         if (this.next_u_id < 50 || n < 3) {
             doCreateUser(cb);

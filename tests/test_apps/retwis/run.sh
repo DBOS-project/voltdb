@@ -76,6 +76,7 @@ function server() {
 function init() {
     jars
     sqlcmd < ddl.sql
+    run -t "async" -a "init"
 }
 
 version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}')
@@ -84,29 +85,27 @@ if [[ $version == 11.0* ]] || [[ $version == 17.0* ]] ; then
         add_open="--add-opens java.base/sun.nio.ch=ALL-UNNAMED"
 fi
 
-function run_sync() {
+function run() {
     java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH\
         -Dlog4j.configuration=file://$LOG4J\
-        retwis.Benchmark sync $1
-}
-
-function run_async() {
-    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH\
-        -Dlog4j.configuration=file://$LOG4J\
-        retwis.Benchmark async
+        retwis.Benchmark $@
 }
 
 function sync() {
     init
-    run_sync $1
+    run -t "sync" $@
 }
 function async() {
     init
-    run_async
+    run -t "async" $@
+}
+
+function warmup() {
+    run -t "async" -a "warmup" $@
 }
 
 function remote_init() {
-    res=$(curl -X POST "http://18.26.2.124:3001/?init_volt=1&init_db=1&record_perf=1&app=retwis&id=$1&num_cores=1" -s)
+    res=$(curl -X POST "http://18.26.2.124:3001/?init_volt=1&init_db=1&record_perf=1&app=retwis&id=$1&num_cores=1&warmup_time=$2" -s)
     echo "$res"
 }
 
@@ -117,22 +116,20 @@ function stop_perf() {
 
 function remote_bench() {
     id=$RANDOM
+    warmup_time=20
     jars
-    remote_init $id
-    if [ ${1} == "async" ]; then
-        run_async $2
-    else
-        run_sync $2
-    fi
+    remote_init $id $warmup_time
+    sleep $warmup_time
+    run $@
     stop_perf $id
 }
 
 function remote_async() {
-    remote_bench "async" $1
+    remote_bench -t "async" $@
 }
 
 function remote_sync() {
-    remote_bench "sync" $1
+    remote_bench -t "sync" $@
 }
 
 function help() {
@@ -154,11 +151,7 @@ if [ $# -eq 0 ];
 then
     help
     exit 0
-elif [ $# -eq 1 ];
-then
-    echo "${0}: Performing ${1}..."
-    ${1}
 else
-    echo "${0}: Performing ${1} with parameter ${2}..."
-    ${1} ${2}
+    echo "${0}: Performing ${1} with parameter ${@}..."
+    $@
 fi
