@@ -6,7 +6,7 @@
 # fi
 
 if [ -z "$PERF_PATH" ]; then
-    PERF_PATH="/lib/linux-tools/5.15.0-87-generic/perf"
+    PERF_PATH="/lib/linux-tools-5.15.0-88/perf"
 fi
 
 if [ -z "$APP_PATH" ]; then
@@ -29,7 +29,7 @@ function start() {
 
 function stop() {
     volt_pid=$(ps u | grep -i voltdb | grep -v grep | awk '{print $2}')
-    echo "${0}: Stopping perf for pid-$pid"
+    echo "${0}: Stopping perf for pid-$volt_pid"
     if pgrep -x perf > /dev/null
     then
         # Kill all running perf processes

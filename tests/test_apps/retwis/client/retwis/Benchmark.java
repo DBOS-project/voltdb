@@ -21,6 +21,7 @@ import org.voltdb.client.exampleutils.PerfCounterMap;
 import retwis.RetwisSimulation;
 
 public class Benchmark {
+    final String servers;
     final RetwisSimulation simulator;
     private ClientConnection m_clientCon;
     private boolean async;
@@ -35,17 +36,22 @@ public class Benchmark {
     public static Map<String,Long> typeExecutionTime = new HashMap<String, Long>();
 
     public Benchmark(Map<String, List<String>> args) {
-        String servers = args.get("s").get(0);
+        this.servers = args.get("s").get(0);
         System.out.printf("Connecting to %s\n", servers);
-        int sleep = 1000;
         this.async = args.get("t").get(0).equals("async");
         this.numClients = Integer.parseInt(args.get("n").get(0));
         System.out.printf("Running %d clients\n", this.numClients);
         
+        this.m_clientCon = Benchmark.getClient(this.servers);
+        this.simulator = new RetwisSimulation(this.m_clientCon, this.async);
+    }
+
+    private static ClientConnection getClient(String servers) {
+        int sleep = 1000;
         while(true) {
             try {
-                this.m_clientCon = ClientConnectionPool.get(servers, 21212);
-                break;
+                ClientConnection m_clientCon = ClientConnectionPool.get(servers, 21212);
+                return m_clientCon;
             }
             catch (Exception e) {
                 System.err.printf("Connection failed - retrying in %d second(s).\n", sleep/1000);
@@ -54,7 +60,6 @@ public class Benchmark {
                     sleep += sleep;
             }
         }
-        this.simulator = new RetwisSimulation(this.m_clientCon, this.async);
     }
 
     public void init_data() {
@@ -76,27 +81,32 @@ public class Benchmark {
         System.out.println("Warming up the db");
         long warmupEndTime = System.currentTimeMillis() + warmupDuration * 1000;
         long currentTime = System.currentTimeMillis();
+        int i = 0;
         while (currentTime < warmupEndTime) {
+            if (i % 100_000 == 0 && i != 0)
+                System.out.printf("Iteration %d\n", i);
             try {
                 this.simulator.doOne(new RetwisCallback(true));
             }
             catch (IOException e) {}
             currentTime = System.currentTimeMillis();
+            i += 0;
         }
     }
 
     public void run() {
         this.simulator.set_next_ids(51000, 3000);
+        this.setStatDeltaFlag();
 
         long startTime = System.currentTimeMillis();
         ThreadGroup workerClients = new ThreadGroup("clients");
         for (int i = 1; i < this.numClients; i++) {
-            SingleClientRunnable r = new SingleClientRunnable(this.simulator, totalSPCalls);
+            SingleClientRunnable r = new SingleClientRunnable(i, totalSPCalls/numClients, this.servers, this.async);
             Thread th = new Thread(workerClients, r);
             th.start();
         }
         // Run one in parent thread
-        SingleClientRunnable r = new SingleClientRunnable(this.simulator, totalSPCalls);
+        SingleClientRunnable r = new SingleClientRunnable(0, totalSPCalls/numClients, this.servers, this.async);
         r.run();
 
         while (workerClients.activeCount() > 0) {} // Wait for all threads to join
@@ -129,9 +139,20 @@ public class Benchmark {
         }
     }
 
+    private void setStatDeltaFlag() {
+        String query = "SELECT *" +
+            " from statistics(PROCEDUREPROFILE,1);";
+        VoltTable[] results = null;
+        try {
+            results = this.m_clientCon.execute("@QueryStats", query).getResults();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private Map<String, Double> getServerStats() {
         String query = "SELECT *" +
-            " from statistics(PROCEDUREPROFILE,0);";
+            " from statistics(PROCEDUREPROFILE,1);";
         VoltTable[] results = null;
         try {
             results = this.m_clientCon.execute("@QueryStats", query).getResults();
@@ -194,15 +215,21 @@ public class Benchmark {
     } 
 
     class SingleClientRunnable implements Runnable {
-        private RetwisSimulation sim;
+        private int id;
         private int totalSPCalls;
-        SingleClientRunnable(RetwisSimulation sim, int totalSPCalls) {
-            this.sim = sim;
+        private RetwisSimulation sim;
+        SingleClientRunnable(int id, int totalSPCalls, String servers, boolean async) {
+            this.id = id;
             this.totalSPCalls = totalSPCalls;
+            ClientConnection client = Benchmark.getClient(servers);
+            this.sim = new RetwisSimulation(client, async);
+            this.sim.set_next_ids(51200, 8192);
         }
 
         public void run() {
-            for (int i = 0; i < this.totalSPCalls / numClients; i++) {
+            for (int i = 0; i < this.totalSPCalls; i++) {
+                if (i % 100_000 == 0 && i != 0)
+                    System.out.printf("Client %d; iteration %d\n", this.id, i);
                 try {
                     //
                     this.sim.doGetPosts(new RetwisCallback(false));
