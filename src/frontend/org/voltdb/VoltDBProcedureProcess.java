@@ -34,7 +34,6 @@ import org.voltdb.utils.InMemoryJarfile;
 import org.voltdb.utils.SerializationHelper;
 import java.util.Arrays;
 
-
 class ProcedureRunnerProxy{
     VoltVMProcedure procedure;
     private List<String> queuedSQLStmtVarNames;
@@ -178,6 +177,14 @@ class ProcedureRunnerProxy{
         // read the queries from memory
         long t = System.nanoTime();
         while (true) {
+            // perhaps: wait a bit before doing this get next message
+            // if(sqlStatementIterationCount.containsKey(varNamesString) && sqlStatementIterationCount.get(varNamesString) > 2) {
+            //     int meanNanosecond = (int) ((double) sqlStatementAverageRuntime.get(varNamesString) / sqlStatementIterationCount.get(varNamesString));
+            //     int threshold = 3000; // nanoseconds
+            //     protocol.getChannel().runWaitTimer(meanNanosecond - threshold);
+            // }
+
+            // now, return to normal operation, doing polling instead
             InterVMMessage msg = protocol.getNextMessage(oldMessage, null);
             if (msg.type == InterVMMessage.kProcedureCallReq) {
                 VMProcedureCall call = null;
@@ -208,22 +215,23 @@ class ProcedureRunnerProxy{
         }
         long t2 = System.nanoTime();
 
-        // if(!sqlStatementIterationCount.containsKey(varNamesString)) {
-        //     sqlStatementIterationCount.put(varNamesString, 1l);
-        //     sqlStatementAverageRuntime.put(varNamesString, t2 - t);
-        //     sqlStatementRuntimeTracker.put(varNamesString, new ArrayList<>());
-        //     sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
-        //     sqlStatementMin.put(varNamesString, t2 - t);
-        //     sqlStatementMax.put(varNamesString, t2 - t);
-        // } else {
-        //     sqlStatementIterationCount.put(varNamesString, sqlStatementIterationCount.get(varNamesString) + 1);
-        //     sqlStatementAverageRuntime.put(varNamesString, sqlStatementAverageRuntime.get(varNamesString) + (t2 - t));
-        //     sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
-        //     sqlStatementMin.put(varNamesString, Math.min((t2 - t), sqlStatementMin.get(varNamesString)));
-        //     sqlStatementMax.put(varNamesString, Math.max((t2 - t), sqlStatementMax.get(varNamesString)));
-        // }
+        if(!sqlStatementIterationCount.containsKey(varNamesString)) {
+            sqlStatementIterationCount.put(varNamesString, 1l);
+            sqlStatementAverageRuntime.put(varNamesString, t2 - t);
+            sqlStatementRuntimeTracker.put(varNamesString, new ArrayList<>());
+            sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
+            sqlStatementMin.put(varNamesString, t2 - t);
+            sqlStatementMax.put(varNamesString, t2 - t);
+        } else {
+            sqlStatementIterationCount.put(varNamesString, sqlStatementIterationCount.get(varNamesString) + 1);
+            sqlStatementAverageRuntime.put(varNamesString, sqlStatementAverageRuntime.get(varNamesString) + (t2 - t));
+            sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
+            sqlStatementMin.put(varNamesString, Math.min((t2 - t), sqlStatementMin.get(varNamesString)));
+            sqlStatementMax.put(varNamesString, Math.max((t2 - t), sqlStatementMax.get(varNamesString)));
+        }
 
         // if(printCount % 100000 == 0) {
+        //     int count = 0;
         //     for(String key : sqlStatementIterationCount.keySet()) {
         //         // only print frequent ones
         //         if(sqlStatementIterationCount.get(key) < 5) {
@@ -240,6 +248,11 @@ class ProcedureRunnerProxy{
 
         //         System.out.println(key + "=" + sqlStatementIterationCount.get(key) + " TOOK " + (mean / 1000.0) + " us (range:" + (sqlStatementMin.get(key) / 1000.0) + " - " + (sqlStatementMax.get(key) / 1000.0) + ", std: " + (std / 1000.0) + ") to execute");
         //         System.out.println();
+
+        //         count++;
+        //         if(count >= 5) {
+        //             break;
+        //         }
         //     }
         // }
         return result;
@@ -428,7 +441,7 @@ public class VoltDBProcedureProcess {
             //     }
             // }
             try{
-                while(queuedCalls.isEmpty() == false) {
+                while(queuedCalls.isEmpty() == false) { // while there are queuedCalls
                     if (System.nanoTime() >= lastRecordingTime + 10000) {
                         queueLengthSum += queuedCalls.size();
                         queueLengthCnt++;

@@ -23,6 +23,9 @@ public class RingBufferChannel {
     BBContainer readBufferOrigin = org.voltcore.utils.DBBPool.allocateDirect(1024 * 1024 * 4);
     ByteBuffer readBuffer;
 
+    private long last_wait_time, last_notify_time;
+    private long between_wait_time_total, between_notify_time_total;
+
     public RingBufferChannel(String outgoingRingBufferFile, long outgoingRingBufferFileOffset,
             long outgoingRingBufferFileSize,
             String incomingRingBufferFile, long incomingRingBufferFileOffset,
@@ -31,6 +34,10 @@ public class RingBufferChannel {
         readBuffer = readBufferOrigin.b();
         readBuffer.clear();
         readBuffer.limit(0);
+        
+        // reset last time before polling begins
+        last_wait_time = System.nanoTime();
+        last_notify_time = System.nanoTime();
 
         File f1 = new File(outgoingRingBufferFile);
         // org.agrona.IoUtil.delete(f1, true);
@@ -100,31 +107,47 @@ public class RingBufferChannel {
         return incomingRingBuffer.readableBytes() >= n;
     }
 
+    // triggers the hypercall chain that will halt the cpu until wakeup_delay_ns
+    // time passes
+    public void runWaitTimer(int wakeup_delay_ns) {
+        incomingRingBuffer.setHalted(1);
+        // ExecutionEngine.DBOSPVWaitTimer(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id, wakeup_delay_ns);
+
+        // to test, run a loop
+        long start = System.nanoTime();
+        while(System.nanoTime() - start < wakeup_delay_ns) {}
+
+        incomingRingBuffer.setHalted(0);
+    }
+
     public int read(ByteBuffer buffer) {
         final int kCountDownCycles = 30;
         int countDown = kCountDownCycles;
         assert (buffer.remaining() < readBuffer.capacity());
         int transferSize = buffer.remaining();
+        long t = System.nanoTime();
+        between_wait_time_total += (t - last_wait_time);
         while (incomingRingBuffer.readBytes(buffer) == false) { // while nothing to read, polling
             if (hypervisorPVSupport && --countDown < 0) {
                 incomingRingBuffer.setHalted(1);
-                long t = System.nanoTime();
                 ExecutionEngine.DBOSPVWaitTimer(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id, 0);
                 // ExecutionEngine.DBOSPVWait(hypervisor_fd);
-                long t2 = System.nanoTime();
                 incomingRingBuffer.setHalted(0);
                 countDown = kCountDownCycles;
-                wait_time += t2 - t;
-                wait_count++;
             } else {
                 //Thread.yield();
             }
         }
+        long t2 = System.nanoTime();
+        last_wait_time = t2;
+        wait_time += t2 - t;
+        wait_count++;
         if (hypervisorPVSupport && wait_count % 100000 == 0 &&
         wait_count != 0) {
-            System.out.printf("core_id %d, wait overhead %fus\n", this_core_id,
-            (double) wait_time / 1000 / ((double) wait_count));
-            wait_count = wait_time = 0;
+            System.out.printf("core_id %d, wait overhead %fus, between wait overhead %fus\n", this_core_id,
+            (double) wait_time / 1000 / ((double) wait_count), 
+            (double) between_wait_time_total / 1000 / ((double) wait_count));
+            wait_count = wait_time = between_wait_time_total = 0;
         }
         return transferSize;
     }
@@ -143,6 +166,8 @@ public class RingBufferChannel {
     // UnsafeBuffer writeBuffer = new UnsafeBuffer();
     public void write(ByteBuffer buffer, boolean notify) {
         boolean notified = false;
+        long t1 = System.nanoTime();
+        between_notify_time_total += (t1 - last_notify_time);
         while (outgoingRingBuffer.writeBytes(buffer) == false) { // while not enough space, polling
             // if (notified == false && is_hypervisor_pv_notification_enabled &&
             // outgoingRingBuffer.getHalted() == 1) {
@@ -154,24 +179,25 @@ public class RingBufferChannel {
         // if (notified == false && hypervisorPVSupport &&
         //     outgoingRingBuffer.getHalted() == 1 && notify) {
         if (notified == false && hypervisorPVSupport && notify) { // notify the user that operation is complete
-            long t1 = System.nanoTime();
-            //if (incomingRingBuffer.readableBytes() > 0) {
+            // if (incomingRingBuffer.readableBytes() > 0) {
                ExecutionEngine.DBOSPVNotify(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
             //} else {
                 // incomingRingBuffer.setHalted(1);
                 // ExecutionEngine.DBOSPVNotifyAndWait(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
                 // incomingRingBuffer.setHalted(0);
             //}
-            long t2 = System.nanoTime();
-            notify_count++;
-            notify_time += t2 - t1;
             notified = true;
         }
+        long t2 = System.nanoTime();
+        last_notify_time = t2;
+        notify_count++;
+        notify_time += t2 - t1;
         if (hypervisorPVSupport && notify_count % 100000 == 0 &&
         notify_count != 0) {
-            System.out.printf("core_id %d, notify overhead %fus\n", this_core_id,
-            (double) notify_time / 1000 / ((double) notify_count));
-            notify_count = notify_time = 0;
+            System.out.printf("core_id %d, notify overhead %fus, between notify overhead %fus\n", this_core_id,
+            (double) notify_time / 1000 / ((double) notify_count),
+            (double) between_notify_time_total / 1000 / ((double) notify_count));
+            notify_count = notify_time = between_notify_time_total = 0;
         }
     }
 
