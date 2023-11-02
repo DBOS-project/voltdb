@@ -128,11 +128,11 @@ public class Benchmark {
         // System.out.println("===============================================================================\n");
 
         System.out.println("----------------------- Breakdown --------------------------");
-        System.out.printf("%-15s%-20s%-15s%-20s%-20s\n", "Procedure", "Throughput(txns/s)", "Latency(us)", "Execution Time(us)", "Result size(bytes)");
+        System.out.printf("%-15s%-20s%-15s%-20s%-20s\n", "Procedure", "Throughput(txns/s)", "Latency(us)", "Execution Time(us)", "Result size(KB)");
         System.out.println("------------------------------------------------------------");
         for (String procedure: typeNumExecution.keySet()) {
             ProcStats thisStat = procStats.get(procedure);
-            System.out.printf("%-15s%-20.2f%-15.2f%-20.2f%-20d\n", 
+            System.out.printf("%-15s%-20.2f%-15.2f%-20.2f%-20.2f\n", 
                                 procedure,
                                 (double) typeNumExecution.get(procedure) * 1000 / elapsedTime,
                                 (double) typeExecutionTime.get(procedure) / (typeNumExecution.get(procedure) * 1000),
@@ -170,7 +170,7 @@ public class Benchmark {
             stats.name = procedureName;
             stats.execTime = (double) result.getLong("AVG_EXECUTION_TIME") / 1000;
             stats.invocations = (int) result.getLong("INVOCATIONS");
-            stats.resultSize = (int) result.getLong("AVG_RESULT_SIZE");
+            stats.resultSize = (double) result.getLong("AVG_RESULT_SIZE") / 1024;
             if (!procDetails.containsKey(procedureName))
                 procDetails.put(procedureName, new ArrayList<>());
             procDetails.get(procedureName).add(stats);
@@ -180,7 +180,7 @@ public class Benchmark {
         for (String proc: procDetails.keySet()) {
             double totalExecTime = 0;
             int totalInvocations = 0;
-            int totalResSize = 0;
+            double totalResSize = 0;
             for (ProcStats stat: procDetails.get(proc)) {
                 totalExecTime += stat.execTime * stat.invocations;
                 totalResSize += stat.resultSize * stat.invocations;
@@ -200,7 +200,7 @@ public class Benchmark {
     class ProcStats {
         String name;
         Double execTime;
-        int resultSize;
+        double resultSize;
         int invocations;
     }
 
@@ -225,6 +225,9 @@ public class Benchmark {
                 long executionTime =  clientResponse.getClientRoundtripNanos();
                 totExecutionNanoseconds += executionTime;
                 totExecutions++;
+
+                if (totExecutions % 100_000 == 0)
+                    System.out.printf("Iteration %d\n", totExecutions);
 
                 if (executionTime < minExecutionNanoseconds) {
                     minExecutionNanoseconds = executionTime;
@@ -263,8 +266,6 @@ public class Benchmark {
 
         public void run() {
             for (int i = 0; i < this.totalSPCalls; i++) {
-                if (i % 100_000 == 0 && i != 0)
-                    System.out.printf("Client %d; iteration %d\n", this.id, i);
                 try {
                     //
                     this.sim.doGetPosts(new RetwisCallback(false));
