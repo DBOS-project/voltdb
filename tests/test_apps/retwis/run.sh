@@ -41,8 +41,14 @@ function cleanall() {
     rm -rf retwis-procs.jar retwis-client.jar
 }
 
+function print_time() {
+    timestamp=$(date +"%H:%M:%S")
+    echo "$timestamp :: $1"
+}
+
 # compile the source code for procedures and the client into jarfiles
 function jars() {
+    print_time "Performing jars"
     # compile java source
     javac -classpath $APPCLASSPATH procedures/retwis/*.java
     javac -classpath $CLIENTCLASSPATH client/retwis/*.java
@@ -86,6 +92,7 @@ if [[ $version == 11.0* ]] || [[ $version == 17.0* ]] ; then
 fi
 
 function run() {
+    print_time "Running benchmark with params- $@"
     java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH\
         -Dlog4j.configuration=file://$LOG4J\
         retwis.Benchmark $@
@@ -105,13 +112,15 @@ function warmup() {
 }
 
 function remote_init() {
+    print_time "Performing remote init"
     res=$(curl -X POST "http://18.26.2.124:3001/?init_volt=1&init_db=1&record_perf=1&app=retwis&id=$1&num_cores=$3&warmup_time=$2" -s)
-    echo "$res"
+    print_time "Remote returned- $res"
 }
 
 function stop_perf() {
+    print_time "Stopping perf on remote"
     res=$(curl -X POST "http://18.26.2.124:3001/stop-perf?id=$1" -s)
-    echo "$res"
+    print_time "Remote returned- $res"
 }
 
 function remote_bench() {
@@ -120,7 +129,9 @@ function remote_bench() {
     num_cores=8
     jars
     remote_init $id $warmup_time $num_cores
+    print_time "Sleeping for $warmup_time s"
     sleep $warmup_time
+    print_time "Woken up from sleep"
     run $@
     stop_perf $id
 }

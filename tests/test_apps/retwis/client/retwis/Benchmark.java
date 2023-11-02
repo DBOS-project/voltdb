@@ -79,7 +79,7 @@ public class Benchmark {
     public void warmup_db(int warmupDuration) {
         this.simulator.set_next_ids(51000, 3000);
         System.out.println("Warming up the db");
-        long warmupEndTime = System.currentTimeMillis() + warmupDuration * 1000;
+        long warmupEndTime = System.currentTimeMillis() + (warmupDuration - 2) * 1000; // Buffer of 1 second to cooldown
         long currentTime = System.currentTimeMillis();
         int i = 0;
         while (currentTime < warmupEndTime) {
