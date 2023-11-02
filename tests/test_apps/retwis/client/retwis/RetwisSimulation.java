@@ -45,7 +45,7 @@ public class RetwisSimulation {
         return results;
     }
 
-    private void doCreateUser(Benchmark.RetwisCallback cb) throws IOException {
+    public void doCreateUser(Benchmark.RetwisCallback cb) throws IOException {
         int u_id = this.next_u_id;
         this.next_u_id += 1;
         String username = "user" + rnd.nextInt();
@@ -56,7 +56,7 @@ public class RetwisSimulation {
         }
     }
 
-    private void doPost(Benchmark.RetwisCallback cb) throws IOException {
+    public void doPost(Benchmark.RetwisCallback cb) throws IOException {
         int post_id = this.next_post_id;
         this.next_post_id += 1;
         int u_id = rnd.nextInt(this.next_u_id);
@@ -68,7 +68,7 @@ public class RetwisSimulation {
         }
     }
 
-    private void doGetTimeline(Benchmark.RetwisCallback cb) throws IOException {
+    public void doGetTimeline(Benchmark.RetwisCallback cb) throws IOException {
         int u_id = rnd.nextInt(this.next_u_id);
         try {
             this.callProcedure(cb, "GetTimeline", u_id);
@@ -86,7 +86,7 @@ public class RetwisSimulation {
         }
     }
 
-    private void doFollow(Benchmark.RetwisCallback cb) throws IOException {
+    public void doFollow(Benchmark.RetwisCallback cb) throws IOException {
         int u_id = rnd.nextInt(this.next_u_id);
         int follower_u_id = rnd.nextInt(this.next_u_id);
         try {
@@ -96,7 +96,7 @@ public class RetwisSimulation {
         }
     }
 
-    private void doGetFollowers(Benchmark.RetwisCallback cb) throws IOException {
+    public void doGetFollowers(Benchmark.RetwisCallback cb) throws IOException {
         int u_id = rnd.nextInt(this.next_u_id);
         try {
             this.callProcedure(cb, "GetFollowers", u_id);
@@ -127,10 +127,21 @@ public class RetwisSimulation {
         int n = rnd.nextInt(101);
         if (this.next_u_id < 50 || n < 3) {
             doCreateUser(cb);
-        } else if (n <= 3 + 90) {
+        } else if (n <= 3 + 85) {
             doPost(cb);
         } else {
             doFollow(cb);
+        }
+    }
+
+    public void doGetOne(Benchmark.RetwisCallback cb) throws IOException {
+        int n = rnd.nextInt(101);
+        if (n < 5) {
+            doGetFollowers(cb);
+        } else if (n <= 5 + 60) {
+            doGetPosts(cb);
+        } else {
+            doGetTimeline(cb);
         }
     }
 }

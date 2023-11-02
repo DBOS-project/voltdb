@@ -64,22 +64,19 @@ public class Benchmark {
 
     public void init_data() {
         System.out.println("Initializing data in db");
-        long initDuration = 5000; // in ms
-        long initEndTime = System.currentTimeMillis() + initDuration;
-        long currentTime = System.currentTimeMillis();
-        while (currentTime < initEndTime) {
+        // Insert ~30,000 users, ~850,000 posts, ~120,000 follows
+        for (int i = 0; i < 1_000_000; i++) {
             try {
                 this.simulator.doInsertOne(new RetwisCallback(true));
             }
             catch (IOException e) {}
-            currentTime = System.currentTimeMillis();
         }
     }
 
     public void warmup_db(int warmupDuration) {
-        this.simulator.set_next_ids(51000, 3000);
+        this.simulator.set_next_ids(700_000, 20_000);
         System.out.println("Warming up the db");
-        long warmupEndTime = System.currentTimeMillis() + (warmupDuration - 2) * 1000; // Buffer of 1 second to cooldown
+        long warmupEndTime = System.currentTimeMillis() + (warmupDuration - 5) * 1000; // Buffer of 5 second to cooldown
         long currentTime = System.currentTimeMillis();
         int i = 0;
         while (currentTime < warmupEndTime) {
@@ -90,12 +87,12 @@ public class Benchmark {
             }
             catch (IOException e) {}
             currentTime = System.currentTimeMillis();
-            i += 0;
+            i += 1;
         }
     }
 
     public void run() {
-        this.simulator.set_next_ids(51000, 3000);
+        this.simulator.set_next_ids(700_000, 20_000);
         this.setStatDeltaFlag();
 
         long startTime = System.currentTimeMillis();
