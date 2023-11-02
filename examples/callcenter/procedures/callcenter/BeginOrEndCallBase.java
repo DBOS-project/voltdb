@@ -24,12 +24,13 @@
 package callcenter;
 
 import org.voltdb.SQLStmt;
-import org.voltdb.VoltProcedure;
+import org.voltdb.VoltProcedure.VoltAbortException;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltTableRow;
+import org.voltdb.VoltVMProcedure;
 import org.voltdb.types.TimestampType;
 
-public abstract class BeginOrEndCallBase extends VoltProcedure {
+public abstract class BeginOrEndCallBase extends VoltVMProcedure {
     // STDDEV SQL
     final SQLStmt findTodaysStddevStatsForAgent = new SQLStmt(
             "SELECT curdate, n, sumk, qk " +

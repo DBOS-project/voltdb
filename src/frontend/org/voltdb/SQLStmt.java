@@ -17,9 +17,11 @@
 
 package org.voltdb;
 
+import java.io.Serializable;
 import org.apache.hadoop_voltpatches.util.PureJavaCrc32C;
 import org.voltdb.common.Constants;
 import org.voltdb.planner.ActivePlanRepository;
+
 
 /**
  * <p>A simple wrapper of a parameterized SQL statement. VoltDB uses this instead of
@@ -30,12 +32,12 @@ import org.voltdb.planner.ActivePlanRepository;
  *
  * @see VoltProcedure
  */
-public class SQLStmt {
+public class SQLStmt implements Serializable{
 
     /**
      * Per-fragment info
      */
-    static class Frag {
+    static class Frag implements Serializable{
         final long id;
         final byte[] planHash;
         final boolean transactional;
@@ -73,7 +75,7 @@ public class SQLStmt {
     }
 
     // used to clean up plans
-    SiteProcedureConnection site;
+    transient SiteProcedureConnection site = null;
 
     /**
      * Construct a SQLStmt instance from a SQL statement.

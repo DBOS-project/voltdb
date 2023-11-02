@@ -17,13 +17,14 @@
 
 package org.voltdb.iv2;
 
+import com.google_voltpatches.common.base.Supplier;
+import com.google_voltpatches.common.collect.Maps;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
-
 import org.voltcore.messaging.Mailbox;
 import org.voltcore.utils.CoreUtils;
 import org.voltdb.ClientResponseImpl;
@@ -38,8 +39,7 @@ import org.voltdb.messaging.Iv2InitiateTaskMessage;
 import org.voltdb.rejoin.TaskLog;
 import org.voltdb.utils.VoltTrace;
 
-import com.google_voltpatches.common.base.Supplier;
-import com.google_voltpatches.common.collect.Maps;
+
 
 /**
  * Implements the Multi-partition procedure ProcedureTask.

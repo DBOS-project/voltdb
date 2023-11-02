@@ -28,10 +28,10 @@
 package voter;
 
 import org.voltdb.SQLStmt;
-import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
+import org.voltdb.VoltVMProcedure;
 
-public class Results extends VoltProcedure
+public class Results extends VoltVMProcedure
 {
     // Gets the results
     public final SQLStmt resultStmt = new SQLStmt( "   SELECT a.contestant_name   AS contestant_name"

@@ -24,6 +24,8 @@
 package callcenter;
 
 import org.voltdb.SQLStmt;
+import org.voltdb.VoltProcedure;
+import org.voltdb.VoltProcedure.VoltAbortException;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltTableRow;
 import org.voltdb.types.TimestampType;
@@ -48,7 +50,7 @@ import org.voltdb.types.TimestampType;
  * to follow. A production app might offer less choice or just reuse more code.</p>
  *
  */
-public class EndCall extends BeginOrEndCallBase {
+public class EndCall extends VoltProcedure {
 
     final SQLStmt findCompletedCall = new SQLStmt(
             "SELECT * FROM completedcalls WHERE call_id = ? AND agent_id = ? AND phone_no = ?;");
@@ -68,7 +70,50 @@ public class EndCall extends BeginOrEndCallBase {
 
     final SQLStmt deleteOpenCall = new SQLStmt(
             "DELETE FROM opencalls WHERE call_id = ? AND agent_id = ? AND phone_no = ?;");
+// STDDEV SQL
+final SQLStmt findTodaysStddevStatsForAgent = new SQLStmt(
+        "SELECT curdate, n, sumk, qk " +
+        "  FROM stddevbyagent " +
+        "  WHERE curdate = TRUNCATE(DAY, ?) AND agent_id = ?;");
 
+final SQLStmt upsertTodaysStddevStatsForAgent = new SQLStmt(
+        "UPSERT INTO stddevbyagent " +
+        "         (agent_id,          curdate, n, sumk, qk, stddev) " +
+        "  VALUES (       ?, TRUNCATE(DAY, ?), ?,    ?,  ?,      ?);");
+
+void computeRunningStdDev(int agent_id, TimestampType end_ts, long durationms) {
+        voltQueueSQL(findTodaysStddevStatsForAgent, EXPECT_ZERO_OR_ONE_ROW, end_ts, agent_id);
+        VoltTable stddevTable = voltExecuteSQL()[0];
+
+        long nprev = 0, n = 0;
+        long sumprev = 0, sum = 0;
+        double qprev = 0, q = 0;
+        double avgprev = 0, avg = 0;
+        double stddev = 0;
+
+        if (stddevTable.getRowCount() == 1) {
+                VoltTableRow stddevRow = stddevTable.fetchRow(0);
+                nprev = stddevRow.getLong("n");
+                sumprev = stddevRow.getLong("sumk");
+                qprev = stddevRow.getDouble("qk");
+        }
+
+        n = nprev + 1;
+        sum = sumprev + durationms;
+        avgprev = nprev > 0 ? (sumprev / (double) nprev) : 0;
+        avg = sum / (double) n;
+
+        q = qprev + (durationms - avgprev) * (durationms - avg);
+        stddev = Math.sqrt(q / n);
+
+        // really basic validity checks that the math hasn't corrupted something
+        if (!Double.isFinite(q)) { throw new VoltAbortException("q is not finite"); }
+        if (!Double.isFinite(avg)) { throw new VoltAbortException("avg is not finite"); }
+        if (!Double.isFinite(stddev)) { throw new VoltAbortException("stddev is not finite"); }
+
+        voltQueueSQL(upsertTodaysStddevStatsForAgent, EXPECT_SCALAR_MATCH(1),
+                agent_id, end_ts, n, sum, q, stddev);
+}
     /**
      * Procedure main logic.
      *

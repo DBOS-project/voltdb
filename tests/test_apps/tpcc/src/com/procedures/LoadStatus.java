@@ -26,12 +26,13 @@ package com.procedures;
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
+import org.voltdb.VoltVMProcedure;
 
 /*
  * This SP returns the approximate number of warehouses currently loaded into the DB.
  */
 
-public class LoadStatus extends VoltProcedure
+public class LoadStatus extends VoltVMProcedure
 {
     public final SQLStmt getWarehouseCount =
         new SQLStmt("SELECT COUNT (*) FROM WAREHOUSE;");

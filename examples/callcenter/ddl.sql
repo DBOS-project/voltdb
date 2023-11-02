@@ -43,13 +43,6 @@ CREATE TABLE stddevbyagent
 );
 PARTITION TABLE stddevbyagent ON COLUMN agent_id;
 
--- Update classes from jar to that server will know about classes but not procedures yet.
-LOAD CLASSES callcenter-procs.jar;
-
--- stored procedures
-CREATE PROCEDURE PARTITION ON TABLE opencalls COLUMN agent_id FROM CLASS callcenter.BeginCall;
-CREATE PROCEDURE PARTITION ON TABLE opencalls COLUMN agent_id FROM CLASS callcenter.EndCall;
-
 CREATE PROCEDURE TopStdDev
 AS
   SELECT agent_id, stddev, (sumk / n) AS average
@@ -57,3 +50,11 @@ AS
   WHERE curdate = TRUNCATE(DAY, NOW)
   ORDER BY stddev desc
   LIMIT ?;
+
+-- Update classes from jar to that server will know about classes but not procedures yet.
+LOAD CLASSES callcenter-procs.jar;
+
+-- stored procedures
+CREATE PROCEDURE PARTITION ON TABLE opencalls COLUMN agent_id FROM CLASS callcenter.BeginCall;
+CREATE PROCEDURE PARTITION ON TABLE opencalls COLUMN agent_id FROM CLASS callcenter.EndCall;
+

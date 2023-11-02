@@ -39,13 +39,15 @@ import org.voltdb.jni.ExecutionEngine;
 import org.voltdb.rejoin.TaskLog;
 import org.voltdb.utils.MiscUtils;
 
+import org.voltdb.InterVMMessagingProtocol;
+
 /**
  * Subclass of Initiator to manage single-partition operations.
- * This class is primarily used for object construction and configuration plumbing;
+ * This class is primarily used for object construction and configuration
+ * plumbing;
  * Try to avoid filling it with lots of other functionality.
  */
-public abstract class BaseInitiator<S extends Scheduler> implements Initiator
-{
+public abstract class BaseInitiator<S extends Scheduler> implements Initiator {
     static VoltLogger tmLog = new VoltLogger("TM");
 
     // External references/config
@@ -64,14 +66,12 @@ public abstract class BaseInitiator<S extends Scheduler> implements Initiator
     protected final boolean m_isEnterpriseLicense;
 
     public BaseInitiator(String zkMailboxNode, HostMessenger messenger, Integer partition,
-            S scheduler, String whoamiPrefix, StatsAgent agent, StartAction startAction)
-    {
+            S scheduler, String whoamiPrefix, StatsAgent agent, StartAction startAction) {
         m_zkMailboxNode = zkMailboxNode;
         m_messenger = messenger;
         m_partitionId = partition;
         m_scheduler = scheduler;
         JoinProducerBase joinProducer;
-
 
         if (startAction == StartAction.JOIN) {
             joinProducer = new ElasticJoinProducer(m_partitionId, scheduler.m_tasks);
@@ -94,7 +94,7 @@ public abstract class BaseInitiator<S extends Scheduler> implements Initiator
         StarvationTracker st = new StarvationTracker(hsId);
         m_scheduler.setStarvationTracker(st);
         m_scheduler.setLock(m_initiatorMailbox);
-        agent.registerStatsSource(StatsSelector.STARVATION,hsId, st);
+        agent.registerStatsSource(StatsSelector.STARVATION, hsId, st);
         QueueDepthTracker qdt = m_scheduler.setupQueueDepthTracker(hsId);
         agent.registerStatsSource(StatsSelector.QUEUE, hsId, qdt.newQueueStats());
         agent.registerStatsSource(StatsSelector.QUEUEPRIORITY, hsId, qdt.newQueuePriorityStats());
@@ -103,61 +103,61 @@ public abstract class BaseInitiator<S extends Scheduler> implements Initiator
         if (m_partitionId != -1) {
             partitionString = " for partition " + m_partitionId + " ";
         }
-        m_whoami = whoamiPrefix +  " " +
-            CoreUtils.hsIdToString(hsId) + partitionString;
+        m_whoami = whoamiPrefix + " " +
+                CoreUtils.hsIdToString(hsId) + partitionString;
         m_isEnterpriseLicense = MiscUtils.isPro();
         m_scheduler.m_isEnterpriseLicense = m_isEnterpriseLicense;
     }
 
     protected void configureCommon(BackendTarget backend,
-                          CatalogContext catalogContext,
-                          String serializedCatalog,
-                          int numberOfPartitions,
-                          StartAction startAction,
-                          StatsAgent agent,
-                          MemoryStats memStats,
-                          CommandLog cl,
-                          String coreBindIds,
-                          boolean isLowestSiteId)
-        throws KeeperException, ExecutionException, InterruptedException
-    {
-            // demote rejoin to create for initiators that aren't rejoinable.
-            if (startAction.doesJoin() && !isRejoinable()) {
-                startAction = StartAction.CREATE;
-            }
+            CatalogContext catalogContext,
+            String serializedCatalog,
+            int numberOfPartitions,
+            StartAction startAction,
+            StatsAgent agent,
+            MemoryStats memStats,
+            CommandLog cl,
+            String coreBindIds,
+            boolean isLowestSiteId,
+            InterVMMessagingProtocol vmMessagingProtocol)
+            throws KeeperException, ExecutionException, InterruptedException {
+        // demote rejoin to create for initiators that aren't rejoinable.
+        if (startAction.doesJoin() && !isRejoinable()) {
+            startAction = StartAction.CREATE;
+        }
 
-            TaskLog taskLog = null;
-            if (m_initiatorMailbox.getJoinProducer() != null) {
-                taskLog = m_initiatorMailbox.getJoinProducer().constructTaskLog(VoltDB.instance().getVoltDBRootPath());
-            }
+        TaskLog taskLog = null;
+        if (m_initiatorMailbox.getJoinProducer() != null) {
+            taskLog = m_initiatorMailbox.getJoinProducer().constructTaskLog(VoltDB.instance().getVoltDBRootPath());
+        }
 
-            m_executionSite = new Site(m_scheduler.getQueue(),
-                                       m_initiatorMailbox.getHSId(),
-                                       backend, catalogContext,
-                                       serializedCatalog,
-                                       m_partitionId,
-                                       numberOfPartitions,
-                                       startAction,
-                                       m_initiatorMailbox,
-                                       agent,
-                                       memStats,
-                                       coreBindIds,
-                                       taskLog,
-                                       isLowestSiteId);
-            LoadedProcedureSet procSet = new LoadedProcedureSet(m_executionSite);
-            procSet.loadProcedures(catalogContext);
-            m_executionSite.setLoadedProcedures(procSet);
-            m_scheduler.setProcedureSet(procSet);
-            m_scheduler.setCommandLog(cl);
-            m_scheduler.setIsLowestSiteId(isLowestSiteId);
-            m_siteThread = new Thread(m_executionSite);
-            m_siteThread.setDaemon(false);
-            m_siteThread.start();
+        m_executionSite = new Site(m_scheduler.getQueue(),
+                m_initiatorMailbox.getHSId(),
+                backend, catalogContext,
+                serializedCatalog,
+                m_partitionId,
+                numberOfPartitions,
+                startAction,
+                m_initiatorMailbox,
+                agent,
+                memStats,
+                coreBindIds,
+                taskLog,
+                isLowestSiteId,
+                vmMessagingProtocol);
+        LoadedProcedureSet procSet = new LoadedProcedureSet(m_executionSite);
+        procSet.loadProcedures(catalogContext);
+        m_executionSite.setLoadedProcedures(procSet);
+        m_scheduler.setProcedureSet(procSet);
+        m_scheduler.setCommandLog(cl);
+        m_scheduler.setIsLowestSiteId(isLowestSiteId);
+        m_siteThread = new Thread(m_executionSite);
+        m_siteThread.setDaemon(false);
+        m_siteThread.start();
     }
 
     @Override
-    public void shutdown()
-    {
+    public void shutdown() {
         // set the shutdown flag on the site thread.
         if (m_executionSite != null) {
             m_executionSite.startShutdown();
@@ -167,7 +167,7 @@ public abstract class BaseInitiator<S extends Scheduler> implements Initiator
                 m_term.shutdown();
             }
         } catch (Exception e) {
-            tmLog.info("Exception during shutdown.", e );
+            tmLog.info("Exception during shutdown.", e);
         }
 
         try {
@@ -191,20 +191,17 @@ public abstract class BaseInitiator<S extends Scheduler> implements Initiator
     }
 
     @Override
-    public int getPartitionId()
-    {
+    public int getPartitionId() {
         return m_partitionId;
     }
 
     @Override
-    public long getInitiatorHSId()
-    {
+    public long getInitiatorHSId() {
         return m_initiatorMailbox.getHSId();
     }
 
     @Override
-    public void configureDurableUniqueIdListener(DurableUniqueIdListener listener, boolean install)
-    {
+    public void configureDurableUniqueIdListener(DurableUniqueIdListener listener, boolean install) {
         // Durability Listeners should never be assigned to the MP Scheduler
         assert false;
     }
@@ -214,8 +211,7 @@ public abstract class BaseInitiator<S extends Scheduler> implements Initiator
     public ExecutionEngine debugGetSpiedEE() {
         if (m_executionSite.m_backend == BackendTarget.NATIVE_EE_SPY_JNI) {
             return m_executionSite.m_ee;
-        }
-        else {
+        } else {
             return null;
         }
     }
@@ -229,7 +225,7 @@ public abstract class BaseInitiator<S extends Scheduler> implements Initiator
                 m_term.shutdown();
             }
         } catch (Exception e) {
-            tmLog.info("Exception during shutdown service.", e );
+            tmLog.info("Exception during shutdown service.", e);
         }
     }
 }

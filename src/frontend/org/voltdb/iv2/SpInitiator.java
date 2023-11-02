@@ -51,33 +51,41 @@ import org.voltdb.messaging.MigratePartitionLeaderMessage;
 
 import com.google_voltpatches.common.collect.ImmutableMap;
 import com.google_voltpatches.common.collect.Sets;
+import org.voltdb.InterVMMessagingProtocol;
 
 /**
  * Subclass of Initiator to manage single-partition operations.
- * This class is primarily used for object construction and configuration plumbing;
+ * This class is primarily used for object construction and configuration
+ * plumbing;
  * Try to avoid filling it with lots of other functionality.
  */
-public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotable
-{
+public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotable {
     final private LeaderCache m_leaderCache;
     private boolean m_promoted = false;
+
     public static enum ServiceState {
         NORMAL(0),
         ELIGIBLE_REMOVAL(1),
         REMOVED(2);
+
         final int state;
+
         ServiceState(int state) {
             this.state = state;
         }
+
         int get() {
             return state;
         }
+
         public boolean isNormal() {
             return state == NORMAL.get();
         }
+
         public boolean isEligibleForRemoval() {
             return state == ELIGIBLE_REMOVAL.get();
         }
+
         public boolean isRemoved() {
             return state == REMOVED.get();
         }
@@ -85,11 +93,9 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
 
     volatile ServiceState m_serviceState;
 
-    LeaderCache.Callback m_leadersChangeHandler = new LeaderCache.Callback()
-    {
+    LeaderCache.Callback m_leadersChangeHandler = new LeaderCache.Callback() {
         @Override
-        public void run(ImmutableMap<Integer, LeaderCallBackInfo> cache)
-        {
+        public void run(ImmutableMap<Integer, LeaderCallBackInfo> cache) {
             if (failedLeaderMigration(cache)) {
                 return;
             }
@@ -101,10 +107,10 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
             }
 
             Set<Long> leaders = Sets.newHashSet();
-            for (Entry<Integer, LeaderCallBackInfo> entry: cache.entrySet()) {
+            for (Entry<Integer, LeaderCallBackInfo> entry : cache.entrySet()) {
                 LeaderCallBackInfo info = entry.getValue();
                 leaders.add(info.m_HSId);
-                if (info.m_HSId == getInitiatorHSId()){
+                if (info.m_HSId == getInitiatorHSId()) {
 
                     // Special case for testing
                     if (info.m_lastHSId < 0) {
@@ -145,7 +151,7 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
         // leader, so LeaderAppointer won't act. Re-instate the leader
         if (getInitiatorHSId() == db.getCartographer().getHSIdForMaster(m_partitionId) &&
                 !m_scheduler.m_isLeader) {
-            for (Entry<Integer, LeaderCallBackInfo> entry: cache.entrySet()) {
+            for (Entry<Integer, LeaderCallBackInfo> entry : cache.entrySet()) {
                 LeaderCallBackInfo info = entry.getValue();
                 if (!info.m_isMigratePartitionLeaderRequested ||
                         m_messenger.getLiveHostIds().contains(CoreUtils.getHostIdFromHSId(info.m_HSId))) {
@@ -160,16 +166,17 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
         return false;
     }
 
-    // When the leader is migrated away from this site, m_scheduler is marked as not-a-leader. If the host for new leader fails
-    // before leader migration is completed. The previous leader, the current site, must be reinstated.
+    // When the leader is migrated away from this site, m_scheduler is marked as
+    // not-a-leader. If the host for new leader fails
+    // before leader migration is completed. The previous leader, the current site,
+    // must be reinstated.
     private boolean reinstateAsLeader(LeaderCallBackInfo info) {
         return (!m_scheduler.m_isLeader && info.m_lastHSId == info.m_HSId);
     }
 
     public SpInitiator(HostMessenger messenger, Integer partition, StatsAgent agent,
             SnapshotCompletionMonitor snapMonitor,
-            StartAction startAction)
-    {
+            StartAction startAction) {
         super(VoltZK.iv2masters, messenger, partition,
                 new SpScheduler(partition, new SiteTaskerQueue(partition), snapMonitor,
                         startAction != StartAction.JOIN),
@@ -184,17 +191,17 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
 
     @Override
     public void configure(BackendTarget backend,
-                          CatalogContext catalogContext,
-                          String serializedCatalog,
-                          int numberOfPartitions,
-                          StartAction startAction,
-                          StatsAgent agent,
-                          MemoryStats memStats,
-                          CommandLog cl,
-                          String coreBindIds,
-                          boolean isLowestSiteId)
-        throws KeeperException, InterruptedException, ExecutionException
-    {
+            CatalogContext catalogContext,
+            String serializedCatalog,
+            int numberOfPartitions,
+            StartAction startAction,
+            StatsAgent agent,
+            MemoryStats memStats,
+            CommandLog cl,
+            String coreBindIds,
+            boolean isLowestSiteId,
+            InterVMMessagingProtocol vmMessagingProtocol)
+            throws KeeperException, InterruptedException, ExecutionException {
         try {
             // Put child watch on /db/iv2appointees/<partition> node
             m_leaderCache.startPartitionWatch();
@@ -204,10 +211,12 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
 
         super.configureCommon(backend, catalogContext, serializedCatalog,
                 numberOfPartitions, startAction, agent, memStats, cl,
-                coreBindIds, isLowestSiteId);
+                coreBindIds, isLowestSiteId,
+                vmMessagingProtocol);
 
         m_executionSite.setServiceState(m_serviceState);
-        // add ourselves to the ephemeral node list which BabySitters will watch for this
+        // add ourselves to the ephemeral node list which BabySitters will watch for
+        // this
         // partition
         LeaderElector.createParticipantNode(m_messenger.getZK(),
                 LeaderElector.electionDirForPartition(VoltZK.leaders_initiators, m_partitionId),
@@ -215,8 +224,7 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
     }
 
     @Override
-    public void initDRGateway(StartAction startAction, ProducerDRGateway nodeDRGateway, boolean createMpDRGateway)
-    {
+    public void initDRGateway(StartAction startAction, ProducerDRGateway nodeDRGateway, boolean createMpDRGateway) {
         CommandLog commandLog = VoltDB.instance().getCommandLog();
         boolean asyncCommandLogEnabled = commandLog.isEnabled() && !commandLog.isSynchronous();
 
@@ -240,11 +248,11 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
 
         SiteTasker.SiteTaskerRunnable task = new SiteTasker.SiteTaskerRunnable() {
             @Override
-            void run()
-            {
+            void run() {
                 m_executionSite.setDRGateway(drGateway, mpPDRG);
             }
-            private SiteTasker.SiteTaskerRunnable init(){
+
+            private SiteTasker.SiteTaskerRunnable init() {
                 taskInfo = "Set DRGateway";
                 return this;
             }
@@ -259,8 +267,7 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
         acceptPromotionImpl(Long.MAX_VALUE, false);
     }
 
-    private void acceptPromotionImpl(long lastLeaderHSId, boolean migratePartitionLeader)
-    {
+    private void acceptPromotionImpl(long lastLeaderHSId, boolean migratePartitionLeader) {
         try {
             long startTime = System.currentTimeMillis();
             Boolean success = false;
@@ -268,7 +275,8 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
                 m_term.shutdown();
             }
             // When the leader is migrated away from this site, the term is still active
-            // If the leader is moved back to the site, recreate the term to ensure no-missed
+            // If the leader is moved back to the site, recreate the term to ensure
+            // no-missed
             // update.
             m_term = createTerm(m_messenger.getZK(),
                     m_partitionId, getInitiatorHSId(), m_initiatorMailbox,
@@ -288,7 +296,8 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
                 if (!migratePartitionLeader && !m_initiatorMailbox.acceptPromotion()) {
                     tmLog.info(m_whoami
                             + "rejoining site can not be promoted to leader. Terminating.");
-                    // rejoining not completed. The node will be shutdown @RealVoltDB.hostFailed() anyway.
+                    // rejoining not completed. The node will be shutdown @RealVoltDB.hostFailed()
+                    // anyway.
                     // do not log extra fatal message.
                     VoltDB.crashLocalVoltDB("A rejoining site can not be promoted to leader.", false, null, false);
                     return;
@@ -296,9 +305,8 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
 
                 // term syslogs the start of leader promotion.
                 long txnid = Long.MIN_VALUE;
-                RepairAlgo repair =
-                        m_initiatorMailbox.constructRepairAlgo(m_term.getInterestingHSIds(),
-                                deadSPIHost, m_whoami, migratePartitionLeader);
+                RepairAlgo repair = m_initiatorMailbox.constructRepairAlgo(m_term.getInterestingHSIds(),
+                        deadSPIHost, m_whoami, migratePartitionLeader);
                 try {
                     RepairResult res = repair.start().get();
                     txnid = res.m_txnId;
@@ -309,8 +317,8 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
                 if (success) {
                     m_initiatorMailbox.setLeaderState(txnid);
                     tmLog.info(m_whoami
-                             + "finished leader promotion. Took "
-                             + (System.currentTimeMillis() - startTime) + " ms.");
+                            + "finished leader promotion. Took "
+                            + (System.currentTimeMillis() - startTime) + " ms.");
                     // THIS IS where map cache should be updated, not
                     // in the promotion algorithm.
                     LeaderCacheWriter iv2masters = new LeaderCache(m_messenger.getZK(),
@@ -331,8 +339,7 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
                     } else {
                         iv2masters.put(m_partitionId, m_initiatorMailbox.getHSId());
                     }
-                }
-                else {
+                } else {
                     // The only known reason to fail is a failed replica during
                     // recovery; that's a bounded event (by k-safety).
                     // CrashVoltDB here means one node failure causing another.
@@ -352,15 +359,13 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
      * SpInitiator has userdata that must be rejoined.
      */
     @Override
-    public boolean isRejoinable()
-    {
+    public boolean isRejoinable() {
         return true;
     }
 
     @Override
     public Term createTerm(ZooKeeper zk, int partitionId, long initiatorHSId, InitiatorMailbox mailbox,
-            String whoami)
-    {
+            String whoami) {
         return new SpTerm(zk, partitionId, initiatorHSId, mailbox, whoami);
     }
 
@@ -370,8 +375,7 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
     }
 
     @Override
-    public void configureDurableUniqueIdListener(DurableUniqueIdListener listener, boolean install)
-    {
+    public void configureDurableUniqueIdListener(DurableUniqueIdListener listener, boolean install) {
         m_scheduler.configureDurableUniqueIdListener(listener, install);
     }
 
@@ -399,7 +403,7 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
         return m_scheduler;
     }
 
-    //This will be called from Snapshot in elastic joining or rejoining cases.
+    // This will be called from Snapshot in elastic joining or rejoining cases.
     public void updateReplicasForJoin(TransactionState snapshotTransactionState) {
         long[] replicasAdded = new long[0];
         if (m_term != null) {
@@ -458,7 +462,9 @@ public class SpInitiator extends BaseInitiator<SpScheduler> implements Promotabl
         super.shutdownService();
 
         if (tmLog.isDebugEnabled()) {
-            tmLog.debug(String.format("Shutdown leader initiator, leader cache, update scoreboard, execution engine for partition %d", m_partitionId));
+            tmLog.debug(String.format(
+                    "Shutdown leader initiator, leader cache, update scoreboard, execution engine for partition %d",
+                    m_partitionId));
         }
         m_serviceState = ServiceState.REMOVED;
         m_executionSite.setServiceState(m_serviceState);

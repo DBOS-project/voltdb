@@ -45,7 +45,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicLong;
-
 import org.voltdb.CLIConfig;
 import org.voltdb.VoltTable;
 import org.voltdb.client.Client;
@@ -57,6 +56,7 @@ import org.voltdb.client.ClientStatsContext;
 import org.voltdb.client.ClientStatusListenerExt;
 import org.voltdb.client.NullCallback;
 import org.voltdb.client.ProcedureCallback;
+
 
 public class AsyncBenchmark {
 
@@ -501,10 +501,10 @@ public class AsyncBenchmark {
             if (rand.nextDouble() < config.getputratio) {
                 // Get a key/value pair using inbuilt select procedure, asynchronously
                 if (rand.nextDouble() < config.multisingleratio) {
-                    client.callProcedure(new NullCallback(), "selectR", processor.generateRandomKeyForRetrieval());
+                    client.callProcedure(new NullCallback(), "VoltKVQuery", processor.generateRandomKeyForRetrieval());
                 }
                 else {
-                    client.callProcedure(new NullCallback(), "STORE.select", processor.generateRandomKeyForRetrieval());
+                    client.callProcedure(new NullCallback(), "VoltKVQuery", processor.generateRandomKeyForRetrieval());
                 }
             }
             else {
@@ -532,10 +532,10 @@ public class AsyncBenchmark {
             if (rand.nextDouble() < config.getputratio) {
                 // Get a key/value pair using inbuilt select procedure, asynchronously
                 if (rand.nextDouble() < config.multisingleratio) {
-                    client.callProcedure(new GetCallback(), "selectR", processor.generateRandomKeyForRetrieval());
+                    client.callProcedure(new GetCallback(), "VoltKVQuery", processor.generateRandomKeyForRetrieval());
                 }
                 else {
-                    client.callProcedure(new GetCallback(), "STORE.select", processor.generateRandomKeyForRetrieval());
+                    client.callProcedure(new GetCallback(), "VoltKVQuery", processor.generateRandomKeyForRetrieval());
                 }
             }
             else {

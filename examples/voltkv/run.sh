@@ -23,8 +23,8 @@ source $VOLTDB_BIN/voltenv
 # (once running, all nodes are the same -- no leaders)
 STARTUPLEADERHOST="localhost"
 # list of cluster nodes separated by commas in host:[port] format
-SERVERS="172.16.0.2"
 #SERVERS="localhost"
+SERVERS="172.16.0.2"
 # remove binaries, logs, runtime artifacts, etc... but keep the client jar
 function clean() {
     rm -rf client/voltkv/*.class voltdbroot log
@@ -40,10 +40,13 @@ function cleanall() {
 function jars() {
     # compile java source
     javac -classpath $CLIENTCLASSPATH client/voltkv/*.java
+    javac -classpath $APPCLASSPATH procedures/voltkv/*.java
     # build client jar
     jar cf voltkv-client.jar -C client voltkv
+    jar cf procedures.jar -C procedures voltkv
     # remove compiled .class files
     rm -rf client/voltkv/*.class
+    rm -rf procedures/voltkv/*/class
 }
 
 # compile the client jarfile if it doesn't exist
@@ -93,7 +96,7 @@ function async-benchmark() {
         --servers=$SERVERS \
         --poolsize=$POOLSIZE \
         --preload=true \
-        --getputratio=0.90 \
+        --getputratio=1.0 \
         --keysize=32 \
         --minvaluesize=$PAYLOAD_SIZE \
         --maxvaluesize=$PAYLOAD_SIZE \
@@ -119,7 +122,7 @@ function sync-benchmark() {
         --servers=$SERVERS \
         --poolsize=100000 \
         --preload=true \
-        --getputratio=0.90 \
+        --getputratio=1.0 \
         --keysize=32 \
         --minvaluesize=$PAYLOAD_SIZE \
         --maxvaluesize=$PAYLOAD_SIZE \
@@ -143,7 +146,7 @@ function jdbc-benchmark() {
         --servers=$SERVERS \
         --poolsize=100000 \
         --preload=true \
-        --getputratio=0.90 \
+        --getputratio=1.0 \
         --keysize=32 \
         --minvaluesize=5120 \
         --maxvaluesize=5120 \

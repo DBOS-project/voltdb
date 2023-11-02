@@ -52,6 +52,7 @@ package com;
 
 import java.io.IOException;
 
+import org.voltdb.VoltDBProcedureProcess;
 import org.voltdb.types.TimestampType;
 
 public class TPCCSimulation
@@ -282,6 +283,6 @@ public class TPCCSimulation
             assert x > 100 - 45;
             doNewOrder();
             return Transaction.NEW_ORDER.ordinal();
-        }
+        }        
     }
 }

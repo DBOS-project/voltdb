@@ -52,6 +52,7 @@ package com.procedures;
 
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
+import org.voltdb.VoltVMProcedure;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltTableRow;
 import org.voltdb.VoltType;
@@ -62,7 +63,7 @@ import org.voltdb.VoltType;
 //2) Set of Repeating data, represented as a Nx5 table representing several order-lines each with fields ol_supply_w_id, ol_i_id, ol_quantity, ol_amount, ol_delivery_d.
 //See TPC-C (Revision 5.9) Section 2.6.3.4 for more
 
-public class ostatByCustomerName extends VoltProcedure {
+public class ostatByCustomerName extends VoltVMProcedure {
     private final VoltTable result_template = new VoltTable(
         new VoltTable.ColumnInfo("C_ID", VoltType.INTEGER),
         new VoltTable.ColumnInfo("C_FIRST", VoltType.STRING),

@@ -2475,7 +2475,7 @@ DEPLOYMENT FILE SCHEMA CODE GENERATION
         unless="deployment.parsergen.uptodate"
         description="Use JAXB to generate source from the deployment file schema">
     <delete file="${deployment.parsergen.dir}/.flagfile" />
-    <exec dir="${src.gpl.dir}" executable="/mnt/disks/nvme/jdk8u332-b09/bin/xjc" failonerror="true">
+    <exec dir="${src.gpl.dir}" executable="/usr/lib/jvm/java-8-openjdk-amd64/bin/xjc" failonerror="true">
         <arg line="-p ${deployment.parsergen.pkg} ${deployment.parsergen.xsd}" />
     </exec>
     <touch file="${deployment.parsergen.dir}/.flagfile" />

@@ -5,7 +5,7 @@
 STARTUPLEADERHOST="localhost"
 # list of cluster nodes separated by commas in host:[port] format
 SERVERS="localhost"
-
+#SERVERS="172.16.0.2"
 # WEB SERVER variables
 WEB_PORT=8081
 

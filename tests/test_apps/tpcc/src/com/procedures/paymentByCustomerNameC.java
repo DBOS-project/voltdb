@@ -54,6 +54,7 @@ import java.util.Arrays;
 
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
+import org.voltdb.VoltVMProcedure;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltTableRow;
 import org.voltdb.VoltType;
@@ -65,7 +66,7 @@ import org.voltdb.types.TimestampType;
  * Customer related queries. See deps.pdf for dependencies between the queries
  * in original paymentByCustomerName.
  */
-public class paymentByCustomerNameC extends VoltProcedure {
+public class paymentByCustomerNameC extends VoltVMProcedure {
 
     final int misc_expected_string_len = 32 + 2 + 32 + 32 + 32 + 32 + 2 + 9 + 32 + 2 + 500;
 

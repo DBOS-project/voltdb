@@ -52,13 +52,14 @@ package com.procedures;
 
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
+import org.voltdb.VoltVMProcedure;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltTableRow;
 import org.voltdb.VoltType;
 import com.Constants;
 import org.voltdb.types.TimestampType;
 
-public class delivery extends VoltProcedure {
+public class delivery extends VoltVMProcedure {
     private final VoltTable result_template = new VoltTable(
         new VoltTable.ColumnInfo("d_id", VoltType.TINYINT),
         new VoltTable.ColumnInfo("o_id", VoltType.INTEGER)
