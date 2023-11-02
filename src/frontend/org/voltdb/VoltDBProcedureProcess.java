@@ -169,23 +169,21 @@ class ProcedureRunnerProxy{
             e.printStackTrace();
         }
 
-        String[] varNames = queuedSQLStmtVarNames.toArray(new String[0]);
-        String varNamesString = Arrays.toString(varNames);
+        String varNamesString = queuedSQLStmtVarNames.toString();
         queuedSQLStmtVarNames.clear();
         queuedSQLParams.clear();
         VoltTable[] result = null; 
         // read the queries from memory
         long t = System.nanoTime();
         while (true) {
-            // perhaps: wait a bit before doing this get next message
-            // if(sqlStatementIterationCount.containsKey(varNamesString) && sqlStatementIterationCount.get(varNamesString) > 2) {
-            //     int meanNanosecond = (int) ((double) sqlStatementAverageRuntime.get(varNamesString) / sqlStatementIterationCount.get(varNamesString));
-            //     int threshold = 3000; // nanoseconds
-            //     protocol.getChannel().runWaitTimer(meanNanosecond - threshold);
-            // }
-
-            // now, return to normal operation, doing polling instead
-            InterVMMessage msg = protocol.getNextMessage(oldMessage, null);
+            int wakeup_delay_ns = 0;
+            if(sqlStatementIterationCount.containsKey(varNamesString) && sqlStatementIterationCount.get(varNamesString) > 2) {
+                int meanNanosecond = (int) ((double) sqlStatementAverageRuntime.get(varNamesString) / sqlStatementIterationCount.get(varNamesString));
+                int threshold = 60000; // nanoseconds
+                wakeup_delay_ns = meanNanosecond - threshold;
+            }
+            
+            InterVMMessage msg = protocol.getNextMessage(oldMessage, null, wakeup_delay_ns);
             if (msg.type == InterVMMessage.kProcedureCallReq) {
                 VMProcedureCall call = null;
                 try {
@@ -218,16 +216,16 @@ class ProcedureRunnerProxy{
         if(!sqlStatementIterationCount.containsKey(varNamesString)) {
             sqlStatementIterationCount.put(varNamesString, 1l);
             sqlStatementAverageRuntime.put(varNamesString, t2 - t);
-            sqlStatementRuntimeTracker.put(varNamesString, new ArrayList<>());
-            sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
-            sqlStatementMin.put(varNamesString, t2 - t);
-            sqlStatementMax.put(varNamesString, t2 - t);
+            // sqlStatementRuntimeTracker.put(varNamesString, new ArrayList<>());
+            // sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
+            // sqlStatementMin.put(varNamesString, t2 - t);
+            // sqlStatementMax.put(varNamesString, t2 - t);
         } else {
             sqlStatementIterationCount.put(varNamesString, sqlStatementIterationCount.get(varNamesString) + 1);
             sqlStatementAverageRuntime.put(varNamesString, sqlStatementAverageRuntime.get(varNamesString) + (t2 - t));
-            sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
-            sqlStatementMin.put(varNamesString, Math.min((t2 - t), sqlStatementMin.get(varNamesString)));
-            sqlStatementMax.put(varNamesString, Math.max((t2 - t), sqlStatementMax.get(varNamesString)));
+            // sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
+            // sqlStatementMin.put(varNamesString, Math.min((t2 - t), sqlStatementMin.get(varNamesString)));
+            // sqlStatementMax.put(varNamesString, Math.max((t2 - t), sqlStatementMax.get(varNamesString)));
         }
 
         // if(printCount % 100000 == 0) {

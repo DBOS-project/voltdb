@@ -130,7 +130,7 @@ public class RingBufferChannel {
         while (incomingRingBuffer.readBytes(buffer) == false) { // while nothing to read, polling
             if (hypervisorPVSupport && --countDown < 0) {
                 incomingRingBuffer.setHalted(1);
-                ExecutionEngine.DBOSPVWaitTimer(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id, 0);
+                // ExecutionEngine.DBOSPVWaitTimer(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id, 0);
                 // ExecutionEngine.DBOSPVWait(hypervisor_fd);
                 incomingRingBuffer.setHalted(0);
                 countDown = kCountDownCycles;
@@ -180,7 +180,7 @@ public class RingBufferChannel {
         //     outgoingRingBuffer.getHalted() == 1 && notify) {
         if (notified == false && hypervisorPVSupport && notify) { // notify the user that operation is complete
             // if (incomingRingBuffer.readableBytes() > 0) {
-               ExecutionEngine.DBOSPVNotify(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
+            //    ExecutionEngine.DBOSPVNotify(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
             //} else {
                 // incomingRingBuffer.setHalted(1);
                 // ExecutionEngine.DBOSPVNotifyAndWait(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);

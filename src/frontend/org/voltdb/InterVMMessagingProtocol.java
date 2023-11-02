@@ -36,6 +36,11 @@ public class InterVMMessagingProtocol {
     }
 
     public InterVMMessage getNextMessage(InterVMMessage oldMessage, ByteBuffer oldBuffer) {
+        return getNextMessage(oldMessage, oldBuffer, 0);
+    }
+
+    // will only use the wakeup delay if the message is a response message
+    public InterVMMessage getNextMessage(InterVMMessage oldMessage, ByteBuffer oldBuffer, int wakeup_delay_ns) {
         InterVMMessage newMessage = oldMessage == null ? new InterVMMessage() : oldMessage;
         try {
             int messageLength = this.channel.readInt(intBytes);
@@ -45,6 +50,11 @@ public class InterVMMessagingProtocol {
             messageLength -= 5;
             assert (messageLength >= 0);
             if (messageLength > 0) {
+                // custom timer to sleep first for a bit
+                if(wakeup_delay_ns > 0 && newMessage.type == InterVMMessage.kProcedureCallSQLQueryResp) {
+                    this.channel.runWaitTimer(wakeup_delay_ns);
+                }
+
                 if (oldBuffer != null && oldBuffer.capacity() >= messageLength) {
                     oldBuffer.clear();
                     newMessage.data = oldBuffer;
