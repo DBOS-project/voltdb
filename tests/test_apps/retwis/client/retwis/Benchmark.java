@@ -86,7 +86,7 @@ public class Benchmark {
             if (i % 100_000 == 0 && i != 0)
                 System.out.printf("Iteration %d\n", i);
             try {
-                this.simulator.doOne(new RetwisCallback(true));
+                this.simulator.doGetPosts(new RetwisCallback(true));
             }
             catch (IOException e) {}
             currentTime = System.currentTimeMillis();
@@ -111,7 +111,7 @@ public class Benchmark {
 
         while (workerClients.activeCount() > 0) {} // Wait for all threads to join
         long elapsedTime = System.currentTimeMillis() - startTime;
-        Map<String, Double> execTimes = this.getServerStats();
+        Map<String, ProcStats> procStats = this.getServerStats();
 
         System.out.println("============================== BENCHMARK RESULTS ==============================");
         System.out.printf("Time: %d ms\n", elapsedTime);
@@ -128,14 +128,16 @@ public class Benchmark {
         // System.out.println("===============================================================================\n");
 
         System.out.println("----------------------- Breakdown --------------------------");
-        System.out.printf("%-15s%-20s%-15s%-20s\n", "Procedure", "Throughput(txns/s)", "Latency(us)", "Execution Time(us)");
+        System.out.printf("%-15s%-20s%-15s%-20s%-20s\n", "Procedure", "Throughput(txns/s)", "Latency(us)", "Execution Time(us)", "Result size(bytes)");
         System.out.println("------------------------------------------------------------");
         for (String procedure: typeNumExecution.keySet()) {
-            System.out.printf("%-15s%-20.2f%-15.2f%-20.2f\n", 
+            ProcStats thisStat = procStats.get(procedure);
+            System.out.printf("%-15s%-20.2f%-15.2f%-20.2f%-20d\n", 
                                 procedure,
                                 (double) typeNumExecution.get(procedure) * 1000 / elapsedTime,
                                 (double) typeExecutionTime.get(procedure) / (typeNumExecution.get(procedure) * 1000),
-                                execTimes.get(procedure));
+                                thisStat.execTime,
+                                thisStat.resultSize);
         }
     }
 
@@ -150,9 +152,9 @@ public class Benchmark {
         }
     }
 
-    private Map<String, Double> getServerStats() {
+    private Map<String, ProcStats> getServerStats() {
         String query = "SELECT *" +
-            " from statistics(PROCEDUREPROFILE,1);";
+            " from statistics(PROCEDURE,1);";
         VoltTable[] results = null;
         try {
             results = this.m_clientCon.execute("@QueryStats", query).getResults();
@@ -160,13 +162,46 @@ public class Benchmark {
             e.printStackTrace();
         }
         VoltTable result = results[0];
-        Map<String, Double> execTimes = new HashMap<>();
+        Map<String, List<ProcStats>> procDetails = new HashMap<>();
         while (result.advanceRow()) {
-            String[] procedure = result.getString(1).split("\\.");
+            String[] procedure = result.getString("PROCEDURE").split("\\.");
             String procedureName = procedure[procedure.length - 1];
-            execTimes.put(procedureName, (double) result.getLong(4) / 1000);
+            ProcStats stats = new ProcStats();
+            stats.name = procedureName;
+            stats.execTime = (double) result.getLong("AVG_EXECUTION_TIME") / 1000;
+            stats.invocations = (int) result.getLong("INVOCATIONS");
+            stats.resultSize = (int) result.getLong("AVG_RESULT_SIZE");
+            if (!procDetails.containsKey(procedureName))
+                procDetails.put(procedureName, new ArrayList<>());
+            procDetails.get(procedureName).add(stats);
         }
-        return execTimes;
+
+        Map<String, ProcStats> procSummary = new HashMap<>();
+        for (String proc: procDetails.keySet()) {
+            double totalExecTime = 0;
+            int totalInvocations = 0;
+            int totalResSize = 0;
+            for (ProcStats stat: procDetails.get(proc)) {
+                totalExecTime += stat.execTime * stat.invocations;
+                totalResSize += stat.resultSize * stat.invocations;
+                totalInvocations += stat.invocations;
+            }
+            ProcStats thisStat = new ProcStats();
+            thisStat.name = proc;
+            thisStat.invocations = totalInvocations;
+            thisStat.execTime = totalExecTime / totalInvocations;
+            thisStat.resultSize = totalResSize / totalInvocations;
+            
+            procSummary.put(proc, thisStat);
+        }
+        return procSummary;
+    }
+
+    class ProcStats {
+        String name;
+        Double execTime;
+        int resultSize;
+        int invocations;
     }
 
     class RetwisCallback implements ProcedureCallback {
