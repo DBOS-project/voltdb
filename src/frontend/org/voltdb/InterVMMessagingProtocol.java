@@ -2,6 +2,11 @@ package org.voltdb;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+
 import org.voltcore.utils.DBBPool.BBContainer;
 import org.voltdb.CatalogContext.CatalogInfo;
 import org.voltdb.utils.RingBufferChannel;
@@ -15,6 +20,14 @@ public class InterVMMessagingProtocol {
     ByteBuffer intBytes = ByteBuffer.allocate(4);
     ByteBuffer byteBytes = ByteBuffer.allocate(1);
     boolean enablePVAcceleration = false;
+
+    private long printCount = 0;
+    private Map<String, Long> sqlStatementIterationCount = new HashMap<>();
+    private Map<String, Long> sqlStatementAverageRuntime = new HashMap<>();
+    private Map<String, List<Long>> sqlStatementRuntimeTracker = new HashMap<>();
+    private Map<String, Long> sqlStatementMin = new HashMap<>();
+    private Map<String, Long> sqlStatementMax = new HashMap<>();
+
     InterVMMessagingProtocol(RingBufferChannel channel, boolean configEnablePVAcceleration) {
         this.channel = channel;
         this.enablePVAcceleration = configEnablePVAcceleration;
@@ -36,11 +49,11 @@ public class InterVMMessagingProtocol {
     }
 
     public InterVMMessage getNextMessage(InterVMMessage oldMessage, ByteBuffer oldBuffer) {
-        return getNextMessage(oldMessage, oldBuffer, 0);
+        return getNextMessage(oldMessage, oldBuffer, "");
     }
 
     // will only use the wakeup delay if the message is a response message
-    public InterVMMessage getNextMessage(InterVMMessage oldMessage, ByteBuffer oldBuffer, int wakeup_delay_ns) {
+    public InterVMMessage getNextMessage(InterVMMessage oldMessage, ByteBuffer oldBuffer, String varNamesString) {
         InterVMMessage newMessage = oldMessage == null ? new InterVMMessage() : oldMessage;
         try {
             int messageLength = this.channel.readInt(intBytes);
@@ -51,8 +64,15 @@ public class InterVMMessagingProtocol {
             assert (messageLength >= 0);
             if (messageLength > 0) {
                 // custom timer to sleep first for a bit
-                if(wakeup_delay_ns > 0 && newMessage.type == InterVMMessage.kProcedureCallSQLQueryResp) {
-                    this.channel.runWaitTimer(wakeup_delay_ns);
+                int wakeup_delay_ns = 0;
+                if(sqlStatementIterationCount.containsKey(varNamesString) && sqlStatementIterationCount.get(varNamesString) > 2) {
+                    int meanNanosecond = (int) ((double) sqlStatementAverageRuntime.get(varNamesString) / sqlStatementIterationCount.get(varNamesString));
+                    int threshold = 1500; // nanoseconds
+                    wakeup_delay_ns = meanNanosecond - threshold;
+                    
+                    if(wakeup_delay_ns > 0 && newMessage.type == InterVMMessage.kProcedureCallSQLQueryResp) {
+                        this.channel.runWaitTimer(wakeup_delay_ns);
+                    }
                 }
 
                 if (oldBuffer != null && oldBuffer.capacity() >= messageLength) {
@@ -61,7 +81,53 @@ public class InterVMMessagingProtocol {
                 } else {
                     newMessage.data = ByteBuffer.allocate(messageLength);
                 }
+                long t = System.nanoTime();
                 this.channel.read(newMessage.data); // writes data to the buffer
+                long t2 = System.nanoTime();
+
+                if(newMessage.type == InterVMMessage.kProcedureCallSQLQueryResp) { // store how long it takes to run polling
+                    if(!sqlStatementIterationCount.containsKey(varNamesString)) {
+                        sqlStatementIterationCount.put(varNamesString, 1l);
+                        sqlStatementAverageRuntime.put(varNamesString, t2 - t);
+                        // sqlStatementRuntimeTracker.put(varNamesString, new ArrayList<>());
+                        // sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
+                        // sqlStatementMin.put(varNamesString, t2 - t);
+                        // sqlStatementMax.put(varNamesString, t2 - t);
+                    } else {
+                        sqlStatementIterationCount.put(varNamesString, sqlStatementIterationCount.get(varNamesString) + 1);
+                        sqlStatementAverageRuntime.put(varNamesString, sqlStatementAverageRuntime.get(varNamesString) + (t2 - t));
+                        // sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
+                        // sqlStatementMin.put(varNamesString, Math.min((t2 - t), sqlStatementMin.get(varNamesString)));
+                        // sqlStatementMax.put(varNamesString, Math.max((t2 - t), sqlStatementMax.get(varNamesString)));
+                    }
+
+                    // if(printCount % 100000 == 0) {
+                    //     int count = 0;
+                    //     for(String key : sqlStatementIterationCount.keySet()) {
+                    //         // only print frequent ones
+                    //         if(sqlStatementIterationCount.get(key) < 5) {
+                    //             continue;
+                    //         }
+
+                    //         // calculate sum of squared variance
+                    //         double squaredVariance = 0;
+                    //         double mean = (double) sqlStatementAverageRuntime.get(key) / sqlStatementIterationCount.get(key);
+                    //         for(long time : sqlStatementRuntimeTracker.get(key)) {
+                    //             squaredVariance += (time - mean) * (time - mean);
+                    //         }
+                    //         double std = Math.sqrt(squaredVariance / sqlStatementIterationCount.get(key));
+
+                    //         System.out.println(key + "=" + sqlStatementIterationCount.get(key) + " TOOK " + (mean / 1000.0) + " us (range:" + (sqlStatementMin.get(key) / 1000.0) + " - " + (sqlStatementMax.get(key) / 1000.0) + ", std: " + (std / 1000.0) + ") to execute");
+                    //         System.out.println();
+
+                    //         count++;
+                    //         if(count >= 5) {
+                    //             break;
+                    //         }
+                    //     }
+                    // }
+                }
+
                 newMessage.data.flip();// flip the buffer for reading
             }
         } catch (Exception e) {
