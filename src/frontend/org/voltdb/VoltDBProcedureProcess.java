@@ -47,6 +47,13 @@ class ProcedureRunnerProxy{
     private long runTimeMin = 10000000;
     private long runTimeMax = 0;
 
+    private long printCount = 0;
+    private Map<String, Long> sqlStatementIterationCount = new HashMap<>();
+    private Map<String, Long> sqlStatementAverageRuntime = new HashMap<>();
+    private Map<String, List<Long>> sqlStatementRuntimeTracker = new HashMap<>();
+    private Map<String, Long> sqlStatementMin = new HashMap<>();
+    private Map<String, Long> sqlStatementMax = new HashMap<>();
+
     InterVMMessagingProtocol protocol;
     org.nustaq.serialization.FSTConfiguration fstConf;
     ByteBuffer buffer = null;
@@ -150,6 +157,7 @@ class ProcedureRunnerProxy{
     
     public VoltTable[] voltExecuteSQL(boolean isFinalSQL, boolean ignoreResults) { // runs in SPVM
         // write the query(ies) to memory
+        long t = System.nanoTime();
         try {
             org.nustaq.serialization.FSTObjectOutput objectOutput = fstConf.getObjectOutput();
             objectOutput.writeObject(isFinalSQL);
@@ -164,11 +172,23 @@ class ProcedureRunnerProxy{
         }
 
         String varNamesString = queuedSQLStmtVarNames.toString();
+
+        // custom timer to sleep first for a bit
+        int wakeup_delay_ns = 0;
+        if(sqlStatementIterationCount.containsKey(varNamesString) && sqlStatementIterationCount.get(varNamesString) > 2) {
+            int meanNanosecond = (int) ((double) sqlStatementAverageRuntime.get(varNamesString) / sqlStatementIterationCount.get(varNamesString));
+            int threshold = 1000; // nanoseconds
+            wakeup_delay_ns = meanNanosecond - threshold;
+            
+            if(wakeup_delay_ns > 0) {
+                // protocol.getChannel().runWaitTimer(wakeup_delay_ns);
+            }
+        }
+
         queuedSQLStmtVarNames.clear();
         queuedSQLParams.clear();
         VoltTable[] result = null; 
         // read the queries from memory
-        long t = System.nanoTime();
         while (true) {
             InterVMMessage msg = protocol.getNextMessage(oldMessage, null, varNamesString);
             if (msg.type == InterVMMessage.kProcedureCallReq) {
@@ -199,6 +219,83 @@ class ProcedureRunnerProxy{
             }
         }
         long t2 = System.nanoTime();
+
+        // logging
+        if(!sqlStatementIterationCount.containsKey(varNamesString)) {
+            sqlStatementIterationCount.put(varNamesString, 1l);
+            sqlStatementAverageRuntime.put(varNamesString, t2 - t);
+
+            sqlStatementRuntimeTracker.put(varNamesString, new ArrayList<>());
+            sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
+            sqlStatementMin.put(varNamesString, t2 - t);
+            sqlStatementMax.put(varNamesString, t2 - t);
+        } else {
+            sqlStatementIterationCount.put(varNamesString, sqlStatementIterationCount.get(varNamesString) + 1);
+            sqlStatementAverageRuntime.put(varNamesString, sqlStatementAverageRuntime.get(varNamesString) + (t2 - t));
+
+            sqlStatementRuntimeTracker.get(varNamesString).add(t2-t);
+            sqlStatementMin.put(varNamesString, Math.min((t2 - t), sqlStatementMin.get(varNamesString)));
+            sqlStatementMax.put(varNamesString, Math.max((t2 - t), sqlStatementMax.get(varNamesString)));
+        }
+
+        if(printCount % 5000000 == 0) {
+            int count = 0;
+
+            String minKey = "";
+            String maxKey = "";
+            double minKeyValue = 100000000;
+            double maxKeyValue = 0;
+            for(String key : sqlStatementIterationCount.keySet()) {
+                // only print frequent ones
+                if(sqlStatementIterationCount.get(key) < 3) {
+                    continue;
+                }
+
+                // calculate sum of squared variance
+                double squaredVariance = 0;
+                double mean = (double) sqlStatementAverageRuntime.get(key) / sqlStatementIterationCount.get(key);
+                for(long time : sqlStatementRuntimeTracker.get(key)) {
+                    squaredVariance += (time - mean) * (time - mean);
+                }
+                double std = Math.sqrt(squaredVariance / sqlStatementIterationCount.get(key));
+
+                if(mean < minKeyValue) {
+                    minKey = key;
+                    minKeyValue = mean;
+                }
+                if(mean > maxKeyValue) {
+                    maxKey = key;
+                    maxKeyValue = mean;
+                }
+            }
+
+            // MIN
+
+            // calculate sum of squared variance
+            double squaredVariance = 0;
+            double mean = (double) sqlStatementAverageRuntime.get(minKey) / sqlStatementIterationCount.get(minKey);
+            for(long time : sqlStatementRuntimeTracker.get(minKey)) {
+                squaredVariance += (time - mean) * (time - mean);
+            }
+            double std = Math.sqrt(squaredVariance / sqlStatementIterationCount.get(minKey));
+
+            System.out.println("MIN SO FAR (total batch count: " + sqlStatementIterationCount.size() + ")");
+            System.out.println(minKey + "=" + sqlStatementIterationCount.get(minKey) + " TOOK " + (mean / 1000.0) + " us (range:" + (sqlStatementMin.get(minKey) / 1000.0) + " - " + (sqlStatementMax.get(minKey) / 1000.0) + ", std: " + (std / 1000.0) + ") to execute");
+
+            // MAX
+
+            // calculate sum of squared variance
+            squaredVariance = 0;
+            mean = (double) sqlStatementAverageRuntime.get(maxKey) / sqlStatementIterationCount.get(maxKey);
+            for(long time : sqlStatementRuntimeTracker.get(maxKey)) {
+                squaredVariance += (time - mean) * (time - mean);
+            }
+            std = Math.sqrt(squaredVariance / sqlStatementIterationCount.get(maxKey));
+
+            System.out.println("MAX SO FAR");
+            System.out.println(maxKey + "=" + sqlStatementIterationCount.get(maxKey) + " TOOK " + (mean / 1000.0) + " us (range:" + (sqlStatementMin.get(maxKey) / 1000.0) + " - " + (sqlStatementMax.get(maxKey) / 1000.0) + ", std: " + (std / 1000.0) + ") to execute");
+            System.out.println();
+        }
 
         return result;
     }

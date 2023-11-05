@@ -466,7 +466,7 @@ public class ProcedureRunner {
                     String sqlStmtVarName = sqlStmtVarNames.get(i);
                     voltQueueSQL(m_stmtMap.get(sqlStmtVarName), null, sqlParams.get(i));
                 }
-                VoltTable[] result = voltExecuteSQL(isFinalSQL);
+                VoltTable[] result = voltExecuteSQL(isFinalSQL); //query is actually executed
                 if (ignoreResults == false) {
                     // respond to query given, and give the results back
                     ((Site) m_site).getInterVMMessagingProtocol().writeExecuteQueryRequestResponse(result, true);    

@@ -89,7 +89,7 @@ public class RingByteBuffer {
         int n = buf.remaining();
         long readPos = getReadPos();
         long writePos = getWritePos();
-        if (writePos - readPos < n) { // amount of bytes to read is smaller than buffer size (can't fit)
+        if (writePos - readPos < n) { // amount of bytes to read is smaller than buffer size (not enough data)
             return false;
         }
         // if (writePosCached - readPos < n) {

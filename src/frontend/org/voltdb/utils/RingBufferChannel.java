@@ -127,10 +127,9 @@ public class RingBufferChannel {
         int transferSize = buffer.remaining();
         long t = System.nanoTime();
         between_wait_time_total += (t - last_wait_time);
-        while (incomingRingBuffer.readBytes(buffer) == false) { // while nothing to read, polling
+        while (incomingRingBuffer.readBytes(buffer) == false) { // while not enough to read, polling
             if (hypervisorPVSupport && --countDown < 0) {
                 incomingRingBuffer.setHalted(1);
-                // ExecutionEngine.DBOSPVWaitTimer(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id, 0);
                 // ExecutionEngine.DBOSPVWait(hypervisor_fd);
                 incomingRingBuffer.setHalted(0);
                 countDown = kCountDownCycles;
