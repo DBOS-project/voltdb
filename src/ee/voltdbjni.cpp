@@ -306,7 +306,7 @@ SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_DBOSPVWait(
 
 SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_DBOSPVWaitTimer(JNIEnv *env, jclass obj, jint hypervisor_fd, jint dual_qemu_pid, jint dual_qemu_lapic_id, jint wakeup_delay_us) {
     uint64_t word = 
-              ((dual_qemu_pid & 0x00000000ffffffff) << 32L) 
+              ((uint64_t)(dual_qemu_pid & 0x00000000ffffffff) << 32L) 
             | ((wakeup_delay_us & 0x0000000000ffffff) << 8L) 
             | ((dual_qemu_lapic_id & 0x00000000000000ff) << 0L);
     return reinterpret_cast<jint>(ioctl(hypervisor_fd, DBOS_PV_WAIT_TIMER, &word));

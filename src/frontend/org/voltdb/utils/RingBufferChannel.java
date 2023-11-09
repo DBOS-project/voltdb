@@ -7,7 +7,7 @@ import java.nio.ByteBuffer;
 import org.voltcore.utils.DBBPool.BBContainer;
 import org.voltdb.jni.ExecutionEngine;
 
-public class RingBufferChannel {
+public class RingBufferChannel implements Channel {
     public static long kRingBufferCapacity = 1024 * 1024;
     private RingByteBuffer outgoingRingBuffer;
     private RingByteBuffer incomingRingBuffer;
