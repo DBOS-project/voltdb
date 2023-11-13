@@ -202,11 +202,11 @@ class ProcedureRunnerProxy{
                 int MAX_MEAN_NANOSECONDS = 100 * 1000;
                 int meanNanosecond = (int) ((double) totalRuntime / iterationCount);
                 int meanInterruptNanosecond = (int) ((double) totalInterruptRuntime / iterationCount);
-                int threshold = 1000; // nanoseconds
+                int threshold = 2000; // nanoseconds
                 wakeup_delay_ns = Math.min(meanNanosecond - meanInterruptNanosecond - threshold, MAX_MEAN_NANOSECONDS);
-                // if(printCount++ % 100000 == 0) {
-                //     System.out.println("WAIT:" + varNamesString + ": " + meanNanosecond + " - " + meanInterruptNanosecond + " - " + threshold + " = " + (wakeup_delay_ns));
-                // }
+                if(printCount++ % 100000 == 0) {
+                    System.out.println("WAIT:" + varNamesString + ": " + meanNanosecond + " - " + meanInterruptNanosecond + " - " + threshold + " = " + (wakeup_delay_ns));
+                }
                 
                 if(wakeup_delay_ns > 0) {
                     protocol.getChannel().runWaitTimer(wakeup_delay_ns);
@@ -279,7 +279,7 @@ class ProcedureRunnerProxy{
             }
         }
 
-        if(false && printCount++ % 10000 == 0) {
+        if(false) {
         // if(printCount++ % 10000 == 0) {
             int count = 0;
 

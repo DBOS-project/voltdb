@@ -916,7 +916,7 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         return task;
     }
     // static final int stageTaskMaxNum = 300;
-    static final int stageTaskMaxNum = 1;
+    static final int stageTaskMaxNum = 0; // in addition to the one already done
     public boolean tryQueueOneSPTaskInVM(boolean notify) {
         if (stagedTasks.size() >= stageTaskMaxNum) {
             return false;
