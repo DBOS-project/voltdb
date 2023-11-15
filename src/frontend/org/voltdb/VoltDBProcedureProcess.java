@@ -202,13 +202,13 @@ class ProcedureRunnerProxy{
                 int MAX_MEAN_NANOSECONDS = 100 * 1000;
                 int meanNanosecond = (int) ((double) totalRuntime / iterationCount);
                 int meanInterruptNanosecond = (int) ((double) totalInterruptRuntime / iterationCount);
-                int threshold = 2000; // nanoseconds
+                int threshold = 4000; // nanoseconds
                 wakeup_delay_ns = Math.min(meanNanosecond - meanInterruptNanosecond - threshold, MAX_MEAN_NANOSECONDS);
                 if(printCount++ % 100000 == 0) {
                     System.out.println("WAIT:" + varNamesString + ": " + meanNanosecond + " - " + meanInterruptNanosecond + " - " + threshold + " = " + (wakeup_delay_ns));
                 }
                 
-                if(wakeup_delay_ns > 0) {
+                if(wakeup_delay_ns > 2000) {
                     protocol.getChannel().runWaitTimer(wakeup_delay_ns);
                 }
             }
@@ -398,6 +398,9 @@ public class VoltDBProcedureProcess {
         context.procedure.init(context.runner);
         return context;
     }
+
+    public static int getVMPid() {return VMPid;}
+    public static int getCoreIdBound() {return coreIdBound;}
 
     public static void exchangeVMInfo(InterVMMessagingProtocol protocol, int hypervisorFd, int vmPid, int coreId) {
         protocol.sendVMInformation(fstConf.asByteArray(new VMInformation(vmPid, coreId)));

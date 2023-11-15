@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import org.voltcore.utils.DBBPool.BBContainer;
 import org.voltdb.jni.ExecutionEngine;
+import org.voltdb.VoltDB;
+import org.voltdb.VoltDBProcedureProcess;
 
 public class RingBufferChannel {
     public static long kRingBufferCapacity = 1024 * 1024;
@@ -111,11 +113,11 @@ public class RingBufferChannel {
     // time passes
     public void runWaitTimer(int wakeup_delay_ns) {
         incomingRingBuffer.setHalted(1);
-        // ExecutionEngine.DBOSPVWaitTimer(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id, wakeup_delay_ns);
+        ExecutionEngine.DBOSPVWaitTimer(hypervisor_fd, VoltDBProcedureProcess.getVMPid(), VoltDBProcedureProcess.getCoreIdBound(), wakeup_delay_ns);
 
         // to test, run a loop
-        long start = System.nanoTime();
-        while(System.nanoTime() - start < wakeup_delay_ns) {}
+        // long start = System.nanoTime();
+        // while(System.nanoTime() - start < wakeup_delay_ns) {}
 
         incomingRingBuffer.setHalted(0);
     }

@@ -234,7 +234,8 @@ public class MyTPCC
     public MyTPCC(String args[])
     {
         m_helpah = new AppHelper(MyTPCC.class.getCanonicalName());
-        m_helpah.add("duration", "run_duration_in_seconds", "Benchmark duration, in seconds.", 180);
+        m_helpah.add("duration", "run_duration_in_seconds", "Benchmark duration, in seconds.", 60);
+        // m_helpah.add("duration", "run_duration_in_seconds", "Benchmark duration, in seconds.", 180);
         m_helpah.add("warehouses", "number_of_warehouses", "Number of warehouses", 256);
         // increase scale factor to increase dataset processing
         m_helpah.add("scalefactor", "scale_factor", "Reduces per-warehouse data by warehouses/scalefactor", 22.0);
