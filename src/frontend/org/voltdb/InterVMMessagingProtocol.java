@@ -4,18 +4,18 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import org.voltcore.utils.DBBPool.BBContainer;
 import org.voltdb.CatalogContext.CatalogInfo;
-import org.voltdb.utils.RingBufferChannel;
+import org.voltdb.utils.Channel;
 import org.voltdb.utils.SerializationHelper;
 
 public class InterVMMessagingProtocol {
-    RingBufferChannel channel;
+    Channel channel;
     BBContainer writeBufferOrigin = org.voltcore.utils.DBBPool.allocateDirect(1024 * 1024 * 2);
     ByteBuffer writeBuffer;
     ByteBuffer userWriteBuffer;
     ByteBuffer intBytes = ByteBuffer.allocate(4);
     ByteBuffer byteBytes = ByteBuffer.allocate(1);
     boolean enablePVAcceleration = false;
-    InterVMMessagingProtocol(RingBufferChannel channel, boolean configEnablePVAcceleration) {
+    InterVMMessagingProtocol(Channel channel, boolean configEnablePVAcceleration) {
         this.channel = channel;
         this.enablePVAcceleration = configEnablePVAcceleration;
         writeBuffer = writeBufferOrigin.b();
@@ -23,7 +23,7 @@ public class InterVMMessagingProtocol {
         userWriteBuffer = writeBuffer.slice();
     }
 
-    public RingBufferChannel getChannel() {
+    public Channel getChannel() {
         return channel;
     }
 
@@ -331,10 +331,12 @@ public class InterVMMessagingProtocol {
     public void pongpingTest() {
         System.out.printf("pongping test for pub/sub pair started\n");
         long t0 = System.nanoTime();
-        long times = 1000000;
+        long times = 10000;
         int length = 64;
         for (int i = 0; i < times; ++i) {
+            // System.out.println("Getting message from other VM");
             InterVMMessage msg = getNextMessage(null, null);
+            // System.out.println("Got message from VM");
             assert(msg.type == InterVMMessage.kPingPongReq);
             assert(msg.data.array().length == length);
             pong(msg.data.array());

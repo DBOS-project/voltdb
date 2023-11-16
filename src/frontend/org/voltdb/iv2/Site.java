@@ -892,18 +892,18 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         return eeTemp;
     }
 
-    public void exchangeVMInfo(int vmPid, int coreId) {
-        getInterVMMessagingProtocol().sendVMInformation(ProcedureRunner.fstConf.get().asByteArray(new VMInformation(vmPid, coreId)));
-        InterVMMessage msg = getInterVMMessagingProtocol().getNextMessage(null, null);
-        assert msg.type == InterVMMessage.kVMInfoUpdateReq;
-        VMInformation i = (VMInformation)ProcedureRunner.fstConf.get().asObject(msg.data.array());
-        getInterVMMessagingProtocol().getChannel().hypervisorPVSupport = true;
-        getInterVMMessagingProtocol().getChannel().hypervisor_fd = this.hypervisorFd;
-        getInterVMMessagingProtocol().getChannel().this_core_id = coreId;
-        getInterVMMessagingProtocol().getChannel().dual_qemu_pid = i.VMPid;
-        getInterVMMessagingProtocol().getChannel().dual_qemu_lapic_id = i.VMCoreId;
-        System.out.printf("This core %d received dual_qemu_pid %d, lapic id %d\n", coreId, i.VMPid, i.VMCoreId);
-    }
+    // public void exchangeVMInfo(int vmPid, int coreId) {
+    //     getInterVMMessagingProtocol().sendVMInformation(ProcedureRunner.fstConf.get().asByteArray(new VMInformation(vmPid, coreId)));
+    //     InterVMMessage msg = getInterVMMessagingProtocol().getNextMessage(null, null);
+    //     assert msg.type == InterVMMessage.kVMInfoUpdateReq;
+    //     VMInformation i = (VMInformation)ProcedureRunner.fstConf.get().asObject(msg.data.array());
+    //     getInterVMMessagingProtocol().getChannel().hypervisorPVSupport = true;
+    //     getInterVMMessagingProtocol().getChannel().hypervisor_fd = this.hypervisorFd;
+    //     getInterVMMessagingProtocol().getChannel().this_core_id = coreId;
+    //     getInterVMMessagingProtocol().getChannel().dual_qemu_pid = i.VMPid;
+    //     getInterVMMessagingProtocol().getChannel().dual_qemu_lapic_id = i.VMCoreId;
+    //     System.out.printf("This core %d received dual_qemu_pid %d, lapic id %d\n", coreId, i.VMPid, i.VMCoreId);
+    // }
 
 
     ArrayDeque<SiteTasker> stagedTasks = new ArrayDeque<>();
@@ -915,7 +915,7 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         SiteTasker task = m_pendingSiteTasks.peek();
         return task;
     }
-    static final int stageTaskMaxNum = 300;
+    static final int stageTaskMaxNum = 0;
     public boolean tryQueueOneSPTaskInVM(boolean notify) {
         if (stagedTasks.size() >= stageTaskMaxNum) {
             return false;
@@ -932,6 +932,14 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         }
     }
 
+    static void printfWithThreadName(String format, Object... args) {
+        String formattedString = "[%s] " + format;
+        Object[] newArgs = new Object[args.length + 1];
+        newArgs[0] = Thread.currentThread().getName();
+        System.arraycopy(args, 0, newArgs, 1, args.length);
+        System.out.printf(formattedString, newArgs);
+    }
+
     @Override
     final public void run() {
         
@@ -944,18 +952,18 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
             PosixJNAAffinity.INSTANCE.setAffinity(m_coreBindIds);
         }
         initialize();
-        if (getInterVMMessagingProtocol().PVAccelerationenabled()) {
-            coreIdBound = coreIdCounter.incrementAndGet() - 1;
-            int ret = ExecutionEngine.DBOSBindCurrentThreadToCore(coreIdBound);
-            assert ret == 0;
-            int coreId = ExecutionEngine.DBOSGetCPUId();
-            assert coreId == coreIdBound;
-            coreIdBound = coreId;
-            final String DBOS_PV_DEV_PATH = "/dev/etx_device";
-            hypervisorFd = ExecutionEngine.DBOSPVOpen(DBOS_PV_DEV_PATH.getBytes());
-            VMPid = ExecutionEngine.DBOSPVGetVMId(hypervisorFd);
-            exchangeVMInfo(VMPid, coreIdBound);
-        }
+        // if (getInterVMMessagingProtocol().PVAccelerationenabled()) {
+        //     coreIdBound = coreIdCounter.incrementAndGet() - 1;
+        //     int ret = ExecutionEngine.DBOSBindCurrentThreadToCore(coreIdBound);
+        //     assert ret == 0;
+        //     int coreId = ExecutionEngine.DBOSGetCPUId();
+        //     assert coreId == coreIdBound;
+        //     coreIdBound = coreId;
+        //     final String DBOS_PV_DEV_PATH = "/dev/etx_device";
+        //     hypervisorFd = ExecutionEngine.DBOSPVOpen(DBOS_PV_DEV_PATH.getBytes());
+        //     VMPid = ExecutionEngine.DBOSPVGetVMId(hypervisorFd);
+        //     exchangeVMInfo(VMPid, coreIdBound);
+        // }
         System.out.printf("Site %d with VM PID %d pv_accel=%b started to sync with SP VM\n", m_siteId, VMPid, getInterVMMessagingProtocol().PVAccelerationenabled());
 
         getInterVMMessagingProtocol().pingpongTest();
@@ -968,6 +976,7 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         final MinimumRatioMaintainer mrm = new MinimumRatioMaintainer(m_taskLogReplayRatio);
         int count = 0;
         try {
+            Site.printfWithThreadName("Starting while loop in site\n");
             while (m_shouldContinue) {
                 if (m_runningState.isRunning()) {
                     // Normal operation blocks the site thread on the sitetasker queue.
@@ -975,7 +984,9 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
                     if (stagedTasks.isEmpty()) {
                         stagedTasks.offer(m_pendingSiteTasks.take());
                     }
+                    Site.printfWithThreadName("Waiting for a new task\n");
                     SiteTasker task = stagedTasks.poll();
+                    Site.printfWithThreadName("New task received %s\n", task.toString());
                     //SiteTasker task = m_pendingSiteTasks.take();
                     if (task instanceof TransactionTask) {
                         m_currentTxnId = ((TransactionTask) task).getTxnId();

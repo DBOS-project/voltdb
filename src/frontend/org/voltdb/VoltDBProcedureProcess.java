@@ -296,18 +296,18 @@ public class VoltDBProcedureProcess {
         return context;
     }
 
-    public static void exchangeVMInfo(InterVMMessagingProtocol protocol, int hypervisorFd, int vmPid, int coreId) {
-        protocol.sendVMInformation(fstConf.asByteArray(new VMInformation(vmPid, coreId)));
-        InterVMMessage msg = protocol.getNextMessage(null, null);
-        assert msg.type == InterVMMessage.kVMInfoUpdateReq;
-        VMInformation i = (VMInformation)fstConf.asObject(msg.data.array());
-        protocol.getChannel().hypervisorPVSupport = true;
-        protocol.getChannel().hypervisor_fd = hypervisorFd;
-        protocol.getChannel().this_core_id = coreId;
-        protocol.getChannel().dual_qemu_pid = i.VMPid;
-        protocol.getChannel().dual_qemu_lapic_id = i.VMCoreId;
-        System.out.printf("This core %d received dual_qemu_pid %d, lapic id %d\n", coreId, i.VMPid, i.VMCoreId);
-    }
+    // public static void exchangeVMInfo(InterVMMessagingProtocol protocol, int hypervisorFd, int vmPid, int coreId) {
+    //     protocol.sendVMInformation(fstConf.asByteArray(new VMInformation(vmPid, coreId)));
+    //     InterVMMessage msg = protocol.getNextMessage(null, null);
+    //     assert msg.type == InterVMMessage.kVMInfoUpdateReq;
+    //     VMInformation i = (VMInformation)fstConf.asObject(msg.data.array());
+    //     protocol.getChannel().hypervisorPVSupport = true;
+    //     protocol.getChannel().hypervisor_fd = hypervisorFd;
+    //     protocol.getChannel().this_core_id = coreId;
+    //     protocol.getChannel().dual_qemu_pid = i.VMPid;
+    //     protocol.getChannel().dual_qemu_lapic_id = i.VMCoreId;
+    //     System.out.printf("This core %d received dual_qemu_pid %d, lapic id %d\n", coreId, i.VMPid, i.VMCoreId);
+    // }
 
     public static void processOneProcedureCall(InterVMMessagingProtocol protocol) throws ClassNotFoundException, InstantiationException, IllegalAccessException, InvocationTargetException{
         if (queuedCalls.isEmpty())
@@ -384,21 +384,30 @@ public class VoltDBProcedureProcess {
         }
     }
 
+    static void printfWithThreadName(String format, Object... args) {
+        String formattedString = "[%s] " + format;
+        Object[] newArgs = new Object[args.length + 1];
+        newArgs[0] = Thread.currentThread().getName();
+        System.arraycopy(args, 0, newArgs, 1, args.length);
+        System.out.printf(formattedString, newArgs);
+    }
+
     public static void run(int vmId, InterVMMessagingProtocol protocol) {
         org.voltdb.NativeLibraryLoader.loadVoltDB();
         System.out.printf("VM %d pid %d pv_accel=%b started to sync with VoltDB\n", vmId, VMPid, protocol.PVAccelerationenabled());
-        if (protocol.PVAccelerationenabled()) {
-            coreIdBound = 0;
-            int res = ExecutionEngine.DBOSBindCurrentThreadToCore(coreIdBound);
-            assert res == 0;
-            int coreId = ExecutionEngine.DBOSGetCPUId();
-            assert coreId == coreIdBound;
-            coreIdBound = coreId;
-            final String DBOS_PV_DEV_PATH = "/dev/etx_device";
-            hypervisorFd = ExecutionEngine.DBOSPVOpen(DBOS_PV_DEV_PATH.getBytes());
-            VMPid = ExecutionEngine.DBOSPVGetVMId(hypervisorFd);
-            exchangeVMInfo(protocol, hypervisorFd, VMPid, coreIdBound);
-        }
+        // Uncomment this and make it work so that it works only for ring buffer
+        // if (protocol.PVAccelerationenabled()) {
+        //     coreIdBound = 0;
+        //     int res = ExecutionEngine.DBOSBindCurrentThreadToCore(coreIdBound);
+        //     assert res == 0;
+        //     int coreId = ExecutionEngine.DBOSGetCPUId();
+        //     assert coreId == coreIdBound;
+        //     coreIdBound = coreId;
+        //     final String DBOS_PV_DEV_PATH = "/dev/etx_device";
+        //     hypervisorFd = ExecutionEngine.DBOSPVOpen(DBOS_PV_DEV_PATH.getBytes());
+        //     VMPid = ExecutionEngine.DBOSPVGetVMId(hypervisorFd);
+        //     exchangeVMInfo(protocol, hypervisorFd, VMPid, coreIdBound);
+        // }
         protocol.pongpingTest();
         System.out.printf("VM %d synced with VoltDB\n", vmId);
         byte[] procedureNameBuf = null;
@@ -417,6 +426,7 @@ public class VoltDBProcedureProcess {
                     e.printStackTrace();
                 }
             }
+            VoltDBProcedureProcess.printfWithThreadName("Got %d new messages\n", queuedCalls.size());
             // if (System.nanoTime() >= lastRecordingTime + 10000) {
             //     queueLengthSum += queuedCalls.size();
             //     queueLengthCnt++;

@@ -30,6 +30,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
@@ -80,6 +81,7 @@ import com.google_voltpatches.common.net.HostAndPort;
 
 import io.netty.handler.ssl.SslContext;
 import org.voltdb.utils.RingBufferChannel;
+import org.voltdb.utils.TCPChannel;
 
 /**
  * VoltDB provides main() for the VoltDB server
@@ -135,6 +137,12 @@ public class VoltDB {
         setDefaultTimezone();
     }
 
+    enum IsolationType {
+        NO_ISOLATION,
+        SHARED_MEMORY,
+        TCP
+    }
+
     /** Encapsulates VoltDB configuration parameters */
     public static class Configuration {
         protected static final VoltLogger hostLog = new VoltLogger("HOST");
@@ -143,13 +151,15 @@ public class VoltDB {
 
         public boolean m_run_as_procedure_process = false;
 
-        public boolean m_vm_isolation = false;
+        public IsolationType m_vm_isolation = IsolationType.NO_ISOLATION;
 
         public boolean m_vm_pv_accel = false;
 
         public String m_isolation_ringbuf_input_file = null;
 
         public String m_isolation_ringbuf_output_file = null;
+
+        public String m_isolation_TCP_port = null;
 
         public int m_isolation_vm_id = -1;
 
@@ -534,9 +544,6 @@ public class VoltDB {
                     case "procedureprocess":
                         m_run_as_procedure_process = true;
                         break;
-                    case "vmisolation":
-                        m_vm_isolation = true;
-                        break;
                     case "vmpvaccel":
                         m_vm_pv_accel = true;
                         break;
@@ -580,6 +587,13 @@ public class VoltDB {
 
                 // Alphabetical order please!
                 switch (arg.toLowerCase()) {
+                    case "vmisolation":
+                        System.out.println("VM Isolation set to " + val);
+                        if (val.equals("SHARED_MEMORY"))
+                            m_vm_isolation = IsolationType.SHARED_MEMORY;
+                        else if (val.equals("TCP"))
+                            m_vm_isolation = IsolationType.TCP;
+                        break;
                     case "adminport":
                         hap = MiscUtils.getHostAndPortFromInterfaceSpec(val, m_adminInterface, DEFAULT_ADMIN_PORT);
                         m_adminInterface = hap.getHost();
@@ -596,6 +610,10 @@ public class VoltDB {
                         break;
                     case "vmshmoutputfile":
                         m_isolation_ringbuf_output_file = val;
+                        break;
+                    case "vmisolationtcpport":
+                        System.out.println("setting VM Isolation TCP port");
+                        m_isolation_TCP_port = val;
                         break;
                     case "vmid":
                         m_isolation_vm_id = Integer.parseInt(val);
@@ -1597,6 +1615,18 @@ public class VoltDB {
         }
     }
 
+    static InterVMMessagingProtocol makeInterVMMessagingProtocol(Configuration config) {
+        if (config.m_vm_isolation == IsolationType.SHARED_MEMORY)
+            return VMProcessMakeRingBufferBasedInterVMMessagingProtocol(
+                                        config.m_isolation_ringbuf_input_file,
+                                        config.m_isolation_ringbuf_output_file, config.m_isolation_vm_id,
+                                        config.m_vm_pv_accel);
+        else if (config.m_vm_isolation == IsolationType.TCP)
+            return makeTCPBasedInterVMMessagingProtocol(config.m_isolation_TCP_port, config.m_vm_pv_accel);
+        else
+            throw new IllegalArgumentException("Illegal argument " + config.m_vm_isolation + " passed for IsolationType");
+    }
+
     static InterVMMessagingProtocol VMProcessMakeRingBufferBasedInterVMMessagingProtocol(String inputRingBufferFile,
             String outputRingBufferFile, int channelId, boolean enablePVAccelereation) {
         long kRingBufferCapacity = 1 * 1024 * 1024;
@@ -1612,6 +1642,16 @@ public class VoltDB {
         return new InterVMMessagingProtocol(channel, enablePVAccelereation);
     }
 
+    static InterVMMessagingProtocol makeTCPBasedInterVMMessagingProtocol(String port, boolean enablePVAccelereation) {
+        try {
+            TCPChannel channel = new TCPChannel(Integer.parseInt(port), 3031);
+            return new InterVMMessagingProtocol(channel, enablePVAccelereation);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     /**
      * Entry point for the VoltDB server process. Command line
      * specifies a startup action (like 'initialize' or 'probe')
@@ -1620,19 +1660,14 @@ public class VoltDB {
      * @param args Requires catalog and deployment file locations.
      */
     public static void main(String[] args) {
-
         try {
             Configuration config = new Configuration(args);
             if (!config.validate()) {
                 System.exit(-1);
             } else if (config.m_run_as_procedure_process) {
-                assert config.m_vm_isolation;
+                assert config.m_vm_isolation != IsolationType.NO_ISOLATION;
                 VoltDBProcedureProcess
-                        .run(config.m_isolation_vm_id,
-                                VMProcessMakeRingBufferBasedInterVMMessagingProtocol(
-                                        config.m_isolation_ringbuf_input_file,
-                                        config.m_isolation_ringbuf_output_file, config.m_isolation_vm_id,
-                                        config.m_vm_pv_accel));
+                        .run(config.m_isolation_vm_id, makeInterVMMessagingProtocol(config));
             } else if (config.m_startAction == StartAction.GET) {
                 cli(config);
             } else {

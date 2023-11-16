@@ -19,6 +19,7 @@ package org.voltdb;
 
 import static java.util.Objects.requireNonNull;
 import static org.voltdb.VoltDB.exitAfterMessage;
+import static org.voltdb.VoltDB.makeInterVMMessagingProtocol;
 
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectOutputStream;
@@ -124,10 +125,12 @@ import org.voltdb.CatalogContext.CatalogInfo;
 import org.voltdb.CatalogContext.CatalogJarWriteMode;
 import org.voltdb.ProducerDRGateway.MeshMemberInfo;
 import org.voltdb.VoltDB.Configuration;
+import org.voltdb.VoltDB.IsolationType;
 import org.voltdb.VoltDB.UpdatableSiteCoordinationBarrier;
 import org.voltdb.catalog.Catalog;
 import org.voltdb.catalog.CatalogMap;
 import org.voltdb.catalog.Cluster;
+// import org.voltdb.catalog.CommandLog;
 import org.voltdb.catalog.Database;
 import org.voltdb.catalog.Deployment;
 import org.voltdb.catalog.Procedure;
@@ -222,6 +225,7 @@ import org.voltdb.utils.MiscUtils;
 import org.voltdb.utils.PlatformProperties;
 import org.voltdb.utils.ProClass;
 import org.voltdb.utils.SystemStatsCollector;
+import org.voltdb.utils.TCPChannel;
 import org.voltdb.utils.TopologyZKUtils;
 import org.voltdb.utils.VoltSampler;
 
@@ -431,7 +435,7 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
     private Boolean m_eligibleAsLeader = null;
 
     // Single avro serde configured by deployment file
-    private final AvroSerde m_avroSerde = new AvroSerde();
+    // private final AvroSerde m_avroSerde = new AvroSerde();
 
     @Override
     public boolean isRunningWithOldVerbs() {
@@ -1492,7 +1496,7 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
             }
 
             // Initialization may require an intialized avro
-            m_avroSerde.updateConfig(m_catalogContext);
+            // m_avroSerde.updateConfig(m_catalogContext);
 
             // do the many init tasks in the Inits class
             Inits inits = new Inits(m_statusTracker, this, 1, m_durable);
@@ -1687,9 +1691,7 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
                             m_commandLog,
                             m_config.m_executionCoreBindings.poll(),
                             isLowestSiteId(iv2init),
-                            EngineProcessMakeRingBufferBasedInterVMMessagingProtocol(
-                                    m_config.m_isolation_ringbuf_input_file,
-                                    m_config.m_isolation_ringbuf_output_file, vmId, m_config.m_vm_pv_accel));
+                            makeInterVMMessagingProtocol(m_config));
                     vmId++;
                 }
 
@@ -2407,6 +2409,18 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
         return topology;
     }
 
+    static InterVMMessagingProtocol makeInterVMMessagingProtocol(Configuration config) {
+        if (config.m_vm_isolation == IsolationType.SHARED_MEMORY)
+            return EngineProcessMakeRingBufferBasedInterVMMessagingProtocol(
+                                        config.m_isolation_ringbuf_input_file,
+                                        config.m_isolation_ringbuf_output_file, config.m_isolation_vm_id,
+                                        config.m_vm_pv_accel);
+        else if (config.m_vm_isolation == IsolationType.TCP)
+            return makeTCPBasedInterVMMessagingProtocol(config.m_isolation_TCP_port, config.m_vm_pv_accel);
+        else
+            throw new IllegalArgumentException("Illegal argument " + config.m_vm_isolation + " passed for IsolationType");
+    }
+
     static InterVMMessagingProtocol EngineProcessMakeRingBufferBasedInterVMMessagingProtocol(String inputRingBufferFile,
             String outputRingBufferFile, int channelId, boolean enablePVAccelereation) {
         long kRingBufferCapacity = 1 * 1024 * 1024;
@@ -2422,6 +2436,16 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
                 inputRingBufferFile, channelId * kRingBufferCapacity, kRingBufferCapacity, true);
         System.out.println("EngineProcess made channel " + channelId);
         return new InterVMMessagingProtocol(channel, enablePVAccelereation);
+    }
+
+    static InterVMMessagingProtocol makeTCPBasedInterVMMessagingProtocol(String port, boolean enablePVAccelereation) {
+        try {
+            TCPChannel channel = new TCPChannel(Integer.parseInt(port));
+            return new InterVMMessagingProtocol(channel, enablePVAccelereation);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     private TreeMap<Integer, Initiator> createIv2Initiators(Collection<Integer> partitions,
@@ -3566,7 +3590,7 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
                 } catch (Throwable t) {
                 }
 
-                m_avroSerde.shutdown();
+                // m_avroSerde.shutdown();
                 m_taskManager.shutdown();
 
                 // Shutdown import processors.
@@ -4104,7 +4128,7 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
 
         // 7 Update tasks (asynchronously) after replica change if it occurred
         m_taskManager.processUpdate(m_catalogContext, !hasSchemaChange);
-        m_avroSerde.updateConfig(m_catalogContext);
+        // m_avroSerde.updateConfig(m_catalogContext);
 
         new ConfigLogging().logCatalogAndDeployment(CatalogJarWriteMode.CATALOG_UPDATE);
 
@@ -5340,7 +5364,8 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
 
     @Override
     public AvroSerde getAvroSerde() {
-        return m_avroSerde;
+    //     return m_avroSerde;
+        return null;
     }
 
     @Override

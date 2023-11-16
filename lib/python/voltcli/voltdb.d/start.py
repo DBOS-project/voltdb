@@ -35,10 +35,11 @@ server_list_help = ('{hostname-or-ip[,...]}, '
         VOLT.IntegerOption('-m', '--missing', 'missing', 'specifies how many nodes are missing at K-safe cluster startup'),
         VOLT.PathOption('-l', '--license', 'license', 'specify a license file to replace the existing staged copy of the license'),
         VOLT.BooleanOption('-P', '--procedureprocess', 'procedureprocess', 'run as procedure process possibly in a vm'),
-        VOLT.BooleanOption('-V', '--vmisolation', 'vmisolation', 'enable vm isolation'),
+        VOLT.StringOption('-V', '--vmisolation', 'vmisolation', 'enable vm isolation'),
         VOLT.BooleanOption('-R', '--vmpvaccel', 'vmpvaccel', 'enable vm pv acceleration'),
         VOLT.PathOption('-Q', '--vmshminputfile', 'vmshminputfile', 'shared memory file path for input'),
         VOLT.PathOption('-W', '--vmshmoutputfile', 'vmshmoutputfile', 'shared memory file path for output'),
+        VOLT.PathOption('-T', '--vmisolationtcpport', 'vmisolationtcpport', 'TCP port for this host'),
         VOLT.PathOption('-E', '--vmid', 'vmid', 'vm id'),
     ),
     log4j_default = 'log4j.xml',
@@ -65,8 +66,8 @@ def start(runner):
         runner.args.extend(['procedureprocess'])
         print("procedureprocess enabled")
     if runner.opts.vmisolation:
-        runner.args.extend(['vmisolation'])
-        print("vmisolation enabled")
+        runner.args.extend(['vmisolation', runner.opts.vmisolation])
+        print("vmisolation enabled to ", runner.opts.vmisolation)
     if runner.opts.vmpvaccel:
         runner.args.extend(['vmpvaccel'])
         print("vmpvaccel enabled")
@@ -76,7 +77,11 @@ def start(runner):
     if runner.opts.vmshmoutputfile:
         runner.args.extend(['vmshmoutputfile', runner.opts.vmshmoutputfile])
         print("vmshmoutputfile ", runner.opts.vmshmoutputfile)
+    if runner.opts.vmisolationtcpport:
+        runner.args.extend(['vmisolationtcpport', runner.opts.vmisolationtcpport])
+        print("vmisolationtcpport ", runner.opts.vmisolationtcpport)
     if runner.opts.vmid:
         runner.args.extend(['vmid', runner.opts.vmid])
         print("vmid ", runner.opts.vmid)
+    print("Runner args: ", runner.args)
     runner.go()
