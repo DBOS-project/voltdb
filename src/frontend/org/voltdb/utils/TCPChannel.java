@@ -139,7 +139,14 @@ public class TCPChannel implements Channel {
 
     public boolean hasAtLeastNBytesToRead(int n) {
         // Assuming a closed or uninitialized channel means no data to read
-        return (clientSocketChanel != null) && clientSocketChanel.isOpen();
+        if ((clientSocketChanel != null) && clientSocketChanel.isOpen()) {
+            try {
+                return clientSocketChanel.socket().getInputStream().available() >= n;
+            } catch (IOException e) {
+                return false;
+            }
+        }
+        return false;
     }
 
     public int read(ByteBuffer buffer) throws IOException {

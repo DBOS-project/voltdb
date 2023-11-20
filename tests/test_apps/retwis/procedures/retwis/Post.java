@@ -4,8 +4,9 @@ import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
 import org.voltdb.VoltProcedure.VoltAbortException;
 import org.voltdb.VoltTable;
+import org.voltdb.VoltVMProcedure;
 
-public class Post extends VoltProcedure {
+public class Post extends VoltVMProcedure {
     public final SQLStmt insertPost =
         new SQLStmt("INSERT INTO RetwisPosts (u_id, post_id, post) VALUES (?, ?, ?);");
 
