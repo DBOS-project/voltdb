@@ -18,6 +18,10 @@ import java.nio.ByteBuffer;
 import org.voltcore.utils.DBBPool.BBContainer;
 
 public class TCPChannel implements Channel {
+    public enum VMType {
+        SERVER,
+        CLIENT
+    }
     static int nextPortToUse = 3030;
     private ServerSocketChannel serverSocketChannel;
     private SocketChannel clientSocketChanel;
@@ -33,23 +37,20 @@ public class TCPChannel implements Channel {
     // private long wait_count = 0;
     // private long wait_time = 0;
 
-    static void printfWithThreadName(String format, Object... args) {
-        String formattedString = "[%s] " + format;
-        Object[] newArgs = new Object[args.length + 1];
-        newArgs[0] = Thread.currentThread().getName();
-        System.arraycopy(args, 0, newArgs, 1, args.length);
-        System.out.printf(formattedString, newArgs);
-    }
-
-    public TCPChannel(int port) throws IOException {
-        TCPChannel.printfWithThreadName("Creating a server at port %d\n", nextPortToUse);
-        serverSocketChannel = ServerSocketChannel.open();
-        serverSocketChannel.socket().bind(new InetSocketAddress(nextPortToUse));
-        executorService = Executors.newFixedThreadPool(2);
-        clientSocketChanel = null;
-        TCPChannel.printfWithThreadName("Listening to connection on port %d\n", nextPortToUse);
-        nextPortToUse++;
-        executorService.submit(new SocketClientHandler(this.serverSocketChannel));
+    public TCPChannel(int port, VMType type) throws IOException {
+        if (type.equals(VMType.SERVER)) {
+            serverSocketChannel = ServerSocketChannel.open();
+            serverSocketChannel.socket().bind(new InetSocketAddress(nextPortToUse));
+            clientSocketChanel = null;
+            System.out.printf("Listening to connection on port %d\n", nextPortToUse);
+            nextPortToUse++;
+            Thread th = new Thread(new SocketClientHandler(serverSocketChannel));
+            th.start();
+        } else if (type.equals(VMType.CLIENT)) {
+            serverSocketChannel = null;
+            this.connectToServer("localhost", port);
+            System.out.printf("Client connected to db at port %d\n", port);
+        }
     }
 
     class SocketClientHandler implements Runnable {
@@ -66,24 +67,12 @@ public class TCPChannel implements Channel {
                 try {
                     clientSocketChanel = serverSocketChannel.accept();
                 } catch (IOException e) {
-                    TCPChannel.printfWithThreadName("----- Error with serverSocketChannel accepting conn -----\n");
+                    System.out.printf("----- Error with serverSocketChannel accepting conn -----\n");
                     e.printStackTrace();
                 }
                 while (clientSocketChanel.isOpen());
             }
         }
-    }
-
-    public TCPChannel(int db_port, int port) throws IOException {
-        TCPChannel.printfWithThreadName("Creating a client socket channel to db at port %d\n", db_port);
-        serverSocketChannel = null;
-        this.connectToServer("localhost", db_port);
-    }
-
-    private void handleClientSocket(SocketChannel ch) {
-        TCPChannel.printfWithThreadName("New client connected\n");
-        this.clientSocketChanel = ch;
-        while (ch.isOpen());
     }
 
     public void connectToServer(String hostname, int port) throws IOException {
@@ -94,7 +83,7 @@ public class TCPChannel implements Channel {
                 this.clientSocketChanel.connect(new InetSocketAddress(hostname, port));
                 break;
             } catch (Exception e) {
-                TCPChannel.printfWithThreadName("%s when connecting to %s:%d. Retrying in 1 second\n", e.getClass().getCanonicalName(), hostname, port);
+                System.out.printf("%s when connecting to %s:%d. Retrying in 1 second\n", e.getClass().getCanonicalName(), hostname, port);
                 try {Thread.sleep(sleep);} catch(Exception tie){}
             }
 
@@ -153,9 +142,9 @@ public class TCPChannel implements Channel {
         assert hasAtLeastNBytesToRead(4): "Client socket is either closed or not initialized";
         
         int transferSize = buffer.remaining();
-        // TCPChannel.printfWithThreadName("About to read from buffer. %d bytes remaining.\n", transferSize);
+        // System.out.printf("About to read from buffer. %d bytes remaining.\n", transferSize);
         if (this.clientSocketChanel.read(buffer) == -1) {
-            TCPChannel.printfWithThreadName("Reached end of client channel buffer\n");
+            System.out.printf("Reached end of client channel buffer\n");
         }
 
         return transferSize;
@@ -163,11 +152,11 @@ public class TCPChannel implements Channel {
 
     public void write(ByteBuffer buffer, boolean notify) throws IOException {
         // if (serverSocketChannel != null)
-        //     TCPChannel.printfWithThreadName("About to write to the channel at %s\n", serverSocketChannel.getLocalAddress());
+        //     System.out.printf("About to write to the channel at %s\n", serverSocketChannel.getLocalAddress());
         int i = 0;
         while (clientSocketChanel == null) {
             if (i % 100000 == 0)
-                TCPChannel.printfWithThreadName("No client connection yet\n");
+                System.out.printf("No client connection yet\n");
             i++;
             try {Thread.sleep(100);} catch(Exception tie){}
         }
