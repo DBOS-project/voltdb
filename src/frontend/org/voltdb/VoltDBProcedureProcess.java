@@ -384,15 +384,8 @@ public class VoltDBProcedureProcess {
         }
     }
 
-    static void printfWithThreadName(String format, Object... args) {
-        String formattedString = "[%s] " + format;
-        Object[] newArgs = new Object[args.length + 1];
-        newArgs[0] = Thread.currentThread().getName();
-        System.arraycopy(args, 0, newArgs, 1, args.length);
-        System.out.printf(formattedString, newArgs);
-    }
-
     public static void run(int vmId, InterVMMessagingProtocol protocol) {
+        Thread.currentThread().setName(String.format("SP VM - %d", vmId));
         org.voltdb.NativeLibraryLoader.loadVoltDB();
         System.out.printf("VM %d pid %d pv_accel=%b started to sync with VoltDB\n", vmId, VMPid, protocol.PVAccelerationenabled());
         // Uncomment this and make it work so that it works only for ring buffer
@@ -426,7 +419,7 @@ public class VoltDBProcedureProcess {
                     e.printStackTrace();
                 }
             }
-            VoltDBProcedureProcess.printfWithThreadName("Got %d new messages\n", queuedCalls.size());
+            // System.out.printf("Got %d new messages\n", queuedCalls.size());
             // if (System.nanoTime() >= lastRecordingTime + 10000) {
             //     queueLengthSum += queuedCalls.size();
             //     queueLengthCnt++;

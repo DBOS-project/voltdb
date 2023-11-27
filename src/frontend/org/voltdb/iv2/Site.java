@@ -119,6 +119,7 @@ import org.voltdb.sysprocs.saverestore.HiddenColumnFilter;
 import org.voltdb.sysprocs.saverestore.SystemTable;
 import org.voltdb.types.TimestampType;
 import org.voltdb.utils.CompressionService;
+import org.voltdb.utils.CustomPrintStream;
 import org.voltdb.utils.MinimumRatioMaintainer;
 import vanilla.java.affinity.impl.PosixJNAAffinity;
 
@@ -716,6 +717,7 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
             TaskLog rejoinTaskLog,
             boolean isLowestSiteId,
             InterVMMessagingProtocol vmMessagingProtocol) {
+        System.setOut(new CustomPrintStream(System.out));
         m_vmMessagingProtocol = vmMessagingProtocol;
         m_siteId = siteId;
         m_context = context;
@@ -932,14 +934,6 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         }
     }
 
-    static void printfWithThreadName(String format, Object... args) {
-        String formattedString = "[%s] " + format;
-        Object[] newArgs = new Object[args.length + 1];
-        newArgs[0] = Thread.currentThread().getName();
-        System.arraycopy(args, 0, newArgs, 1, args.length);
-        System.out.printf(formattedString, newArgs);
-    }
-
     @Override
     final public void run() {
         
@@ -976,7 +970,7 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         final MinimumRatioMaintainer mrm = new MinimumRatioMaintainer(m_taskLogReplayRatio);
         int count = 0;
         try {
-            Site.printfWithThreadName("Starting while loop in site\n");
+            System.out.printf("Starting while loop in site\n");
             while (m_shouldContinue) {
                 if (m_runningState.isRunning()) {
                     // Normal operation blocks the site thread on the sitetasker queue.
@@ -984,9 +978,8 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
                     if (stagedTasks.isEmpty()) {
                         stagedTasks.offer(m_pendingSiteTasks.take());
                     }
-                    Site.printfWithThreadName("Waiting for a new task\n");
                     SiteTasker task = stagedTasks.poll();
-                    Site.printfWithThreadName("New task received %s\n", task.toString());
+                    System.out.printf("Got a new task: %s\n", task);
                     //SiteTasker task = m_pendingSiteTasks.take();
                     if (task instanceof TransactionTask) {
                         m_currentTxnId = ((TransactionTask) task).getTxnId();

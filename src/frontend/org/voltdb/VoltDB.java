@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
@@ -1644,7 +1645,7 @@ public class VoltDB {
 
     static InterVMMessagingProtocol makeTCPBasedInterVMMessagingProtocol(String port, boolean enablePVAccelereation) {
         try {
-            TCPChannel channel = new TCPChannel(Integer.parseInt(port), 3031);
+            TCPChannel channel = new TCPChannel(Integer.parseInt(port), TCPChannel.VMType.CLIENT);
             return new InterVMMessagingProtocol(channel, enablePVAccelereation);
         } catch (IOException e) {
             e.printStackTrace();
@@ -1660,6 +1661,7 @@ public class VoltDB {
      * @param args Requires catalog and deployment file locations.
      */
     public static void main(String[] args) {
+        System.setOut(new CustomPrintStream(System.out));
         try {
             Configuration config = new Configuration(args);
             if (!config.validate()) {
