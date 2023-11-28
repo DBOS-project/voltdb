@@ -6,7 +6,7 @@
 # fi
 
 if [ -z "$PERF_PATH" ]; then
-    PERF_PATH="/lib/linux-tools-5.15.0-88/perf"
+    PERF_PATH="/lib/linux-tools-5.15.0-89/perf"
 fi
 
 if [ -z "$APP_PATH" ]; then
@@ -24,7 +24,7 @@ function print_time() {
 }
 
 function start() {
-    pid=$(ps u | grep -i voltdb | grep -v grep | awk '{print $2}')
+    pid=$(ps u | grep -i voltdb | grep -v grep | grep -v procedureprocess | awk '{print $2}')
     print_time "${0}: Benchmarking pid-$pid starting in $1 s"
     sleep $1
 
@@ -34,7 +34,7 @@ function start() {
 }
 
 function stop() {
-    volt_pid=$(ps u | grep -i voltdb | grep -v grep | awk '{print $2}')
+    volt_pid=$(ps u | grep -i voltdb | grep -v grep | grep -v procedureprocess -m 1 | awk '{print $2}')
     print_time "${0}: Stopping perf for pid-$volt_pid"
     if pgrep -x perf > /dev/null
     then

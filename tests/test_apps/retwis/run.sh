@@ -123,11 +123,30 @@ function stop_perf() {
     print_time "Remote returned- $res"
 }
 
+function start_sp() {
+    cd /home/zxjcarrot/Workspace/networking/voltdb/
+    sleep 1
+    # Spin up MP Site SP process
+    nohup voltdb start --procedureprocess --vmid=0 --vmisolation=TCP --vmpvaccel --vmisolationtcpport=3030 --vmisolationtcphost=localhost  > log_sp.txt 2>&1 &
+    sp_pid=$!
+    echo "Spun up MP-SP process with PID $sp_pid"
+
+    firstPort=3030
+    for ((i = 1; i <= $1; i++))
+    do
+        thisPort=$((firstPort + i))
+        nohup voltdb start --procedureprocess --vmid=$i --vmisolation=TCP --vmpvaccel --vmisolationtcpport=$thisPort --vmisolationtcphost=localhost  > log_sp.txt 2>&1 &
+        sp_pid=$!
+        echo "Spun up SP process $i with PID $sp_pid"
+    done
+}
+
 function remote_bench() {
     id=$RANDOM
-    warmup_time=300
-    num_cores=8
+    warmup_time=0
+    num_cores=1
     jars
+    start_sp $num_cores &
     remote_init $id $warmup_time $num_cores
     print_time "Sleeping for $warmup_time s"
     sleep $warmup_time
