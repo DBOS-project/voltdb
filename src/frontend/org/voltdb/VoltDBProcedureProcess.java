@@ -194,7 +194,7 @@ class ProcedureRunnerProxy{
             }
             sqlStatementActualDelayCounter.put(varNamesString, sqlStatementActualDelayCounter.get(varNamesString) + 1);
             
-            if(sqlStatementActualDelayCounter.get(varNamesString) % 2 == 0) {
+            if(sqlStatementActualDelayCounter.get(varNamesString) % 3 != 0) {
                 long totalRuntime = sqlStatementRuntimeTrackerTotal.get(varNamesString);
                 long totalInterruptRuntime = sqlStatementInterruptRuntimeTrackerTotal.get(varNamesString);
 
@@ -203,7 +203,7 @@ class ProcedureRunnerProxy{
                 int meanNanosecond = (int) ((double) totalRuntime / iterationCount);
                 int meanInterruptNanosecond = (int) ((double) totalInterruptRuntime / iterationCount);
                 int threshold = 4000; // nanoseconds
-                wakeup_delay_ns = Math.min(meanNanosecond - meanInterruptNanosecond - threshold, MAX_MEAN_NANOSECONDS);
+                wakeup_delay_ns = 400000000 + Math.min(meanNanosecond - meanInterruptNanosecond - threshold, MAX_MEAN_NANOSECONDS);
                 if(printCount++ % 100000 == 0) {
                     System.out.println("WAIT:" + varNamesString + ": " + meanNanosecond + " - " + meanInterruptNanosecond + " - " + threshold + " = " + (wakeup_delay_ns));
                 }
