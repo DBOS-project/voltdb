@@ -82,3 +82,4 @@ tools/ee/ee_auto_generated_unit_tests
 .idea/tasks.xml
 .idea/modules.xml
 
+log*.txt

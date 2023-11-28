@@ -18,10 +18,6 @@ import java.nio.ByteBuffer;
 import org.voltcore.utils.DBBPool.BBContainer;
 
 public class TCPChannel implements Channel {
-    public enum VMType {
-        SERVER,
-        CLIENT
-    }
     static int nextPortToUse = 3030;
     private ServerSocketChannel serverSocketChannel;
     private SocketChannel clientSocketChanel;
@@ -37,20 +33,20 @@ public class TCPChannel implements Channel {
     // private long wait_count = 0;
     // private long wait_time = 0;
 
-    public TCPChannel(int port, VMType type) throws IOException {
-        if (type.equals(VMType.SERVER)) {
-            serverSocketChannel = ServerSocketChannel.open();
-            serverSocketChannel.socket().bind(new InetSocketAddress(nextPortToUse));
-            clientSocketChanel = null;
-            System.out.printf("Listening to connection on port %d\n", nextPortToUse);
-            nextPortToUse++;
-            Thread th = new Thread(new SocketClientHandler(serverSocketChannel));
-            th.start();
-        } else if (type.equals(VMType.CLIENT)) {
-            serverSocketChannel = null;
-            this.connectToServer("localhost", port);
-            System.out.printf("Client connected to db at port %d\n", port);
-        }
+    public TCPChannel(int port) throws IOException {
+        serverSocketChannel = ServerSocketChannel.open();
+        serverSocketChannel.socket().bind(new InetSocketAddress(nextPortToUse));
+        clientSocketChanel = null;
+        System.out.printf("Listening to connection on port %d\n", nextPortToUse);
+        nextPortToUse++;
+        Thread th = new Thread(new SocketClientHandler(serverSocketChannel));
+        th.start();
+    }
+
+    public TCPChannel(String host, int port) throws IOException {
+        serverSocketChannel = null;
+        this.connectToServer(host, port);
+        System.out.printf("Client connected to db at port %d\n", port);
     }
 
     class SocketClientHandler implements Runnable {
@@ -63,6 +59,7 @@ public class TCPChannel implements Channel {
 
         @Override
         public void run() {
+            Thread.currentThread().setName("TCPChannel " + Integer.toString(serverSocketChannel.socket().getLocalPort()));
             while (true) {
                 try {
                     clientSocketChanel = serverSocketChannel.accept();
@@ -76,14 +73,21 @@ public class TCPChannel implements Channel {
     }
 
     public void connectToServer(String hostname, int port) throws IOException {
-        this.clientSocketChanel = SocketChannel.open();
         int sleep = 1000;
         while (true) {
             try {
+                this.clientSocketChanel = SocketChannel.open();
                 this.clientSocketChanel.connect(new InetSocketAddress(hostname, port));
                 break;
             } catch (Exception e) {
                 System.out.printf("%s when connecting to %s:%d. Retrying in 1 second\n", e.getClass().getCanonicalName(), hostname, port);
+                if (this.clientSocketChanel != null && this.clientSocketChanel.isOpen()) {
+                    try {
+                        this.clientSocketChanel.close();
+                    } catch (IOException ex) {
+                        System.err.println("Error closing the channel: " + ex.getMessage());
+                    }
+                }
                 try {Thread.sleep(sleep);} catch(Exception tie){}
             }
 

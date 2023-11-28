@@ -2440,7 +2440,7 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
 
     static InterVMMessagingProtocol makeTCPBasedInterVMMessagingProtocol(String port, boolean enablePVAccelereation) {
         try {
-            TCPChannel channel = new TCPChannel(Integer.parseInt(port), TCPChannel.VMType.SERVER);
+            TCPChannel channel = new TCPChannel(Integer.parseInt(port));
             return new InterVMMessagingProtocol(channel, enablePVAccelereation);
         } catch (IOException e) {
             e.printStackTrace();

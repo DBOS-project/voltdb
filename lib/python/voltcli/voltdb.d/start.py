@@ -40,6 +40,7 @@ server_list_help = ('{hostname-or-ip[,...]}, '
         VOLT.PathOption('-Q', '--vmshminputfile', 'vmshminputfile', 'shared memory file path for input'),
         VOLT.PathOption('-W', '--vmshmoutputfile', 'vmshmoutputfile', 'shared memory file path for output'),
         VOLT.PathOption('-T', '--vmisolationtcpport', 'vmisolationtcpport', 'TCP port for this host'),
+        VOLT.PathOption('-U', '--vmisolationtcphost', 'vmisolationtcphost', 'TCP port for this host'),
         VOLT.PathOption('-E', '--vmid', 'vmid', 'vm id'),
     ),
     log4j_default = 'log4j.xml',
@@ -80,6 +81,9 @@ def start(runner):
     if runner.opts.vmisolationtcpport:
         runner.args.extend(['vmisolationtcpport', runner.opts.vmisolationtcpport])
         print("vmisolationtcpport ", runner.opts.vmisolationtcpport)
+    if runner.opts.vmisolationtcphost:
+        runner.args.extend(['vmisolationtcphost', runner.opts.vmisolationtcphost])
+        print("vmisolationtcphost ", runner.opts.vmisolationtcphost)
     if runner.opts.vmid:
         runner.args.extend(['vmid', runner.opts.vmid])
         print("vmid ", runner.opts.vmid)

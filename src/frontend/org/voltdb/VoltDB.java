@@ -73,6 +73,7 @@ import org.voltdb.utils.CatalogUtil;
 import org.voltdb.utils.MiscUtils;
 import org.voltdb.utils.PlatformProperties;
 import org.voltdb.utils.VoltTrace;
+import org.voltdb.utils.CustomPrintStream;
 
 import com.google_voltpatches.common.base.Splitter;
 import com.google_voltpatches.common.collect.ImmutableList;
@@ -161,6 +162,8 @@ public class VoltDB {
         public String m_isolation_ringbuf_output_file = null;
 
         public String m_isolation_TCP_port = null;
+
+        public String m_isolation_TCP_host = null;
 
         public int m_isolation_vm_id = -1;
 
@@ -615,6 +618,10 @@ public class VoltDB {
                     case "vmisolationtcpport":
                         System.out.println("setting VM Isolation TCP port");
                         m_isolation_TCP_port = val;
+                        break;
+                    case "vmisolationtcphost":
+                        System.out.println("setting VM Isolation TCP host");
+                        m_isolation_TCP_host = val;
                         break;
                     case "vmid":
                         m_isolation_vm_id = Integer.parseInt(val);
@@ -1623,7 +1630,7 @@ public class VoltDB {
                                         config.m_isolation_ringbuf_output_file, config.m_isolation_vm_id,
                                         config.m_vm_pv_accel);
         else if (config.m_vm_isolation == IsolationType.TCP)
-            return makeTCPBasedInterVMMessagingProtocol(config.m_isolation_TCP_port, config.m_vm_pv_accel);
+            return makeTCPBasedInterVMMessagingProtocol(config.m_isolation_TCP_port, config.m_isolation_TCP_host, config.m_vm_pv_accel);
         else
             throw new IllegalArgumentException("Illegal argument " + config.m_vm_isolation + " passed for IsolationType");
     }
@@ -1643,9 +1650,9 @@ public class VoltDB {
         return new InterVMMessagingProtocol(channel, enablePVAccelereation);
     }
 
-    static InterVMMessagingProtocol makeTCPBasedInterVMMessagingProtocol(String port, boolean enablePVAccelereation) {
+    static InterVMMessagingProtocol makeTCPBasedInterVMMessagingProtocol(String port, String host, boolean enablePVAccelereation) {
         try {
-            TCPChannel channel = new TCPChannel(Integer.parseInt(port), TCPChannel.VMType.CLIENT);
+            TCPChannel channel = new TCPChannel(host, Integer.parseInt(port));
             return new InterVMMessagingProtocol(channel, enablePVAccelereation);
         } catch (IOException e) {
             e.printStackTrace();
