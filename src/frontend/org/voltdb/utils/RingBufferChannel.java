@@ -130,13 +130,20 @@ public class RingBufferChannel {
         long t = System.nanoTime();
         between_wait_time_total += (t - last_wait_time);
         while (incomingRingBuffer.readBytes(buffer) == false) { // while not enough to read, polling
-            if (hypervisorPVSupport && --countDown < 0) {
+            // if (hypervisorPVSupport && --countDown < 0) {
+            //     incomingRingBuffer.setHalted(1);
+            //     // ExecutionEngine.DBOSPVWait(hypervisor_fd);
+            //     incomingRingBuffer.setHalted(0);
+            //     countDown = kCountDownCycles;
+            // } else {
+            //     //Thread.yield();
+            // }
+
+            // 0.2 seconds, to yield
+            if(System.nanoTime() - t > 2 * (100000000)) {
                 incomingRingBuffer.setHalted(1);
-                // ExecutionEngine.DBOSPVWait(hypervisor_fd);
+                ExecutionEngine.DBOSPVWait(hypervisor_fd);
                 incomingRingBuffer.setHalted(0);
-                countDown = kCountDownCycles;
-            } else {
-                //Thread.yield();
             }
         }
         long t2 = System.nanoTime();
@@ -187,6 +194,12 @@ public class RingBufferChannel {
                 // ExecutionEngine.DBOSPVNotifyAndWait(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
                 // incomingRingBuffer.setHalted(0);
             //}
+
+            // wake up if necessary
+            if(outgoingRingBuffer.getHalted() == 1) {
+                ExecutionEngine.DBOSPVNotify(hypervisor_fd, dual_qemu_pid, dual_qemu_lapic_id);
+            }
+
             notified = true;
         }
         long t2 = System.nanoTime();
