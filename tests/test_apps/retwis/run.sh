@@ -143,7 +143,7 @@ function start_sp() {
 
 function remote_bench() {
     id=$RANDOM
-    warmup_time=0
+    warmup_time=180
     num_cores=1
     jars
     start_sp $num_cores &

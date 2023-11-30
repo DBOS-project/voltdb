@@ -93,7 +93,7 @@ public class Benchmark {
 
     public void run() {
         this.simulator.set_next_ids(700_000, 20_000);
-        this.setStatDeltaFlag();
+        // this.setStatDeltaFlag();
 
         long startTime = System.currentTimeMillis();
         ThreadGroup workerClients = new ThreadGroup("clients");
@@ -108,7 +108,7 @@ public class Benchmark {
 
         while (workerClients.activeCount() > 0) {} // Wait for all threads to join
         long elapsedTime = System.currentTimeMillis() - startTime;
-        Map<String, ProcStats> procStats = this.getServerStats();
+        // Map<String, ProcStats> procStats = this.getServerStats();
 
         System.out.println("============================== BENCHMARK RESULTS ==============================");
         System.out.printf("Time: %d ms\n", elapsedTime);
@@ -124,18 +124,18 @@ public class Benchmark {
         // System.out.print(m_clientCon.getStatistics(Constants.TRANS_PROCS).toString(false));
         // System.out.println("===============================================================================\n");
 
-        System.out.println("----------------------- Breakdown --------------------------");
-        System.out.printf("%-15s%-20s%-15s%-20s%-20s\n", "Procedure", "Throughput(txns/s)", "Latency(us)", "Execution Time(us)", "Result size(KB)");
-        System.out.println("------------------------------------------------------------");
-        for (String procedure: typeNumExecution.keySet()) {
-            ProcStats thisStat = procStats.get(procedure);
-            System.out.printf("%-15s%-20.2f%-15.2f%-20.2f%-20.2f\n", 
-                                procedure,
-                                (double) typeNumExecution.get(procedure) * 1000 / elapsedTime,
-                                (double) typeExecutionTime.get(procedure) / (typeNumExecution.get(procedure) * 1000),
-                                thisStat.execTime,
-                                thisStat.resultSize);
-        }
+        // System.out.println("----------------------- Breakdown --------------------------");
+        // System.out.printf("%-15s%-20s%-15s%-20s%-20s\n", "Procedure", "Throughput(txns/s)", "Latency(us)", "Execution Time(us)", "Result size(KB)");
+        // System.out.println("------------------------------------------------------------");
+        // for (String procedure: typeNumExecution.keySet()) {
+        //     ProcStats thisStat = procStats.get(procedure);
+        //     System.out.printf("%-15s%-20.2f%-15.2f%-20.2f%-20.2f\n", 
+        //                         procedure,
+        //                         (double) typeNumExecution.get(procedure) * 1000 / elapsedTime,
+        //                         (double) typeExecutionTime.get(procedure) / (typeNumExecution.get(procedure) * 1000),
+        //                         thisStat.execTime,
+        //                         thisStat.resultSize);
+        // }
     }
 
     private void setStatDeltaFlag() {
@@ -320,7 +320,7 @@ public class Benchmark {
      */
     public static void main(String[] args) throws Exception {
         Map<String, List<String>> parsedArgs = parseArgs(args);
-        System.out.println(parsedArgs.entrySet());
+        System.out.println("Parsed Args:" + parsedArgs.entrySet());
         Benchmark benchmark = new Benchmark(parsedArgs);
         String action = parsedArgs.get("a").get(0);
         if (action.equals("init"))

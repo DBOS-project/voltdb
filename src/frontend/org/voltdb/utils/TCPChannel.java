@@ -60,15 +60,15 @@ public class TCPChannel implements Channel {
         @Override
         public void run() {
             Thread.currentThread().setName("TCPChannel " + Integer.toString(serverSocketChannel.socket().getLocalPort()));
-            while (true) {
+            // while (true) {
                 try {
                     clientSocketChanel = serverSocketChannel.accept();
                 } catch (IOException e) {
                     System.out.printf("----- Error with serverSocketChannel accepting conn -----\n");
                     e.printStackTrace();
                 }
-                while (clientSocketChanel.isOpen());
-            }
+            //     while (clientSocketChanel.isOpen());
+            // }
         }
     }
 
