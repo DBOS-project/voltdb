@@ -39,6 +39,7 @@ import java.util.function.IntFunction;
 import org.voltcore.logging.VoltLogger;
 import org.voltcore.network.VoltPort;
 import org.voltcore.utils.CoreUtils;
+import org.voltcore.network.TimeTracker;
 import org.voltdb.StatementStats.SingleCallStatsToken;
 import org.voltdb.VoltProcedure.VoltAbortException;
 import org.voltdb.catalog.PlanFragment;
@@ -70,6 +71,7 @@ import org.voltdb.sysprocs.AdHocNTBase;
 import org.voltdb.sysprocs.AdHoc_RO_SP;
 import org.voltdb.types.TimestampType;
 import org.voltdb.utils.CompressionService;
+import org.voltdb.utils.CustomPrintStream;
 import org.voltdb.utils.Encoder;
 import org.voltdb.utils.MiscUtils;
 import org.voltdb.utils.SerializationHelper;
@@ -329,6 +331,7 @@ public class ProcedureRunner {
                 e.printStackTrace();
             }
         }
+        // System.out.println("Writing this procedure call request to Protocol");
         ((Site) m_site).getInterVMMessagingProtocol().writeProcedureCallRequestMessage(fstConfLocal.asByteArray(new VMProcedureCall(m_procedureClassName, paramList)), notify);
     }
 
@@ -425,6 +428,8 @@ public class ProcedureRunner {
             vmCallCnt = 0;
         }
         if (queuedInSPVM == false) {
+            // System.out.printf("Queueing %s in vm\n", m_procedureClassName);
+            TimeTracker.add(TimeTracker.TrackingEvent.SndSPRequestToSPVM, System.nanoTime());
             ((Site) m_site).getInterVMMessagingProtocol().writeProcedureCallRequestMessage(fstConfLocal.asByteArray(new VMProcedureCall(m_procedureClassName, paramList)), true);
         }
         InterVMMessage oldMessage = null;
@@ -434,8 +439,9 @@ public class ProcedureRunner {
                     break;
                 }
             }
+            // System.err.println("Either a new message or put all tasks in vm");
             InterVMMessage msg = ((Site) m_site).getInterVMMessagingProtocol().getNextMessage(oldMessage, null);
-            //System.out.printf("Recv message of type %d \n", msg.type);
+            // System.out.printf("Recv message of type %d \n", msg.type);
             if (msg.type == InterVMMessage.kProcedureCallRespReturnVoid) {
                 return null;
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnObject) {
@@ -446,14 +452,17 @@ public class ProcedureRunner {
                 // return fstConfLocal.asObject(msg.data.array());
                 throw new VoltAbortException("Item number is not valid");
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTables) {
+                TimeTracker.add(TimeTracker.TrackingEvent.RcvSPResponseFromSPVM, System.nanoTime());
                 VMReadbuffer = null; // clear the reference to the read buffer as it might be owned by tables below
                 return (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTable) {
+                TimeTracker.add(TimeTracker.TrackingEvent.RcvSPResponseFromSPVM, System.nanoTime());
                 VMReadbuffer = null; // clear the reference to the read buffer as it might be owned by tables below
                 VoltTable[] tables = (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
                 assert tables.length == 1;
                 return tables[0];
             } else if (msg.type == InterVMMessage.kProcedureCallSQLQueryReq) {
+                TimeTracker.add(TimeTracker.TrackingEvent.RcvSQLRequest, System.nanoTime());
                 org.nustaq.serialization.FSTObjectInput objectsInput = fstConfLocal.getObjectInput(msg.data.array(), msg.data.limit());
 
                 boolean isFinalSQL = (Boolean)objectsInput.readObject();
@@ -469,7 +478,9 @@ public class ProcedureRunner {
                 VoltTable[] result = voltExecuteSQL(isFinalSQL);
                 if (ignoreResults == false) {
                     // respond to query given, and give the results back
+                    // System.out.println("Writing back results to protocol");
                     ((Site) m_site).getInterVMMessagingProtocol().writeExecuteQueryRequestResponse(result, true);    
+                    TimeTracker.add(TimeTracker.TrackingEvent.SndSQLResponse, System.nanoTime());
                 }
                 //System.out.printf("Executed %d queries, result has %d tables\n", sqlStmtVarNames.size(), result.length);
             }
@@ -504,6 +515,7 @@ public class ProcedureRunner {
 
         // set procedure name in the site/ee
         m_site.setupProcedure(m_procedureName);
+        // System.out.println("--- Queued procedure name:" + m_procedureName);
 
         // use local var to avoid warnings about reassigning method argument
         Object[] paramList = paramListIn;
@@ -523,6 +535,7 @@ public class ProcedureRunner {
 
             // inject sysproc execution context as the first parameter.
             if (queuedInSPVM == false && isSystemProcedure()) {
+                // System.out.println("Calling system Procedure: " + m_procedureName);
                 // Regardless of what the systemsettings says all sysprocs dont require a copy
                 // of the parameter.
                 // If you write a new sysproc that modifies param you are doing it wrong.
@@ -570,6 +583,7 @@ public class ProcedureRunner {
                                 + m_procMethod.getDeclaringClass().getName());
                     }
                     if (m_site instanceof Site && isVMProcedure()) {
+                        // System.out.println("--- VMProcedureCall");
                         try {
                             Object rawResult = handleVMProcedureCall(paramList, queuedInSPVM);
                             if (returnResults) {
@@ -582,6 +596,7 @@ public class ProcedureRunner {
                             throw new InvocationTargetException(e);
                         }
                     } else {
+                        // System.out.println("--- Normal procedure call");
                         try {
                             Object rawResult = m_procMethod.invoke(m_procedure, paramList);
                             if (returnResults) {

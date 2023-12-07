@@ -329,9 +329,9 @@ public class InterVMMessagingProtocol {
     }
 
     public void pongpingTest() {
-        System.out.printf("pongping test for pub/sub pair started\n");
+        long times = 1_000_000;
+        System.out.printf("pongping test for pub/sub pair started for %d times\n", times);
         long t0 = System.nanoTime();
-        long times = 10000;
         int length = 64;
         for (int i = 0; i < times; ++i) {
             // System.out.println("Getting message from other VM");
@@ -349,9 +349,9 @@ public class InterVMMessagingProtocol {
     }
 
     public void pingpongTest() {
-        System.out.printf("ping pong test for pub/sub pair started\n");
+        long times = 1_000_000;
+        System.out.printf("ping pong test for pub/sub pair started for %d times\n", times);
         long t0 = System.nanoTime();
-        long times = 1000000;
         int length = 64;
         ByteBuffer buffer = ByteBuffer.allocate(length);
         for (int i = 0; i < times; ++i) {
