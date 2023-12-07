@@ -329,7 +329,7 @@ public class InterVMMessagingProtocol {
     }
 
     public void pongpingTest() {
-        long times = 1_000_000;
+        long times = 1_000_0;
         System.out.printf("pongping test for pub/sub pair started for %d times\n", times);
         long t0 = System.nanoTime();
         int length = 64;
@@ -349,7 +349,7 @@ public class InterVMMessagingProtocol {
     }
 
     public void pingpongTest() {
-        long times = 1_000_000;
+        long times = 1_000_0;
         System.out.printf("ping pong test for pub/sub pair started for %d times\n", times);
         long t0 = System.nanoTime();
         int length = 64;
