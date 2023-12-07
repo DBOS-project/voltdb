@@ -147,9 +147,28 @@ public class TCPChannel implements Channel {
         
         int transferSize = buffer.remaining();
         // System.out.printf("About to read from buffer. %d bytes remaining.\n", transferSize);
-        if (this.clientSocketChanel.read(buffer) == -1) {
-            System.out.printf("Reached end of client channel buffer\n");
+        int numRetries = 0;
+        while (buffer.remaining() > 0) {
+            int bytesRead = this.clientSocketChanel.read(buffer);
+            if (bytesRead == -1) {
+                System.out.printf("Reached end of client channel buffer\n");
+                return -1;
+            }
+            // System.out.printf("Read %d bytes from the channel\n", bytesRead);
+            if (bytesRead == 0) {
+                // System.out.printf("Read 0 bytes from the channel\n");
+                numRetries++;
+                if (numRetries > 10) {
+                    // System.out.printf("Read 0 bytes from the channel for %d times. Exiting\n", numRetries);
+                    return -1;
+                }
+                try {Thread.sleep(20);} catch(Exception tie){}
+            }
         }
+        // if (this.clientSocketChanel.read(buffer) == -1) {
+        //     System.out.printf("Reached end of client channel buffer\n");
+        //     return -1;
+        // }
 
         return transferSize;
     }
@@ -164,7 +183,10 @@ public class TCPChannel implements Channel {
             i++;
             try {Thread.sleep(100);} catch(Exception tie){}
         }
-        this.clientSocketChanel.write(buffer);
+        // System.out.printf("About to write to the channel at %s\n", clientSocketChanel.getRemoteAddress());
+        // System.out.printf("Buffer to write: %s with %d bytes remaining\n", buffer.toString(), buffer.remaining());
+        int bytesWritten = this.clientSocketChanel.write(buffer);
+        // System.out.printf("Wrote %d bytes to the channel\n", bytesWritten);
     }
 
     public void write(ByteBuffer buffer) throws IOException {
