@@ -478,9 +478,9 @@ public class ProcedureRunner {
                 VoltTable[] result = voltExecuteSQL(isFinalSQL);
                 if (ignoreResults == false) {
                     // respond to query given, and give the results back
-                    // System.out.println("Writing back results to protocol");
-                    ((Site) m_site).getInterVMMessagingProtocol().writeExecuteQueryRequestResponse(result, true);    
+                    // System.out.println("Writing back results to protocol");  
                     TimeTracker.add(TimeTracker.TrackingEvent.SndSQLResponse, System.nanoTime());
+                    ((Site) m_site).getInterVMMessagingProtocol().writeExecuteQueryRequestResponse(result, true);  
                 }
                 //System.out.printf("Executed %d queries, result has %d tables\n", sqlStmtVarNames.size(), result.length);
             }

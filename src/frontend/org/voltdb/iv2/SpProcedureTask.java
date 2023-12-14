@@ -20,6 +20,7 @@ package org.voltdb.iv2;
 import java.io.IOException;
 import org.apache.commons.lang3.StringUtils;
 import org.voltcore.messaging.Mailbox;
+import org.voltcore.network.TimeTracker;
 import org.voltcore.utils.CoreUtils;
 import org.voltcore.utils.LatencyWatchdog;
 import org.voltdb.ClientResponseImpl;
@@ -157,6 +158,8 @@ public class SpProcedureTask extends ProcedureTask
         // other invocations. Trying to deliver the response immediately to the network
         // does not improve latencies. See ENG-21040.
         m_initiator.deliver(response);
+        // System.out.println("SpProcedureTask.run() delivered response: " + response);
+        TimeTracker.add(TimeTracker.TrackingEvent.FinishHandleSPRequest, System.nanoTime());
         if (EXEC_TRACE_ENABLED) {
             execLog.trace("ExecutionSite sending completed workunit to dtxn.");
         }

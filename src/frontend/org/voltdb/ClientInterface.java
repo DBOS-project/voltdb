@@ -70,6 +70,7 @@ import org.voltcore.network.VoltNetworkPool;
 import org.voltcore.network.VoltPort;
 import org.voltcore.network.VoltProtocolHandler;
 import org.voltcore.network.WriteStream;
+import org.voltcore.network.TimeTracker;
 import org.voltcore.utils.CoreUtils;
 import org.voltcore.utils.DeferredSerialization;
 import org.voltcore.utils.EstTime;
@@ -1560,7 +1561,10 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             authLog.info(errorMessage);
             return errorResponse(ccxn, task.clientHandle, ClientResponse.UNEXPECTED_FAILURE, errorMessage, null, false);
         }
-
+        if (task.getProcName().equals("GetPosts")) {
+            // System.out.println("ClientInterface.handleRead: " + task.getProcName() + " " + task.getParams());
+            TimeTracker.add(TimeTracker.TrackingEvent.StartHandleSPRequest, System.nanoTime());
+        }
         final ClientResponseImpl errResp = m_dispatcher.dispatch(task, handler, ccxn, user, null, false);
 
         if (errResp != null) {
