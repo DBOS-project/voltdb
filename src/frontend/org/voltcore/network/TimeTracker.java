@@ -30,20 +30,15 @@ public class TimeTracker {
     );
     static final Map<TrackingEvent, List<Long>> statsBuffer = new HashMap<>();
     static long startTime;
-    static int numRcvReq = 0;
     TimeTracker() {}
 
     public static void add(TrackingEvent event, Long time) {
         long relativeTime;
         if (event.equals(TrackingEvent.RcvSPRequest)) {
-            numRcvReq++;
             relativeTime = 0l;
             startTime = time;
         } else {
             relativeTime = time - startTime;
-        }
-        if (numRcvReq < 2) { // Only start from the second request. The first request has some additional noise
-            return;
         }
         // System.out.println(event.name());
         if (!statsBuffer.containsKey(event))
@@ -69,7 +64,6 @@ public class TimeTracker {
     public static void reset() {
         statsBuffer.clear();
         startTime = 0;
-        numRcvReq = 0;
     }
 
     public static double getMean(List<Long> sets) {

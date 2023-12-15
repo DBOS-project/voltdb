@@ -172,7 +172,10 @@ public class VoltPort implements Connection
                     if (read > 0) {
                         try {
                             ByteBuffer message;
+                            // System.out.println("About to retrieveNextMessage");
+                            TimeTracker.add(TimeTracker.TrackingEvent.RcvSPRequest, System.nanoTime());
                             while ((message = m_handler.retrieveNextMessage(readStream())) != null) {
+                                // System.err.printf("Read a new message %s via %s\n", message.toString(), m_handler.toString());
                                 m_handler.handleMessage(message, this);
                                 m_messagesRead++;
                             }
