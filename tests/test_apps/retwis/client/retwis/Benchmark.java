@@ -26,8 +26,8 @@ public class Benchmark {
     private ClientConnection m_clientCon;
     private boolean async;
     private int numClients;
+    private static int totalSPCalls = 1_000_000;
     public static final ReentrantLock counterLock = new ReentrantLock();
-    public static final int totalSPCalls = 1_000_000;
     public static long totExecutions = 0;
     public static long totExecutionNanoseconds = 0;
     public static long minExecutionNanoseconds = 999999999l;
@@ -39,7 +39,8 @@ public class Benchmark {
         this.servers = args.get("s").get(0);
         System.out.printf("Connecting to %s\n", servers);
         this.async = args.get("t").get(0).equals("async");
-        this.numClients = Integer.parseInt(args.get("n").get(0));
+        this.numClients = Integer.parseInt(args.get("c").get(0));
+        Benchmark.totalSPCalls = Integer.parseInt(args.get("n").get(0));
         System.out.printf("Running %d clients\n", this.numClients);
         
         this.m_clientCon = Benchmark.getClient(this.servers);
@@ -98,12 +99,12 @@ public class Benchmark {
         long startTime = System.currentTimeMillis();
         ThreadGroup workerClients = new ThreadGroup("clients");
         for (int i = 1; i < this.numClients; i++) {
-            SingleClientRunnable r = new SingleClientRunnable(i, totalSPCalls/numClients, this.servers, this.async);
+            SingleClientRunnable r = new SingleClientRunnable(i, Benchmark.totalSPCalls/numClients, this.servers, this.async);
             Thread th = new Thread(workerClients, r);
             th.start();
         }
         // Run one in parent thread
-        SingleClientRunnable r = new SingleClientRunnable(0, totalSPCalls/numClients, this.servers, this.async);
+        SingleClientRunnable r = new SingleClientRunnable(0, Benchmark.totalSPCalls/numClients, this.servers, this.async);
         r.run();
 
         while (workerClients.activeCount() > 0) {} // Wait for all threads to join
@@ -223,7 +224,7 @@ public class Benchmark {
                 totExecutionNanoseconds += executionTime;
                 totExecutions++;
 
-                if (totExecutions % 100_000 == 0)
+                if (10 * totExecutions % Benchmark.totalSPCalls == 0) // Print 10 times
                     System.out.printf("Iteration %d\n", totExecutions);
 
                 if (executionTime < minExecutionNanoseconds) {
@@ -276,7 +277,8 @@ public class Benchmark {
     private static Map<String, List<String>> getDefaultArgs() {
         final Map<String, List<String>> args = new HashMap<>();
         args.put("t", Arrays.asList("async")); // Type of operations
-        args.put("n", Arrays.asList("8")); // Number of clients
+        args.put("c", Arrays.asList("1")); // Number of clients
+        args.put("n", Arrays.asList("1000000")); // Number of transactions
         args.put("s", Arrays.asList("localhost")); // Host IP
         args.put("a", Arrays.asList("run")); // Action: one of init, warmup, run
         args.put("d", Arrays.asList("20")); // Run duration in case of warmup

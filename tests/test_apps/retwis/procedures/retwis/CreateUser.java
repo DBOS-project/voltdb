@@ -6,7 +6,7 @@ import org.voltdb.VoltProcedure.VoltAbortException;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltVMProcedure;
 
-public class CreateUser extends VoltVMProcedure {
+public class CreateUser extends VoltProcedure {
     public final SQLStmt insertUser =
         new SQLStmt("INSERT INTO RetwisUsers (u_id, username) VALUES (?, ?);");
 

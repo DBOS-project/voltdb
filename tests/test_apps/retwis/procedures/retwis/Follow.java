@@ -6,7 +6,7 @@ import org.voltdb.VoltProcedure.VoltAbortException;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltVMProcedure;
 
-public class Follow extends VoltVMProcedure {
+public class Follow extends VoltProcedure {
     public final SQLStmt insertFollow =
         new SQLStmt("INSERT INTO RetwisFollowers (u_id, follower_u_id) VALUES (?, ?);");
 
