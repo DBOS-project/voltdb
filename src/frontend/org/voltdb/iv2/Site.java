@@ -970,23 +970,29 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         final MinimumRatioMaintainer mrm = new MinimumRatioMaintainer(m_taskLogReplayRatio);
         int count = 0;
         try {
-            System.out.printf("Starting while loop in site\n");
+            // System.out.printf("Starting while loop in site\n");
             while (m_shouldContinue) {
                 if (m_runningState.isRunning()) {
                     // Normal operation blocks the site thread on the sitetasker queue.
-                    
+                    ExecutionEngine.VoltDBWorkRecv();
                     if (stagedTasks.isEmpty()) {
                         stagedTasks.offer(m_pendingSiteTasks.take());
                     }
                     SiteTasker task = stagedTasks.poll();
-                    System.out.printf("Got a new task: %s\n", task);
+                    // System.out.printf("Got a new task: %s\n", task);
                     //SiteTasker task = m_pendingSiteTasks.take();
                     if (task instanceof TransactionTask) {
-                        m_currentTxnId = ((TransactionTask) task).getTxnId();
+                        m_currentTxnId = ((TransactionTask)task).getTxnId();
                         m_lastTxnTime = EstTime.currentTimeMillis();
+                        Iv2Trace.logSiteTaskerQueueTake(task, false, false);
+                        ExecutionEngine.VoltDBWorkStart();
+                        task.run(getSiteProcedureConnection());
+                        ExecutionEngine.VoltDBWorkEnd();
+                        //System.out.println(task + " " + task.getClass().getName());
+                    } else {
+                        Iv2Trace.logSiteTaskerQueueTake(task, false, false);
+                        task.run(getSiteProcedureConnection());
                     }
-                    Iv2Trace.logSiteTaskerQueueTake(task, false, false);
-                    task.run(getSiteProcedureConnection());
                 } else if (m_runningState.isReplaying()) {
                     // Rejoin operation poll and try to do some catchup work. Tasks
                     // are responsible for logging any rejoin work they might have.

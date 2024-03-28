@@ -1015,6 +1015,11 @@ public abstract class ExecutionEngine implements FastDeserializer.Deserializatio
      */
     protected native byte[] nextDependencyTest(int dependencyId);
 
+    public static native int VoltDBWorkRecv();
+    public static native int VoltDBWorkStart();
+    public static native int VoltDBWorkSend();
+    public static native int VoltDBWorkEnd();
+
     public static native int DBOSPVOpen(byte hypervisorDevicePath[]);
 
     public static native int DBOSPVNotify(int hypervisorFD, int dual_qemu_pid, int dual_qemu_lapic_id);

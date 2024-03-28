@@ -36,6 +36,7 @@ import org.voltdb.messaging.Iv2InitiateTaskMessage;
 import org.voltdb.rejoin.TaskLog;
 import org.voltdb.utils.MiscUtils;
 import org.voltdb.utils.VoltTrace;
+import org.voltdb.jni.ExecutionEngine;
 
 
 /**
@@ -157,9 +158,10 @@ public class SpProcedureTask extends ProcedureTask
         // thus delaying the transmission of the response behind other tasks, e.g
         // other invocations. Trying to deliver the response immediately to the network
         // does not improve latencies. See ENG-21040.
+        ExecutionEngine.VoltDBWorkSend();
         m_initiator.deliver(response);
         // System.out.println("SpProcedureTask.run() delivered response: " + response);
-        TimeTracker.add(TimeTracker.TrackingEvent.FinishHandleSPRequest, System.nanoTime());
+        // TimeTracker.add(TimeTracker.TrackingEvent.FinishHandleSPRequest, System.nanoTime());
         if (EXEC_TRACE_ENABLED) {
             execLog.trace("ExecutionSite sending completed workunit to dtxn.");
         }

@@ -361,6 +361,28 @@ SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_nativeDestr
     return org_voltdb_jni_ExecutionEngine_ERRORCODE_SUCCESS;
 }
 
+
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBWorkRecv(JNIEnv *env, jclass obj) {
+    uint64_t vm_id = 0;
+    return vm_id;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBWorkStart(JNIEnv *env, jclass obj) {
+    uint64_t vm_id = 0;
+    return vm_id;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBWorkSend(JNIEnv *env, jclass obj) {
+    uint64_t vm_id = 0;
+    return vm_id;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBWorkEnd(JNIEnv *env, jclass obj) {
+    uint64_t vm_id = 0;
+    return vm_id;
+}
+
 /**
  * decommision the execution engine.
  * @param engine_ptr the VoltDBEngine pointer

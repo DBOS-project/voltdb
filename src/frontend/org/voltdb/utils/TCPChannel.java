@@ -1,6 +1,6 @@
 package org.voltdb.utils;
 
-// import java.nio.channels.Channel;
+import org.voltdb.utils.Channel;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.ExecutorService;
@@ -18,16 +18,60 @@ import java.nio.ByteBuffer;
 import org.voltcore.utils.DBBPool.BBContainer;
 
 public class TCPChannel implements Channel {
+
+    class BufferedSocketChannelReader {
+        private SocketChannel socketChannel;
+        private ByteBuffer buffer;
+
+        public BufferedSocketChannelReader(SocketChannel socketChannel, int bufferSize) {
+            this.socketChannel = socketChannel;
+            this.buffer = ByteBuffer.allocate(bufferSize);
+            // Initially, the buffer is in 'write' mode, so we need to flip it to 'read' mode.
+            this.buffer.flip();
+        }
+
+        public int read(ByteBuffer dst) throws IOException {
+            int bytesRead = 0;
+
+            // If there's no data left in the buffer, refill it.
+            if (!buffer.hasRemaining()) {
+                buffer.clear(); // Prepare the buffer to be written to
+                bytesRead = socketChannel.read(buffer); // Read from the channel
+                if (bytesRead == -1) {
+                    return -1; // End of stream
+                }
+                buffer.flip(); // Prepare the buffer to be read from
+            }
+    
+            // Calculate how many bytes can be transferred from the buffer to the destination
+            int bytesToTransfer = Math.min(buffer.remaining(), dst.remaining());
+            if (bytesToTransfer > 0) {
+                // Set the limit of the buffer to the current position plus the number of bytes to transfer
+                int oldRemaining = buffer.remaining();
+                int oldLimit = buffer.limit();
+                buffer.limit(buffer.position() + bytesToTransfer);
+    
+                dst.put(buffer); // Transfer data from the internal buffer to the destination buffer
+    
+                buffer.limit(oldLimit); // Restore the original limit
+                int newRemaining = buffer.remaining();
+                assert(newRemaining < oldRemaining);
+                bytesRead += bytesToTransfer;
+            }
+    
+            return bytesRead;
+        }
+    }
     static int nextPortToUse = 3030;
     private ServerSocketChannel serverSocketChannel;
     private SocketChannel clientSocketChanel;
-    private ExecutorService executorService;
     // legacy stuffs from RingBufferChannel. Needs to be removed
     public int this_core_id = 0;
     public int dual_qemu_pid = 0;
     public int dual_qemu_lapic_id = 0;
     public int hypervisor_fd = 0;
     public boolean hypervisorPVSupport = false;
+    private BufferedSocketChannelReader channelReader = null;
     // private long notify_count = 0;
     // private long notify_time = 0;
     // private long wait_count = 0;
@@ -63,6 +107,7 @@ public class TCPChannel implements Channel {
             // while (true) {
                 try {
                     clientSocketChanel = serverSocketChannel.accept();
+                    channelReader = new BufferedSocketChannelReader(clientSocketChanel, 4096);
                 } catch (IOException e) {
                     System.out.printf("----- Error with serverSocketChannel accepting conn -----\n");
                     e.printStackTrace();
@@ -78,6 +123,7 @@ public class TCPChannel implements Channel {
             try {
                 this.clientSocketChanel = SocketChannel.open();
                 this.clientSocketChanel.connect(new InetSocketAddress(hostname, port));
+                channelReader = new BufferedSocketChannelReader(clientSocketChanel, 4096);
                 break;
             } catch (Exception e) {
                 System.out.printf("%s when connecting to %s:%d. Retrying in 1 second\n", e.getClass().getCanonicalName(), hostname, port);
@@ -142,6 +188,37 @@ public class TCPChannel implements Channel {
         return false;
     }
 
+    // public int read(ByteBuffer buffer) throws IOException {
+    //     assert hasAtLeastNBytesToRead(4): "Client socket is either closed or not initialized";
+        
+    //     int transferSize = buffer.remaining();
+    //     // System.out.printf("About to read from buffer. %d bytes remaining.\n", transferSize);
+    //     int numRetries = 0;
+    //     while (buffer.remaining() > 0) {
+    //         int bytesRead = this.clientSocketChanel.read(buffer);
+    //         if (bytesRead == -1) {
+    //             System.out.printf("Reached end of client channel buffer\n");
+    //             return -1;
+    //         }
+    //         // System.out.printf("Read %d bytes from the channel\n", bytesRead);
+    //         if (bytesRead == 0) {
+    //             // System.out.printf("Read 0 bytes from the channel\n");
+    //             numRetries++;
+    //             if (numRetries > 10) {
+    //                 // System.out.printf("Read 0 bytes from the channel for %d times. Exiting\n", numRetries);
+    //                 return -1;
+    //             }
+    //             try {Thread.sleep(20);} catch(Exception tie){}
+    //         }
+    //     }
+    //     // if (this.clientSocketChanel.read(buffer) == -1) {
+    //     //     System.out.printf("Reached end of client channel buffer\n");
+    //     //     return -1;
+    //     // }
+
+    //     return transferSize;
+    // }
+
     public int read(ByteBuffer buffer) throws IOException {
         assert hasAtLeastNBytesToRead(4): "Client socket is either closed or not initialized";
         
@@ -149,7 +226,7 @@ public class TCPChannel implements Channel {
         // System.out.printf("About to read from buffer. %d bytes remaining.\n", transferSize);
         int numRetries = 0;
         while (buffer.remaining() > 0) {
-            int bytesRead = this.clientSocketChanel.read(buffer);
+            int bytesRead = this.channelReader.read(buffer);
             if (bytesRead == -1) {
                 System.out.printf("Reached end of client channel buffer\n");
                 return -1;

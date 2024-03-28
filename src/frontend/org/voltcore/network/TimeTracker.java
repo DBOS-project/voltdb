@@ -33,32 +33,35 @@ public class TimeTracker {
     TimeTracker() {}
 
     public static void add(TrackingEvent event, Long time) {
-        long relativeTime;
-        if (event.equals(TrackingEvent.RcvSPRequest)) {
-            relativeTime = 0l;
-            startTime = time;
-        } else {
-            relativeTime = time - startTime;
-        }
-        // System.out.println(event.name());
-        if (!statsBuffer.containsKey(event))
-            statsBuffer.put(event, new ArrayList<>());
-        statsBuffer.get(event).add(relativeTime);
+        return;
+        // long relativeTime;
+        // if (event.equals(TrackingEvent.RcvSPRequest)) {
+        //     relativeTime = 0l;
+        //     startTime = time;
+        // } else {
+        //     relativeTime = time - startTime;
+        // }
+        // // System.out.println(event.name());
+        // if (!statsBuffer.containsKey(event))
+        //     statsBuffer.put(event, new ArrayList<>());
+        // statsBuffer.get(event).add(relativeTime);
     }
 
     public static void printTimeStats() {
-        System.out.println("---- Timing stats ----");
-        System.out.printf("%-25s: %-10s %-15s %-15s %s\n", "Event", "n", "Average time (ns)", "Median time (ns)", "CV");
-        for (TrackingEvent event: eventsInOrder) {
-            if (!statsBuffer.containsKey(event)) {
-                continue;
-            }
-            long mean = (long) getMean(statsBuffer.get(event));
-            long median = (long) getMedian(statsBuffer.get(event));
-            double cv = getCoefficientOfVariation(statsBuffer.get(event), mean);
-            System.out.printf("%-25s: %-10d %-15d %-15d %.2f\n", event.name(), statsBuffer.get(event).size(), mean, median, cv);
-        }
-        System.out.println("---- ============ ----");
+        return;
+        // System.out.println("---- Timing stats ----");
+        // System.out.printf("%-25s: %-10s %-15s %-15s %s\n", "Event", "n", "Average time (ns)", "Median time (ns)", "CV");
+        // for (TrackingEvent event: eventsInOrder) {
+        //     if (!statsBuffer.containsKey(event)) {
+        //         continue;
+        //     }
+        //     // System.out.printf("StatsBuffer[%s]: %s\n", event, statsBuffer.get(event).getClass());
+        //     long mean = (long) getMean(statsBuffer.get(event));
+        //     long median = (long) getMedian(statsBuffer.get(event));
+        //     double cv = getCoefficientOfVariation(statsBuffer.get(event), mean);
+        //     System.out.printf("%-25s: %-10d %-15d %-15d %.2f\n", event.name(), statsBuffer.get(event).size(), mean, median, cv);
+        // }
+        // System.out.println("---- ============ ----");
     }
 
     public static void reset() {
@@ -75,6 +78,12 @@ public class TimeTracker {
     }
 
     public static double getMedian(List<Long> sets) {
+        if (sets.isEmpty()) {
+            return 0;
+        }
+        if (sets.size() == 1) {
+            return sets.get(0);
+        }
         Collections.sort(sets);
 
         int middle = sets.size()/2;

@@ -1561,8 +1561,8 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             authLog.info(errorMessage);
             return errorResponse(ccxn, task.clientHandle, ClientResponse.UNEXPECTED_FAILURE, errorMessage, null, false);
         }
+        // System.out.println("ClientInterface.handleRead: " + task.getProcName());
         if (task.getProcName().equals("GetPosts")) {
-            // System.out.println("ClientInterface.handleRead: " + task.getProcName() + " " + task.getParams());
             TimeTracker.add(TimeTracker.TrackingEvent.StartHandleSPRequest, System.nanoTime());
         }
         final ClientResponseImpl errResp = m_dispatcher.dispatch(task, handler, ccxn, user, null, false);

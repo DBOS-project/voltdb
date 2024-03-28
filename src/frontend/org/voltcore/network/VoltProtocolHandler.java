@@ -75,8 +75,18 @@ public abstract class VoltProtocolHandler implements InputHandler {
          * thread safety. That said the Connection interface does allow other parts of the application
          * access to the read stream.
          */
-        ByteBuffer result = null;
+        // Thread thread = Thread.currentThread();
 
+        // // Get the stack trace of the thread
+        // StackTraceElement[] stackTraceElements = thread.getStackTrace();
+
+        // // Print the stack trace
+        // for (StackTraceElement stackTraceElement : stackTraceElements) {
+        //     System.out.println(stackTraceElement);
+        // }
+        // long start = System.nanoTime();
+        ByteBuffer result = null;
+        // System.err.printf("Total data in input stream: %d\n", inputStream.dataAvailable());
         if (m_nextLength == 0 && inputStream.dataAvailable() > (Integer.SIZE/8)) {
             m_nextLength = inputStream.getInt();
             checkMessageLength(inputStream);
@@ -87,6 +97,8 @@ public abstract class VoltProtocolHandler implements InputHandler {
             inputStream.getBytes(result.array());
             m_nextLength = 0;
         }
+        // long end = System.nanoTime();
+        // System.out.println("Time to retrieve next message: " + (end - start) + " ns");
         return result;
     }
 
