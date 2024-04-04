@@ -5,8 +5,7 @@ import org.voltcore.network.FSelect.ReadHandler;
 
 public class TestFSelect {
     FSelect fselect;
-    public class TestReadHandler extends ReadHandler {
-        @Override
+    public class TestReadHandler implements ReadHandler {
         public void handleData(int fd, java.nio.ByteBuffer buffer, int len) {
             fselect.write(fd, buffer, len);
         }

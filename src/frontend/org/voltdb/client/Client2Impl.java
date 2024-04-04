@@ -63,7 +63,7 @@ import org.json_voltpatches.JSONObject;
 import org.voltcore.network.CipherExecutor;
 import org.voltcore.network.Connection;
 import org.voltcore.network.QueueMonitor;
-import org.voltcore.network.VoltNetworkPool;
+import org.voltcore.network.ClientVoltNetworkPool;
 import org.voltcore.network.VoltProtocolHandler;
 import org.voltcore.utils.Pair;
 import org.voltcore.utils.ssl.SSLConfiguration;
@@ -400,7 +400,7 @@ public class Client2Impl implements Client2 {
     private final Object connectionLock = new Object();
     private volatile int nextConnection = -1;
     private volatile String infoTablePortKey;
-    private VoltNetworkPool networkPool;
+    private ClientVoltNetworkPool networkPool;
     private final ThreadGroup workerGroup = new ThreadGroup("Client2-ConnectionWorkers");
 
     // Tracks active handles, for use by timeout handler. This is a clunky
@@ -553,7 +553,7 @@ public class Client2Impl implements Client2 {
             stopResponseServiceAtShutdown = true;
         }
 
-        networkPool = new VoltNetworkPool(1, 1, null, "Client2");
+        networkPool = new ClientVoltNetworkPool(1, 1, null, "Client2");
         networkPool.start();
 
         defaultRequestPriority = config.requestPriority;
@@ -2514,7 +2514,7 @@ public class Client2Impl implements Client2 {
         Map<Long,ClientIOStats> retval = new TreeMap<>();
         Map<Long,Pair<String,long[]>> ioStats;
         try {
-            ioStats = networkPool.getIOStats(false, Collections.<VoltNetworkPool.IOStatsIntf>emptyList());
+            ioStats = networkPool.getIOStats(false, Collections.<ClientVoltNetworkPool.IOStatsIntf>emptyList());
         } catch (Exception ex) {
             return null;
         }

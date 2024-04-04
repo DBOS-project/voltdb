@@ -39,53 +39,51 @@ import javax.net.ssl.SSLEngine;
 import org.voltcore.logging.VoltLogger;
 import org.voltcore.utils.Pair;
 
-import org.voltcore.network.FStackNetwork;
-
-public class VoltNetworkPool {
+public class ClientVoltNetworkPool {
 
     public interface IOStatsIntf {
         Future<Map<Long, Pair<String, long[]>>> getIOStats(final boolean interval);
     }
 
-    private static final VoltLogger m_logger = new VoltLogger(VoltNetworkPool.class.getName());
+    private static final VoltLogger m_logger = new VoltLogger(ClientVoltNetworkPool.class.getName());
 
-    private final FStackNetwork m_networks[];
+    private final VoltNetwork m_networks[];
     private final AtomicLong m_nextNetwork = new AtomicLong();
     public final String m_poolName;
 
-    public VoltNetworkPool() {
+    public ClientVoltNetworkPool() {
         this(1, 1, null, "");
     }
 
-    public VoltNetworkPool(int numThreads, int startThreadId, Queue<String> coreBindIds, String poolName) {
+    public ClientVoltNetworkPool(int numThreads, int startThreadId, Queue<String> coreBindIds, String poolName) {
         m_poolName = poolName;
         if (numThreads < 1) {
             throw new IllegalArgumentException("Must specify a positive number of threads");
         }
         if (coreBindIds == null || coreBindIds.isEmpty()) {
-            m_networks = new FStackNetwork[numThreads];
+            m_networks = new VoltNetwork[numThreads];
             for (int ii = 0; ii < numThreads; ii++) {
-                // Adding startThreadId avoids unnecessary polling for non-Server VoltNetworkPools
-                m_networks[ii] = new FStackNetwork(poolName, ii+startThreadId);
+                // Adding startThreadId avoids unnecessary polling for non-Server ClientVoltNetworkPools
+                m_networks[ii] = new VoltNetwork(ii+startThreadId, null, poolName);
             }
         } else {
             final int coreBindIdsSize = coreBindIds.size();
-            m_networks = new FStackNetwork[coreBindIdsSize];
+            m_networks = new VoltNetwork[coreBindIdsSize];
             for (int ii = 0; ii < coreBindIdsSize; ii++) {
-                // Adding startThreadId avoids unnecessary polling for non-Server VoltNetworkPools
-                // m_networks[ii] = new VoltNetwork(ii+startThreadId, coreBindIds.poll(), poolName);
+                // Adding startThreadId avoids unnecessary polling for non-Server ClientVoltNetworkPools
+                m_networks[ii] = new VoltNetwork(ii+startThreadId, coreBindIds.poll(), poolName);
             }
         }
     }
 
     public void start() {
-        for (FStackNetwork vn : m_networks) {
+        for (VoltNetwork vn : m_networks) {
             vn.start();
         }
     }
 
     public void shutdown() throws InterruptedException {
-        for (FStackNetwork vn : m_networks) {
+        for (VoltNetwork vn : m_networks) {
             vn.shutdown();
         }
     }
@@ -95,41 +93,34 @@ public class VoltNetworkPool {
             final InputHandler handler,
             final CipherExecutor cipherService,
             final SSLEngine sslEngine) throws IOException {
-        // return registerChannel( channel, handler, SelectionKey.OP_READ, ReverseDNSPolicy.ASYNCHRONOUS, cipherService, sslEngine);
-        return null;
+        return registerChannel( channel, handler, SelectionKey.OP_READ, ReverseDNSPolicy.ASYNCHRONOUS, cipherService, sslEngine);
     }
 
-    // public Connection registerChannel(
-    //         final SocketChannel channel,
-    //         final InputHandler handler,
-    //         final int interestOps,
-    //         final ReverseDNSPolicy dns,
-    //         final CipherExecutor cipherService,
-    //         final SSLEngine sslEngine) throws IOException {
-    //     //Start with a round robin base policy
-    //     VoltNetwork vn = m_networks[(int)(m_nextNetwork.getAndIncrement() % m_networks.length)];
-    //     //Then do a load based policy which is a little racy
-    //     for (int ii = 0; ii < m_networks.length; ii++) {
-    //         if (m_networks[ii] == vn) continue;
-    //         if (vn.numPorts() > m_networks[ii].numPorts()) {
-    //             vn = m_networks[ii];
-    //         }
-    //     }
-    //     return vn.registerChannel(channel, handler, interestOps, dns, cipherService, sslEngine);
-    // }
+    public Connection registerChannel(
+            final SocketChannel channel,
+            final InputHandler handler,
+            final int interestOps,
+            final ReverseDNSPolicy dns,
+            final CipherExecutor cipherService,
+            final SSLEngine sslEngine) throws IOException {
+        //Start with a round robin base policy
+        VoltNetwork vn = m_networks[(int)(m_nextNetwork.getAndIncrement() % m_networks.length)];
+        //Then do a load based policy which is a little racy
+        for (int ii = 0; ii < m_networks.length; ii++) {
+            if (m_networks[ii] == vn) continue;
+            if (vn.numPorts() > m_networks[ii].numPorts()) {
+                vn = m_networks[ii];
+            }
+        }
+        return vn.registerChannel(channel, handler, interestOps, dns, cipherService, sslEngine);
+    }
 
     public List<Long> getThreadIds() {
         ArrayList<Long> ids = new ArrayList<Long>();
-        for (FStackNetwork vn : m_networks) {
+        for (VoltNetwork vn : m_networks) {
             ids.add(vn.getThreadId());
         }
         return ids;
-    }
-
-    public void setInputHandler(InputHandler handler) {
-        for (FStackNetwork vn : m_networks) {
-            vn.setInputHandler(handler);
-        }
     }
 
     public Map<Long, Pair<String, long[]>>
@@ -139,7 +130,7 @@ public class VoltNetworkPool {
 
         LinkedList<Future<Map<Long, Pair<String, long[]>>>> statTasks =
                 new LinkedList<Future<Map<Long, Pair<String, long[]>>>>();
-        for (FStackNetwork vn : m_networks) {
+        for (VoltNetwork vn : m_networks) {
             statTasks.add(vn.getIOStats(interval));
         }
         for (IOStatsIntf pn : picoNetworks) {
@@ -170,8 +161,8 @@ public class VoltNetworkPool {
 
     public Set<Connection> getConnections() {
         List<Future<Set<Connection>>> futures = new ArrayList<>(m_networks.length);
-        for (FStackNetwork vn : m_networks) {
-            // futures.add(vn.getConnections());
+        for (VoltNetwork vn : m_networks) {
+            futures.add(vn.getConnections());
         }
         Set<Connection> conns = new HashSet<>();
         for (Future<Set<Connection>> fut : futures) {

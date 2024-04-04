@@ -57,13 +57,13 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSelect_fOpen
     int ret = bind(sockfd, (struct sockaddr *)&my_addr, sizeof(my_addr));
 
     if (ret < 0) {
-        printf("bind failed\n");
+        perror("bind failed");
         exit(1);
     }
 
     ret = listen(sockfd, MAX_EVENTS);
     if (ret < 0) {
-        printf("listen failed\n");
+        perror("listen failed");
         exit(1);
     }
 

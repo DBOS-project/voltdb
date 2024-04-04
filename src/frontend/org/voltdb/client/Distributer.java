@@ -58,8 +58,8 @@ import org.json_voltpatches.JSONObject;
 import org.voltcore.network.CipherExecutor;
 import org.voltcore.network.Connection;
 import org.voltcore.network.QueueMonitor;
-import org.voltcore.network.VoltNetworkPool;
-import org.voltcore.network.VoltNetworkPool.IOStatsIntf;
+import org.voltcore.network.ClientVoltNetworkPool;
+import org.voltcore.network.ClientVoltNetworkPool.IOStatsIntf;
 import org.voltcore.network.VoltProtocolHandler;
 import org.voltcore.utils.CoreUtils;
 import org.voltcore.utils.Pair;
@@ -125,7 +125,7 @@ class Distributer {
     private final Map<Integer, NodeConnection> m_hostIdToConnection = new HashMap<>();
 
     // Selector and connection handling, does all work in blocking selection thread
-    private final VoltNetworkPool m_network;
+    private final ClientVoltNetworkPool m_network;
 
     // For round-robin connection set up when correct target is not connected
     private int m_nextConnection = 0;
@@ -1061,7 +1061,7 @@ class Distributer {
         } else {
             m_cipherService = null;
         }
-        m_network = new VoltNetworkPool(
+        m_network = new ClientVoltNetworkPool(
                 m_useMultipleThreads ? Math.max(1, CoreUtils.availableProcessors() / 4 ) : 1,
                 1, null, "Client");
         m_network.start();

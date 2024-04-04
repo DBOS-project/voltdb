@@ -1,12 +1,11 @@
 package org.voltcore.network;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 
 public class FSelect {
-    public static class ReadHandler {
-        public void handleData(int fd, ByteBuffer buffer, int len) {
-            System.err.println("Not implemented error");
-        }
+    public static interface ReadHandler {
+        public void handleData(int fd, ByteBuffer buffer, int len) throws IOException;
     }
 
     private static final int MAX_EVENTS = 1024;
@@ -45,7 +44,7 @@ public class FSelect {
 
     public native void fSelect();
 
-    public void processMsg(int sockfd, ByteBuffer buf, int len) {
+    public void processMsg(int sockfd, ByteBuffer buf, int len) throws IOException {
         read_callback.handleData(sockfd, buf, len);
     }
 

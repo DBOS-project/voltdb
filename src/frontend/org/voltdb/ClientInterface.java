@@ -465,13 +465,13 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
                                 m_socket.socket().setKeepAlive(true);
                             }
 
-                            m_network.registerChannel(
-                                    m_socket,
-                                    handler,
-                                    0,
-                                    ReverseDNSPolicy.ASYNCHRONOUS,
-                                    CipherExecutor.SERVER,
-                                    sslEngine);
+                            // m_network.registerChannel(
+                            //         m_socket,
+                            //         handler,
+                            //         0,
+                            //         ReverseDNSPolicy.ASYNCHRONOUS,
+                            //         CipherExecutor.SERVER,
+                            //         sslEngine);
                             /*
                              * If IV2 is enabled the logic initially enabling read is
                              * in the started method of the InputHandler
@@ -1201,10 +1201,13 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
         m_snapshotDaemonAdapter = new SnapshotDaemonAdapter();
         m_cartographer = cartographer;
 
+        messenger.getNetwork().setInputHandler(new ClientInputHandler("server", false));
+
         // pre-allocate single partition array
-        m_acceptor = new ClientAcceptor(clientIntf, clientPort, messenger.getNetwork(), false, sslContext);
+        m_acceptor = null;
+        // m_acceptor = new ClientAcceptor(clientIntf, clientPort, messenger.getNetwork(), false, sslContext);
         m_adminAcceptor = null;
-        m_adminAcceptor = new ClientAcceptor(adminIntf, adminPort, messenger.getNetwork(), true, sslContext);
+        // m_adminAcceptor = new ClientAcceptor(adminIntf, adminPort, messenger.getNetwork(), true, sslContext);
 
         // Create the per-partition adapters before creating the mailbox. Once
         // the mailbox is created, the master promotion notification may race
@@ -1818,8 +1821,9 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
          * open files itself.
          */
         m_fileDescriptorTracker.start();
-
-        m_acceptor.start();
+        
+        if (m_acceptor != null)
+            m_acceptor.start();
         if (m_adminAcceptor != null) {
             m_adminAcceptor.start();
         }

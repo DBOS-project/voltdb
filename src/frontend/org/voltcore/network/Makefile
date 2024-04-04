@@ -9,8 +9,8 @@ TEST_FILENAME = TestFSelect
 echomake:
 	$(CC) -c $(CFLAGS) $(INCLUDE) $(NATIVE_FILENAME).c -o $(NATIVE_FILENAME).o $(INCLUDE)
 	$(CC) -shared $(CFLAGS) -g -o libnative.so $(NATIVE_FILENAME).o -lc
-	$(JC) $(JAVA_FILENAME).java
-	$(JC) -cp ../../.. $(TEST_FILENAME).java
+	# $(JC) $(JAVA_FILENAME).java
+	# $(JC) -cp ../../.. $(TEST_FILENAME).java
 
 .PHONY: clean
 
