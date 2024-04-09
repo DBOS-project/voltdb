@@ -20,7 +20,7 @@ echomake:
 	$(CC) -c $(CFLAGS) $(INCLUDE) $(CONN_FILE).c -o $(CONN_FILE).o $(INCLUDE)
 	$(CC) -shared $(CFLAGS) -g -o libnative_socket_conn.so $(CONN_FILE).o -lc
 	
-	$(JC) $(EPOLL_JFILE).java
+	$(JC) -cp ../../.. $(EPOLL_JFILE).java
 	$(JC) $(SOCKET_JFILE).java
 	$(JC) $(CONN_JFILE).java
 	$(JC) -cp ../../.. $(TEST_JFILE).java

@@ -10,10 +10,11 @@
 
 #include "org_voltcore_network_FSocketConn.h"
 
-JNIEXPORT jobject JNICALL Java_org_voltcore_network_FSocketConn_read
-  (JNIEnv *env, jobject thisObject, jint fd) {
-    char buffer[1024];
-    int n = read(fd, buffer, 1024);
+JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_fread
+  (JNIEnv *env, jobject thisObject, jint fd, jobject byteBuf, jint len) {
+    char *buffer = (char *)(*env)->GetDirectBufferAddress(env, byteBuf);
+    // char buffer[len];
+    int n = read(fd, buffer, len);
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return NULL;
@@ -24,10 +25,26 @@ JNIEXPORT jobject JNICALL Java_org_voltcore_network_FSocketConn_read
     if (n == 0) {
         return NULL;
     }
-    jobject byteBuf = (*env)->NewDirectByteBuffer(env, (void *)buffer, n);
-    // jbyteArray result = (*env)->NewByteArray(env, n);
-    // (*env)->SetByteArrayRegion(env, result, 0, n, buffer);
-    return byteBuf;
+    return n;
+  }
+
+JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_freadInt
+  (JNIEnv *env, jobject thisObject, jint fd) {
+    int buffer;
+    int n = read(fd, &buffer, sizeof(int));
+    printf("read %d from fd %d\n", buffer, fd);
+    printf("The ntohl value is %d\n", ntohl(buffer));
+    if (n < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return -1;
+        }
+        perror("read failed");
+        exit(1);
+    }
+    if (n == 0) {
+        return -1;
+    }
+    return ntohl(buffer);
   }
 
 

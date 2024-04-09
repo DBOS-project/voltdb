@@ -1,5 +1,7 @@
 package org.voltcore.network;
 
+import java.io.IOException;
+
 import org.voltcore.network.FSelect;
 import org.voltcore.network.FSelect.ReadHandler;
 
@@ -9,6 +11,7 @@ public class TestFSelect {
         public void handleData(int fd, java.nio.ByteBuffer buffer, int len) {
             fselect.write(fd, buffer, len);
         }
+        public void handleReadyForRead(FSocketConn conn) throws IOException {}
     }
 
     public TestFSelect(int port) {

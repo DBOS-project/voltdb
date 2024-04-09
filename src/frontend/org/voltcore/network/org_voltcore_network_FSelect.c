@@ -35,7 +35,8 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSelect_fOpen
     javaServerClass = (*env)->FindClass(env, "org/voltcore/network/FSelect");
     printf("start_server: About to get the static method of %s\n", javaServerClass);
     // processMethodId = (*env)->GetStaticMethodID(javaServerClass, "hello", "()V");
-    processMethodId = (*env)->GetMethodID(env, javaServerClass, "processMsg", "(ILjava/nio/ByteBuffer;I)V");
+    processMethodId = (*env)->GetMethodID(env, javaServerClass, "indicateReadyForRead", "(I)V");
+    // processMethodId = (*env)->GetMethodID(env, javaServerClass, "processMsg", "(ILjava/nio/ByteBuffer;I)V");
     printf("start_server: Got the static method id: %s\n", processMethodId);
 
     if ((epfd = epoll_create(10)) < 0) {
@@ -50,9 +51,11 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSelect_fOpen
 
 JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fRegister
   (JNIEnv *env, jobject thisObject, jint epoll_fd, jint fd) {
-    ev.data.fd = fd;
-    ev.events = EPOLLIN;
-    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev);
+    struct epoll_event event;
+    event.data.fd = fd;
+    event.events = EPOLLIN;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event);
+    printf("Registered fd %d with epoll fd %d\n", fd, epoll_fd);
   }
 
 JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fSelect
@@ -64,7 +67,7 @@ JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fSelect
         int nevents = epoll_wait(epfd, events, MAX_EVENTS, -1);
         int i;
 
-        printf("Got %d events\n", nevents);
+        // printf("Got %d events\n", nevents);
 
         for (i = 0; i < nevents; ++i) {
             /* Handle new connect */
@@ -90,22 +93,7 @@ JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fSelect
                     epoll_ctl(epfd, EPOLL_CTL_DEL, events[i].data.fd, NULL);
                     close(events[i].data.fd);
                 } else if (events[i].events & EPOLLIN) {
-                    int readlen = read(events[i].data.fd, buf, sizeof(buf));
-                    if (readlen == 0) {
-                        // printf("Closing client\n");
-                        close(events[i].data.fd);
-                        continue;
-                    }
-                    while (1) {
-                        printf("About to call processMsg with %s\n", buf);
-                        (*env)->CallVoidMethod(env, thisObject, processMethodId, events[i].data.fd, byteBuf, readlen);
-                        memset(buf, 0, readlen);
-                        readlen = recv(events[i].data.fd, buf, sizeof(buf), MSG_DONTWAIT);
-                        if (readlen <= 0) {
-                            // printf("Breaking out of this epoll event\n");
-                            break;
-                        }
-                    }
+                    (*env)->CallVoidMethod(env, thisObject, processMethodId, events[i].data.fd);
                 } else {
                     printf("unknown event: %8.8X\n", events[i].events);
                 }

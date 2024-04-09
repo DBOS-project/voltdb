@@ -9,10 +9,18 @@ extern "C" {
 #endif
 /*
  * Class:     org_voltcore_network_FSocketConn
- * Method:    read
+ * Method:    fread
+ * Signature: (ILjava/nio/ByteBuffer;I)I
+ */
+JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_fread
+  (JNIEnv *, jobject, jint, jobject, jint);
+
+/*
+ * Class:     org_voltcore_network_FSocketConn
+ * Method:    freadInt
  * Signature: (I)Ljava/nio/ByteBuffer;
  */
-JNIEXPORT jobject JNICALL Java_org_voltcore_network_FSocketConn_read
+JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_freadInt
   (JNIEnv *, jobject, jint);
 
 /*

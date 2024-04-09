@@ -2,10 +2,12 @@ package org.voltcore.network;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import org.voltcore.network.FSocketConn;
 
 public class FSelect {
     public static interface ReadHandler {
         public void handleData(int fd, ByteBuffer buffer, int len) throws IOException;
+        public void handleReadyForRead(FSocketConn conn) throws IOException;
     }
 
     private static final int MAX_EVENTS = 1024;
@@ -44,6 +46,11 @@ public class FSelect {
     }
 
     public native void fSelect();
+
+    public void indicateReadyForRead(int fd) throws IOException {
+        System.out.println("Indicating ready for read on fd " + fd);
+        read_callback.handleReadyForRead(new FSocketConn(fd));
+    }
 
     public void processMsg(int sockfd, ByteBuffer buf, int len) throws IOException {
         System.out.println("Processing message from fd " + sockfd + " with len " + len);
