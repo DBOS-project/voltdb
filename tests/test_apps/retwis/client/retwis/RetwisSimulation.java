@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.Random;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.voltdb.client.Client;
 import org.voltdb.client.ClientResponse;
 import org.voltdb.client.ProcedureCallback;
 import org.voltdb.client.exampleutils.ClientConnection;
@@ -17,10 +18,10 @@ public class RetwisSimulation {
     public class ProcCaller {
     }
 
-    final ClientConnection client;
+    final Client client;
     private static Random rnd = new Random();
     
-    public RetwisSimulation(ClientConnection client, boolean async) {
+    public RetwisSimulation(Client client, boolean async) {
         this.client = client;
         this.next_post_id = 0;
         this.next_u_id = 0;
@@ -36,9 +37,10 @@ public class RetwisSimulation {
         cb.setProcedure(procedure);
         VoltTable[] results = null;
         if (this.async)
-            this.client.executeAsync(cb, procedure, parameters);
+            // this.client.executeAsync(cb, procedure, parameters);
+            this.client.callProcedure(cb, procedure, parameters);
         else {
-            ClientResponse response = this.client.execute(procedure, parameters);
+            ClientResponse response = this.client.callProcedure(procedure, parameters);
             cb.clientCallback(response);
             results = response.getResults();
         }

@@ -26,6 +26,7 @@ import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -63,6 +64,8 @@ import org.voltcore.messaging.SiteFailureForwardMessage;
 import org.voltcore.messaging.VoltMessage;
 import org.voltcore.network.CipherExecutor;
 import org.voltcore.network.Connection;
+import org.voltcore.network.FSocket;
+import org.voltcore.network.FSocketConn;
 import org.voltcore.network.NIOReadStream;
 import org.voltcore.network.QueueMonitor;
 import org.voltcore.network.ReverseDNSPolicy;
@@ -272,6 +275,7 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
     public class ClientAcceptor implements Runnable {
         private final int m_port;
         private final ServerSocketChannel m_serverSocket;
+        private final FSocket m_fsocket;
         private final VoltNetworkPool m_network;
         private volatile boolean m_running = true;
         private Thread m_thread = null;
@@ -304,6 +308,7 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
                 throw new RuntimeException(e);
             }
             m_serverSocket = socket;
+            m_fsocket = new FSocket(port);
             m_sslContext = sslContext;
         }
 
@@ -311,20 +316,20 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             if (m_thread != null) {
                 throw new IllegalStateException("A thread for this ClientAcceptor is already running");
             }
-            if (!m_serverSocket.socket().isBound()) {
-                try {
-                    if (m_interface != null) {
-                        m_serverSocket.socket().bind(new InetSocketAddress(m_interface, m_port));
-                    } else {
-                        m_serverSocket.socket().bind(new InetSocketAddress(m_port));
-                    }
-                } catch (IOException e) {
-                    String msg = "Client interface failed to bind to"
-                            + (m_isAdmin ? " Admin " : " ") + "port: " + m_port;
-                    MiscUtils.printPortsInUse(hostLog);
-                    VoltDB.crashLocalVoltDB(msg, false, e);
-                }
-            }
+            // if (!m_serverSocket.socket().isBound()) {
+            //     try {
+            //         if (m_interface != null) {
+            //             m_serverSocket.socket().bind(new InetSocketAddress(m_interface, m_port));
+            //         } else {
+            //             m_serverSocket.socket().bind(new InetSocketAddress(m_port));
+            //         }
+            //     } catch (IOException e) {
+            //         String msg = "Client interface failed to bind to"
+            //                 + (m_isAdmin ? " Admin " : " ") + "port: " + m_port;
+            //         MiscUtils.printPortsInUse(hostLog);
+            //         VoltDB.crashLocalVoltDB(msg, false, e);
+            //     }
+            // }
             m_running = true;
             String threadName = m_isAdmin ? "AdminPort connection acceptor" : "ClientPort connection acceptor";
             m_thread = new Thread(null, this, threadName, 262144);
@@ -345,106 +350,106 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
 
         // Thread for Running authentication of client.
         class AuthRunnable implements Runnable {
-            final SocketChannel m_socket;
+            final FSocketConn m_conn;
 
-            AuthRunnable(SocketChannel socket) {
-                this.m_socket = socket;
+            AuthRunnable(FSocketConn conn) {
+                this.m_conn = conn;
             }
 
             @Override
             public void run() {
-                if (m_socket != null) {
-                    final String remoteIP = ((InetSocketAddress) (m_socket.socket().getRemoteSocketAddress()))
-                            .getAddress().getHostAddress();
-                    SSLEngine sslEngine = null;
+                if (m_conn != null) {
+                    // final String remoteIP = ((InetSocketAddress) (m_socket.socket().getRemoteSocketAddress()))
+                    //         .getAddress().getHostAddress();
+                    // SSLEngine sslEngine = null;
                     ByteBuffer remnant = ByteBuffer.wrap(new byte[0]);
 
                     // Do TLS/SSL setup iff configured; client is expected to know whether
                     // the server expects it.
-                    if (m_sslContext != null) {
-                        try {
-                            sslEngine = m_sslContext.newEngine(ByteBufAllocator.DEFAULT);
-                        } catch (Exception e) {
-                            networkLog.rateLimitedWarn(SSL_LOG_INTERVAL,
-                                    "Rejected new connection, failed to create SSLEngine; " +
-                                            "indicates problem with TLS/SSL configuration: %s",
-                                    e.getMessage());
-                            return;
-                        }
-                        // blocking needs to be false for handshaking.
+                    // if (m_sslContext != null) {
+                    //     try {
+                    //         sslEngine = m_sslContext.newEngine(ByteBufAllocator.DEFAULT);
+                    //     } catch (Exception e) {
+                    //         networkLog.rateLimitedWarn(SSL_LOG_INTERVAL,
+                    //                 "Rejected new connection, failed to create SSLEngine; " +
+                    //                         "indicates problem with TLS/SSL configuration: %s",
+                    //                 e.getMessage());
+                    //         return;
+                    //     }
+                    //     // blocking needs to be false for handshaking.
 
-                        String error = null;
-                        String detail = "";
-                        try {
-                            // m_socket.configureBlocking(false);
-                            m_socket.socket().setTcpNoDelay(true);
-                            TLSHandshaker handshaker = new TLSHandshaker(m_socket, sslEngine);
-                            boolean handshakeStatus = handshaker.handshake();
-                            /*
-                             * The JDK caches TLS/SSL sessions when the participants are the same (i.e.
-                             * multiple connection requests from the same peer). Once a session is cached
-                             * the client side ends its handshake session quickly, and is able to send
-                             * the login Volt message before the server finishes its handshake. This message
-                             * is caught in the servers last handshake network read.
-                             */
-                            if (handshakeStatus) {
-                                remnant = handshaker.getRemnant();
-                            } else {
-                                error = "TLS/SSL handshake failed";
-                            }
-                        } catch (NotSslRecordException e) {
-                            error = "client not using TLS/SSL";
-                        } catch (SSLException e) {
-                            error = "TLS/SSL handshake failed:";
-                            detail = e.getMessage();
-                        } catch (IOException e) {
-                            error = "error during TLS/SSL handshake:";
-                            detail = e.getMessage();
-                        }
-                        if (error != null) {
-                            // We want to rate-limit per client, so the remote IP address is part of the
-                            // format.
-                            String format = String.format("Rejected new connection from %s, %%s %%s", remoteIP);
-                            networkLog.rateLimitedWarn(SSL_LOG_INTERVAL, format, error, detail);
-                            closeSocket();
-                            return;
-                        }
-                        // Here we want to log if the protocol/cipher changes, so the whole thing is the
-                        // format
-                        String format = String.format(
-                                "TLS/SSL enabled on connection %s with protocol %s and with cipher %s",
-                                remoteIP, sslEngine.getSession().getProtocol(),
-                                sslEngine.getSession().getCipherSuite());
-                        networkLog.rateLimitedInfo(SSL_LOG_INTERVAL, format);
-                    }
+                    //     String error = null;
+                    //     String detail = "";
+                    //     try {
+                    //         // m_socket.configureBlocking(false);
+                    //         m_socket.socket().setTcpNoDelay(true);
+                    //         TLSHandshaker handshaker = new TLSHandshaker(m_socket, sslEngine);
+                    //         boolean handshakeStatus = handshaker.handshake();
+                    //         /*
+                    //          * The JDK caches TLS/SSL sessions when the participants are the same (i.e.
+                    //          * multiple connection requests from the same peer). Once a session is cached
+                    //          * the client side ends its handshake session quickly, and is able to send
+                    //          * the login Volt message before the server finishes its handshake. This message
+                    //          * is caught in the servers last handshake network read.
+                    //          */
+                    //         if (handshakeStatus) {
+                    //             remnant = handshaker.getRemnant();
+                    //         } else {
+                    //             error = "TLS/SSL handshake failed";
+                    //         }
+                    //     } catch (NotSslRecordException e) {
+                    //         error = "client not using TLS/SSL";
+                    //     } catch (SSLException e) {
+                    //         error = "TLS/SSL handshake failed:";
+                    //         detail = e.getMessage();
+                    //     } catch (IOException e) {
+                    //         error = "error during TLS/SSL handshake:";
+                    //         detail = e.getMessage();
+                    //     }
+                    //     if (error != null) {
+                    //         // We want to rate-limit per client, so the remote IP address is part of the
+                    //         // format.
+                    //         String format = String.format("Rejected new connection from %s, %%s %%s", remoteIP);
+                    //         networkLog.rateLimitedWarn(SSL_LOG_INTERVAL, format, error, detail);
+                    //         closeSocket();
+                    //         return;
+                    //     }
+                    //     // Here we want to log if the protocol/cipher changes, so the whole thing is the
+                    //     // format
+                    //     String format = String.format(
+                    //             "TLS/SSL enabled on connection %s with protocol %s and with cipher %s",
+                    //             remoteIP, sslEngine.getSession().getProtocol(),
+                    //             sslEngine.getSession().getCipherSuite());
+                    //     networkLog.rateLimitedInfo(SSL_LOG_INTERVAL, format);
+                    // }
 
                     boolean success = false;
-                    MessagingChannel messagingChannel = MessagingChannel.get(m_socket, sslEngine);
+                    // MessagingChannel messagingChannel = MessagingChannel.get(m_socket, sslEngine);
                     AtomicReference<String> timeoutRef = null;
                     try {
                         // Enforce a limit on the maximum number of connections
-                        if (m_clientConnectionsTracker.isConnectionsLimitReached()) {
-                            m_clientConnectionsTracker.connectionDropped();
-                            networkLog.rateLimitedWarn(FD_LOG_INTERVAL,
-                                    "Rejected connection from %s because the connection limit of %s has been reached",
-                                    remoteIP, m_clientConnectionsTracker.getMaxNumberOfAllowedConnections());
-                            try {
-                                // Send rejection message with reason code
-                                ByteBuffer b = ByteBuffer.allocate(1);
-                                b.put(MAX_CONNECTIONS_LIMIT_ERROR);
-                                b.flip();
-                                synchronized (m_socket.blockingLock()) {
-                                    m_socket.configureBlocking(true);
-                                }
-                                for (int ii = 0; ii < 4 && b.hasRemaining(); ii++) {
-                                    messagingChannel.writeMessage(b);
-                                }
-                                m_socket.close();
-                            } catch (IOException e) {
-                                // ignore
-                            }
-                            return;
-                        }
+                        // if (m_clientConnectionsTracker.isConnectionsLimitReached()) {
+                        //     m_clientConnectionsTracker.connectionDropped();
+                        //     networkLog.rateLimitedWarn(FD_LOG_INTERVAL,
+                        //             "Rejected connection from %s because the connection limit of %s has been reached",
+                        //             remoteIP, m_clientConnectionsTracker.getMaxNumberOfAllowedConnections());
+                        //     try {
+                        //         // Send rejection message with reason code
+                        //         ByteBuffer b = ByteBuffer.allocate(1);
+                        //         b.put(MAX_CONNECTIONS_LIMIT_ERROR);
+                        //         b.flip();
+                        //         synchronized (m_socket.blockingLock()) {
+                        //             m_socket.configureBlocking(true);
+                        //         }
+                        //         for (int ii = 0; ii < 4 && b.hasRemaining(); ii++) {
+                        //             messagingChannel.writeMessage(b);
+                        //         }
+                        //         m_socket.close();
+                        //     } catch (IOException e) {
+                        //         // ignore
+                        //     }
+                        //     return;
+                        // }
 
                         /*
                          * Increment the number of connections even though this one hasn't been
@@ -456,22 +461,23 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
 
                         // Populated on timeout
                         timeoutRef = new AtomicReference<String>();
-                        final ClientInputHandler handler = authenticate(m_socket, messagingChannel, timeoutRef,
-                                remnant);
+                        final ClientInputHandler handler = authenticate(m_conn, timeoutRef);
                         if (handler != null) {
-                            synchronized (m_socket.blockingLock()) {
-                                m_socket.configureBlocking(false);
-                                m_socket.socket().setTcpNoDelay(true);
-                                m_socket.socket().setKeepAlive(true);
-                            }
+                            // synchronized (m_socket.blockingLock()) {
+                            //     m_socket.configureBlocking(false);
+                            //     m_socket.socket().setTcpNoDelay(true);
+                            //     m_socket.socket().setKeepAlive(true);
+                            // }
 
                             // m_network.registerChannel(
-                            //         m_socket,
+                            //         m_conn,
                             //         handler,
                             //         0,
                             //         ReverseDNSPolicy.ASYNCHRONOUS,
                             //         CipherExecutor.SERVER,
                             //         sslEngine);
+
+                            m_network.registerChannel(m_conn.getFd(), handler);
                             /*
                              * If IV2 is enabled the logic initially enabling read is
                              * in the started method of the InputHandler
@@ -480,16 +486,16 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
                         }
                     } catch (Exception e) {
                         closeSocket();
-                        if (m_running) {
-                            if (timeoutRef.get() != null) {
-                                hostLog.warn(timeoutRef.get());
-                            } else {
-                                hostLog.warn("Exception authenticating and "
-                                        + "registering user in ClientAcceptor", e);
-                            }
-                        }
+                        // if (m_running) {
+                        //     if (timeoutRef.get() != null) {
+                        //         hostLog.warn(timeoutRef.get());
+                        //     } else {
+                        //         hostLog.warn("Exception authenticating and "
+                        //                 + "registering user in ClientAcceptor", e);
+                        //     }
+                        // }
                     } finally {
-                        messagingChannel.cleanUp();
+                        // messagingChannel.cleanUp();
                         if (!success) {
                             m_clientConnectionsTracker.connectionClosed();
                         }
@@ -499,7 +505,8 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
 
             private void closeSocket() {
                 try {
-                    m_socket.close();
+                    // m_socket.close();
+                    m_conn.close();
                 } catch (IOException ex) {
                     // Don't care
                 }
@@ -508,25 +515,31 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
 
         @Override
         public void run() {
+            System.out.println("Starting ClientAcceptor thread");
             try {
                 do {
-                    final SocketChannel socket;
-                    try {
-                        socket = m_serverSocket.accept();
-                    } catch (IOException ioe) {
-                        if (ioe.getMessage() != null &&
-                                ioe.getMessage().contains("Too many open files")) {
-                            networkLog.rateLimitedWarn(FD_LOG_INTERVAL,
-                                    "Rejected new connection due to too many open files");
-                            continue;
-                        }
-                        throw ioe;
-                    }
+                    // final SocketChannel socket;
+                    final int sock_fd = m_fsocket.accept();
+                    final FSocketConn socket = new FSocketConn(sock_fd);
+                    System.out.println("Accepted client conn on port " + m_port + " with fd " + sock_fd);
+                    // try {
+                    //     // socket = m_serverSocket.accept();
+                    // } catch (IOException ioe) {
+                    //     if (ioe.getMessage() != null &&
+                    //             ioe.getMessage().contains("Too many open files")) {
+                    //         networkLog.rateLimitedWarn(FD_LOG_INTERVAL,
+                    //                 "Rejected new connection due to too many open files");
+                    //         continue;
+                    //     }
+                    //     throw ioe;
+                    // }
 
                     final AuthRunnable authRunnable = new AuthRunnable(socket);
                     while (true) {
                         try {
                             m_executor.execute(authRunnable);
+                            // final ClientInputHandler handler = new ClientInputHandler("VoltServer", m_isAdmin);
+                            // m_network.registerChannel(sock_fd, handler);
                             break;
                         } catch (RejectedExecutionException e) {
                             Thread.sleep(1);
@@ -556,6 +569,97 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
                     }
                 }
             }
+        }
+
+        private ClientInputHandler authenticate(final FSocketConn conn, final AtomicReference<String> timeoutRef) throws IOException {
+            ByteBuffer responseBuffer = ByteBuffer.allocate(6);
+            byte version = (byte) 0;
+            responseBuffer.putInt(2);// message length
+            responseBuffer.put(version);// version
+
+            // Use sourceIP for cases where we want an IP address only
+            // Use sourceNameAndIP for cases (typically logging) where we'll take a host
+            // name if we have one
+            // InetAddress sourceInetAddr = ((InetSocketAddress) (socket.socket().getRemoteSocketAddress())).getAddress();
+            // final String sourceIP = sourceInetAddr.getHostAddress();
+            // final String sourceNameAndIP = sourceInetAddr.toString().replaceFirst("^/", "");
+
+            /*
+             * Schedule a timeout to close the socket in case there is no response for the
+             * timeout
+             * period. This will wake up the current thread that is blocked on reading the
+             * login message
+             */
+            final long start = System.currentTimeMillis();
+            ScheduledFuture<?> timeoutFuture = VoltDB.instance().schedulePriorityWork(new Runnable() {
+                @Override
+                public void run() {
+                    long delta = System.currentTimeMillis() - start;
+                    double seconds = delta / 1000.0;
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("Timed out authenticating client from ");
+                    // sb.append(sourceNameAndIP);
+                    sb.append(String.format(" after %.2f seconds (timeout target is %.2f seconds)", seconds,
+                            AUTH_TIMEOUT_MS / 1000.0));
+                    timeoutRef.set(sb.toString());
+                    try {
+                        conn.close();
+                    } catch (IOException e) {
+                        // Don't care
+                    }
+                }
+            }, AUTH_TIMEOUT_MS, 0, TimeUnit.MILLISECONDS);
+
+            ByteBuffer message = null;
+            System.out.println("Reading authentication message from client");
+            try {
+                while (message == null) {
+                    message = conn.read();
+                }
+            } catch (IOException e) {
+                // Don't log a stack trace - assume a security probe sent a bad packet or the
+                // connection timed out.
+                try {
+                    conn.close();
+                } catch (IOException e1) {
+                }
+                return null;
+            }
+
+            String username = Charset.defaultCharset().decode(message).toString();
+            System.out.println("Received username: " + username);
+
+            /*
+             * Since we got the login message, cancel the timeout.
+             * If cancellation fails then the socket is dead and the connection lost
+             */
+            if (!timeoutFuture.cancel(false)) {
+                return null;
+            }
+
+            /*
+             * Create an input handler.
+             */
+            ClientInputHandler handler = new ClientInputHandler(username, m_isAdmin);
+
+            byte buildString[] = VoltDB.instance().getBuildString().getBytes(Charsets.UTF_8);
+            responseBuffer = ByteBuffer.allocateDirect(34 + buildString.length);
+            responseBuffer.putInt(30 + buildString.length);// message length
+            responseBuffer.put((byte) 0);// version
+
+            // Send positive response
+            responseBuffer.put((byte) 0);
+            responseBuffer.putInt(VoltDB.instance().getHostMessenger().getHostId());
+            responseBuffer.putLong(handler.connectionId());
+            responseBuffer.putLong(VoltDB.instance().getHostMessenger().getInstanceId().getTimestamp());
+            responseBuffer.putInt(VoltDB.instance().getHostMessenger().getInstanceId().getCoord());
+            responseBuffer.putInt(buildString.length);
+            responseBuffer.put(buildString).flip();
+            System.out.println("Sending authentication response to client");
+            // String msg = Charset.defaultCharset().decode(responseBuffer).toString();
+            // System.out.println("Sending message: " + msg);
+            conn.write(responseBuffer);
+            return handler;
         }
 
         /**
@@ -1204,8 +1308,8 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
         messenger.getNetwork().setInputHandler(new ClientInputHandler("server", false));
 
         // pre-allocate single partition array
-        m_acceptor = null;
-        // m_acceptor = new ClientAcceptor(clientIntf, clientPort, messenger.getNetwork(), false, sslContext);
+        // m_acceptor = null;
+        m_acceptor = new ClientAcceptor(clientIntf, clientPort, messenger.getNetwork(), false, sslContext);
         m_adminAcceptor = null;
         // m_adminAcceptor = new ClientAcceptor(adminIntf, adminPort, messenger.getNetwork(), true, sslContext);
 
@@ -1549,14 +1653,17 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
      * client
      */
     final ClientResponseImpl handleRead(ByteBuffer buf, ClientInputHandler handler, Connection ccxn) {
+        System.out.println("ClientInterface.handleRead: " + handler.getUserName());
         StoredProcedureInvocation task = new StoredProcedureInvocation();
         try {
             task.initFromBuffer(buf);
         } catch (Exception ex) {
+            System.out.println("Exception in initFromBuffer: " + ex.getMessage());
             return new ClientResponseImpl(
                     ClientResponseImpl.UNEXPECTED_FAILURE,
                     new VoltTable[0], ex.getMessage(), ccxn.connectionId());
         }
+        System.out.println("About to get auth user");
         AuthUser user = m_catalogContext.get().authSystem.getUser(handler.getUserName());
         if (user == null) {
             String errorMessage = "User " + handler.getUserName()
@@ -1564,10 +1671,11 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             authLog.info(errorMessage);
             return errorResponse(ccxn, task.clientHandle, ClientResponse.UNEXPECTED_FAILURE, errorMessage, null, false);
         }
-        // System.out.println("ClientInterface.handleRead: " + task.getProcName());
+        System.out.println("got user. procname: " + task.getProcName());
         if (task.getProcName().equals("GetPosts")) {
             TimeTracker.add(TimeTracker.TrackingEvent.StartHandleSPRequest, System.nanoTime());
         }
+        System.out.println("About to dispatch procedure");
         final ClientResponseImpl errResp = m_dispatcher.dispatch(task, handler, ccxn, user, null, false);
 
         if (errResp != null) {

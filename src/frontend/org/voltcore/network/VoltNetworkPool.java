@@ -58,6 +58,7 @@ public class VoltNetworkPool {
     }
 
     public VoltNetworkPool(int numThreads, int startThreadId, Queue<String> coreBindIds, String poolName) {
+        System.out.println("Starting VoltNetworkPool with " + numThreads + " threads");
         m_poolName = poolName;
         if (numThreads < 1) {
             throw new IllegalArgumentException("Must specify a positive number of threads");
@@ -88,6 +89,21 @@ public class VoltNetworkPool {
         for (FStackNetwork vn : m_networks) {
             vn.shutdown();
         }
+    }
+
+    public Connection registerChannel(
+            final int sock_fd,
+            final InputHandler handler) throws IOException {
+        //Start with a round robin base policy
+        FStackNetwork vn = m_networks[(int)(m_nextNetwork.getAndIncrement() % m_networks.length)];
+        //Then do a load based policy which is a little racy
+        for (int ii = 0; ii < m_networks.length; ii++) {
+            if (m_networks[ii] == vn) continue;
+            if (vn.numPorts() > m_networks[ii].numPorts()) {
+                vn = m_networks[ii];
+            }
+        }
+        return vn.registerChannel(sock_fd, handler);
     }
 
     public Connection registerChannel(

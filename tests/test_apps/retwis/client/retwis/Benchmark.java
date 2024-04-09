@@ -5,6 +5,7 @@ import java.text.NumberFormat;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,6 +13,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.lang.IllegalArgumentException;
 
 import org.voltdb.VoltTable;
+import org.voltdb.client.Client;
+import org.voltdb.client.ClientFactory;
 import org.voltdb.client.ClientResponse;
 import org.voltdb.client.ProcedureCallback;
 import org.voltdb.client.exampleutils.ClientConnection;
@@ -23,10 +26,10 @@ import retwis.RetwisSimulation;
 public class Benchmark {
     final String servers;
     final RetwisSimulation simulator;
-    private ClientConnection m_clientCon;
+    private Client client;
     private boolean async;
     private int numClients;
-    private static int totalSPCalls = 1_000_000;
+    private static int totalSPCalls = 1_000_000_00;
     public static final ReentrantLock counterLock = new ReentrantLock();
     public static long totExecutions = 0;
     public static long totExecutionNanoseconds = 0;
@@ -42,17 +45,23 @@ public class Benchmark {
         this.numClients = Integer.parseInt(args.get("c").get(0));
         Benchmark.totalSPCalls = Integer.parseInt(args.get("n").get(0));
         System.out.printf("Running %d clients\n", this.numClients);
+
+        System.out.printf("async %b, totalSPCalls %d \n", this.async, totalSPCalls);
         
-        this.m_clientCon = Benchmark.getClient(this.servers);
-        this.simulator = new RetwisSimulation(this.m_clientCon, this.async);
+        this.client = Benchmark.getClient(this.servers);
+        System.out.println("Connected to server. About to create simulator");
+        this.simulator = new RetwisSimulation(this.client, this.async);
     }
 
-    private static ClientConnection getClient(String servers) {
+    private static Client getClient(String servers) {
         int sleep = 1000;
         while(true) {
             try {
-                ClientConnection m_clientCon = ClientConnectionPool.get(servers, 21212);
-                return m_clientCon;
+                final Client client = ClientFactory.createClient();
+                client.createConnection(servers, Client.VOLTDB_SERVER_PORT);
+                // ClientConnection m_clientCon = ClientConnectionPool.get(servers, 21212);
+                // System.out.println("Got Client Connection from pool");
+                return client;
             }
             catch (Exception e) {
                 System.err.printf("Connection failed - retrying in %d second(s).\n", sleep/1000);
@@ -140,59 +149,60 @@ public class Benchmark {
     }
 
     private void setStatDeltaFlag() {
-        String query = "SELECT *" +
-            " from statistics(PROCEDUREPROFILE,1);";
-        VoltTable[] results = null;
-        try {
-            results = this.m_clientCon.execute("@QueryStats", query).getResults();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        // String query = "SELECT *" +
+        //     " from statistics(PROCEDUREPROFILE,1);";
+        // VoltTable[] results = null;
+        // try {
+        //     results = this.client.execute("@QueryStats", query).getResults();
+        // } catch (Exception e) {
+        //     e.printStackTrace();
+        // }
     }
 
     private Map<String, ProcStats> getServerStats() {
-        String query = "SELECT *" +
-            " from statistics(PROCEDURE,1);";
-        VoltTable[] results = null;
-        try {
-            results = this.m_clientCon.execute("@QueryStats", query).getResults();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        VoltTable result = results[0];
-        Map<String, List<ProcStats>> procDetails = new HashMap<>();
-        while (result.advanceRow()) {
-            String[] procedure = result.getString("PROCEDURE").split("\\.");
-            String procedureName = procedure[procedure.length - 1];
-            ProcStats stats = new ProcStats();
-            stats.name = procedureName;
-            stats.execTime = (double) result.getLong("AVG_EXECUTION_TIME") / 1000;
-            stats.invocations = (int) result.getLong("INVOCATIONS");
-            stats.resultSize = (double) result.getLong("AVG_RESULT_SIZE") / 1024;
-            if (!procDetails.containsKey(procedureName))
-                procDetails.put(procedureName, new ArrayList<>());
-            procDetails.get(procedureName).add(stats);
-        }
+        return null;
+        // String query = "SELECT *" +
+        //     " from statistics(PROCEDURE,1);";
+        // VoltTable[] results = null;
+        // try {
+        //     results = this.m_clientCon.execute("@QueryStats", query).getResults();
+        // } catch (Exception e) {
+        //     e.printStackTrace();
+        // }
+        // VoltTable result = results[0];
+        // Map<String, List<ProcStats>> procDetails = new HashMap<>();
+        // while (result.advanceRow()) {
+        //     String[] procedure = result.getString("PROCEDURE").split("\\.");
+        //     String procedureName = procedure[procedure.length - 1];
+        //     ProcStats stats = new ProcStats();
+        //     stats.name = procedureName;
+        //     stats.execTime = (double) result.getLong("AVG_EXECUTION_TIME") / 1000;
+        //     stats.invocations = (int) result.getLong("INVOCATIONS");
+        //     stats.resultSize = (double) result.getLong("AVG_RESULT_SIZE") / 1024;
+        //     if (!procDetails.containsKey(procedureName))
+        //         procDetails.put(procedureName, new ArrayList<>());
+        //     procDetails.get(procedureName).add(stats);
+        // }
 
-        Map<String, ProcStats> procSummary = new HashMap<>();
-        for (String proc: procDetails.keySet()) {
-            double totalExecTime = 0;
-            int totalInvocations = 0;
-            double totalResSize = 0;
-            for (ProcStats stat: procDetails.get(proc)) {
-                totalExecTime += stat.execTime * stat.invocations;
-                totalResSize += stat.resultSize * stat.invocations;
-                totalInvocations += stat.invocations;
-            }
-            ProcStats thisStat = new ProcStats();
-            thisStat.name = proc;
-            thisStat.invocations = totalInvocations;
-            thisStat.execTime = totalExecTime / totalInvocations;
-            thisStat.resultSize = totalResSize / totalInvocations;
+        // Map<String, ProcStats> procSummary = new HashMap<>();
+        // for (String proc: procDetails.keySet()) {
+        //     double totalExecTime = 0;
+        //     int totalInvocations = 0;
+        //     double totalResSize = 0;
+        //     for (ProcStats stat: procDetails.get(proc)) {
+        //         totalExecTime += stat.execTime * stat.invocations;
+        //         totalResSize += stat.resultSize * stat.invocations;
+        //         totalInvocations += stat.invocations;
+        //     }
+        //     ProcStats thisStat = new ProcStats();
+        //     thisStat.name = proc;
+        //     thisStat.invocations = totalInvocations;
+        //     thisStat.execTime = totalExecTime / totalInvocations;
+        //     thisStat.resultSize = totalResSize / totalInvocations;
             
-            procSummary.put(proc, thisStat);
-        }
-        return procSummary;
+        //     procSummary.put(proc, thisStat);
+        // }
+        // return procSummary;
     }
 
     class ProcStats {
@@ -257,12 +267,13 @@ public class Benchmark {
         SingleClientRunnable(int id, int totalSPCalls, String servers, boolean async) {
             this.id = id;
             this.totalSPCalls = totalSPCalls;
-            ClientConnection client = Benchmark.getClient(servers);
+            Client client = Benchmark.getClient(servers);
             this.sim = new RetwisSimulation(client, async);
             this.sim.set_next_ids(51200, 8192);
         }
 
         public void run() {
+            System.out.println("Running client " + this.id);
             for (int i = 0; i < this.totalSPCalls; i++) {
                 try {
                     //

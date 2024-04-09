@@ -13,8 +13,21 @@ public class TestFSelect {
 
     public TestFSelect(int port) {
         ReadHandler rh = new TestReadHandler();
-        fselect = FSelect.open(port, rh);
-        fselect.fSelect();
+        fselect = FSelect.open(rh);
+        Thread epollThread = new Thread() {
+            @Override
+            public void run() {
+                fselect.fSelect();
+            }
+        };
+        epollThread.start();
+        FSocket socket = new FSocket(port);
+        while (true) {
+            int fd = socket.accept();
+            if (fd != -1) {
+                fselect.register(fd);
+            }
+        }
     }
 
     public static void main(String[] args) {

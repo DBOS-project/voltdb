@@ -6,14 +6,17 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.voltcore.utils.Pair;
 
+import org.voltcore.network.FStackPort;
 import org.voltcore.network.InputHandler;
 import org.voltcore.network.VoltNetworkPool.IOStatsIntf;
 import org.voltcore.network.NIOReadStream;
@@ -21,7 +24,7 @@ import org.voltcore.network.NIOReadStream;
 import org.voltcore.network.FSelect;
 import org.voltcore.network.FSelect.ReadHandler;
 
-public class FStackNetwork implements Runnable, Connection, IOStatsIntf {
+public class FStackNetwork implements Runnable, IOStatsIntf {
     private static final VoltLogger m_logger = new VoltLogger(VoltNetwork.class.getName());
     protected static final VoltLogger networkLog = new VoltLogger("NETWORK");
 
@@ -29,6 +32,10 @@ public class FStackNetwork implements Runnable, Connection, IOStatsIntf {
     private InputHandler m_inputHandler;
     private final Thread m_thread;
     private final String m_threadName;
+    private final AtomicInteger m_numPorts = new AtomicInteger();
+    // TODO: This should either go in the C code or the C code should notify of clients connecting/disconnecting
+    // Otherwise this could cause error due to reuse of file descriptor
+    private final Map<Integer, FStackPort> m_ports = new HashMap<Integer, FStackPort>();
 
     public class FNetworkReadHandler implements ReadHandler {
         private final FStackNetwork m_network;
@@ -38,14 +45,19 @@ public class FStackNetwork implements Runnable, Connection, IOStatsIntf {
         }
         
         public void handleData(int fd, ByteBuffer buffer, int len) throws IOException {
-            m_inputHandler.handleMessage(buffer, m_network);
+            // if (!m_ports.containsKey(fd)) {
+            //     networkLog.error("Received data for unknown port " + fd + " registered ports: " + m_ports.entrySet());
+            //     throw new IOException("Received data for unknown port " + fd);
+            // }
+            FStackPort port = new FStackPort(fd, m_selector);
+            // m_inputHandler.handleMessage(buffer, m_ports.get(fd));
+            m_inputHandler.handleMessage(buffer, port);
         }
     }
 
     public FStackNetwork(String networkName, int networkId) {
-        int port = 21212; // Default Volt Port- need to separate socket from epoll
         ReadHandler readHandler = new FNetworkReadHandler(this);
-        m_selector = FSelect.open(port, readHandler);
+        m_selector = FSelect.open(readHandler);
         m_threadName = new String("Fstack " + networkName + " Network-" + networkId);
         m_thread = new Thread(this, m_threadName);
         m_thread.setDaemon(true);
@@ -59,6 +71,18 @@ public class FStackNetwork implements Runnable, Connection, IOStatsIntf {
         if (m_thread != null) {
             m_thread.join();
         }
+    }
+
+    public int numPorts() {
+        return m_numPorts.get();
+    }
+
+    public Connection registerChannel(int sock_fd, InputHandler handler) throws IOException {
+        m_numPorts.incrementAndGet();
+        m_selector.register(sock_fd);
+        FStackPort port = new FStackPort(sock_fd, m_selector);
+        m_ports.put(sock_fd, port);
+        return (Connection) port;
     }
 
     public void shutdownAsync() throws InterruptedException {
@@ -75,6 +99,7 @@ public class FStackNetwork implements Runnable, Connection, IOStatsIntf {
 
     @Override
     public void run() {
+        System.out.println("Starting FStackNetwork thread");
         m_selector.fSelect();
     }
 
@@ -84,81 +109,6 @@ public class FStackNetwork implements Runnable, Connection, IOStatsIntf {
 
     private void drainWriteStream() {
 
-    }
-
-    @Override
-    public Future<?> unregister() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public WriteStream writeStream() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public org.voltcore.network.NIOReadStream readStream() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void disableReadSelection() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void enableReadSelection() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void disableWriteSelection() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void enableWriteSelection() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public String getHostnameAndIPAndPort() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public String getHostnameOrIP() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public String getHostnameOrIP(long clientHandle) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public int getRemotePort() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public InetSocketAddress getRemoteSocketAddress() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public long connectionId() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public long connectionId(long clientHandle) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void queueTask(Runnable r) {
-        throw new UnsupportedOperationException();
     }
 
     @Override

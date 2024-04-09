@@ -336,23 +336,24 @@ public class ConnectionUtil {
                 aChannel.socket().setTcpNoDelay(true);
             }
 
-            if (sslEngine != null) {
-                TLSHandshaker handshaker = new TLSHandshaker(aChannel, sslEngine);
-                boolean shookHands = false;
-                try {
-                    shookHands = handshaker.handshake();
-                } catch (IOException e) {
-                    aChannel.close();
-                    throw new IOException("SSL handshake failed", e);
-                }
-                if (! shookHands) {
-                    aChannel.close();
-                    throw new IOException("SSL handshake failed");
-                }
-            }
+            // if (sslEngine != null) {
+            //     TLSHandshaker handshaker = new TLSHandshaker(aChannel, sslEngine);
+            //     boolean shookHands = false;
+            //     try {
+            //         shookHands = handshaker.handshake();
+            //     } catch (IOException e) {
+            //         aChannel.close();
+            //         throw new IOException("SSL handshake failed", e);
+            //     }
+            //     if (! shookHands) {
+            //         aChannel.close();
+            //         throw new IOException("SSL handshake failed");
+            //     }
+            // }
 
             final long retvals[] = new long[4];
             returnArray[1] = retvals;
+            System.out.println("Creating messaging channel");
             messagingChannel = MessagingChannel.get(aChannel, sslEngine);
 
             /*
@@ -364,15 +365,15 @@ public class ConnectionUtil {
             }
 
             // encode strings
-            byte[] serviceBytes = service == null ? null : service.getBytes(Constants.UTF8ENCODING);
+            // byte[] serviceBytes = service == null ? null : service.getBytes(Constants.UTF8ENCODING);
             byte[] usernameBytes = username == null ? null : username.getBytes(Constants.UTF8ENCODING);
 
             // get the length of the data to serialize
             int requestSize = 4;
             requestSize += 2; //version and scheme
-            requestSize += serviceBytes == null ? 4 : 4 + serviceBytes.length;
+            // requestSize += serviceBytes == null ? 4 : 4 + serviceBytes.length;
             requestSize += usernameBytes == null ? 4 : 4 + usernameBytes.length;
-            requestSize += hashedPassword.length;
+            // requestSize += hashedPassword.length;
 
             ByteBuffer b = ByteBuffer.allocate(requestSize);
 
@@ -380,11 +381,11 @@ public class ConnectionUtil {
             b.putInt(requestSize - 4);                            // length prefix
             b.put((byte) 1);                                      // version
             b.put((byte )scheme.getValue());
-            SerializationHelper.writeVarbinary(serviceBytes, b);  // data service (export|database)
+            // SerializationHelper.writeVarbinary(serviceBytes, b);  // data service (export|database)
             SerializationHelper.writeVarbinary(usernameBytes, b);
-            b.put(hashedPassword);
+            // b.put(hashedPassword);
             b.flip();
-
+            System.out.println("Writing authentication message");
             try {
                 messagingChannel.writeMessage(b);
             } catch (IOException e) {
@@ -394,6 +395,7 @@ public class ConnectionUtil {
                 throw new IOException("Failed to write authentication message to server.");
             }
 
+            System.out.println("Reading authentication response");
             ByteBuffer loginResponse;
             try {
                 loginResponse = messagingChannel.readMessage();

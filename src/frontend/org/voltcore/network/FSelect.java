@@ -13,26 +13,27 @@ public class FSelect {
     private ReadHandler read_callback;
 
     static {
-        System.loadLibrary("native");
+        System.loadLibrary("native_epoll");
     }
 
-    public FSelect(int port, ReadHandler callback) {
-        epoll_fd = fOpen(port);
+    public FSelect(ReadHandler callback) {
+        epoll_fd = fOpen();
         read_callback = callback;
     }
 
-    public static FSelect open(int port, ReadHandler callback) {
-        FSelect fselect = new FSelect(port, callback);
+    public static FSelect open(ReadHandler callback) {
+        FSelect fselect = new FSelect(callback);
         return fselect;
     }
 
-    private native int fOpen(int port);
+    private native int fOpen();
 
     public void register(int fd) {
-        fRegister(fd);
+        System.out.println("Registering fd " + fd + " with epoll_fd " + epoll_fd);
+        fRegister(epoll_fd, fd);
     }
 
-    public native void fRegister(int fd);
+    public native void fRegister(int epoll_fd, int fd);
 
     public void close() {
         
@@ -45,7 +46,13 @@ public class FSelect {
     public native void fSelect();
 
     public void processMsg(int sockfd, ByteBuffer buf, int len) throws IOException {
-        read_callback.handleData(sockfd, buf, len);
+        System.out.println("Processing message from fd " + sockfd + " with len " + len);
+        try {
+            read_callback.handleData(sockfd, buf, len);
+        } catch (IOException e) {
+            System.out.println("Handle Data exception on epoll fd " + epoll_fd + " for fd " + sockfd);
+            throw e;
+        }
     }
 
     public native void write(int sockfd, ByteBuffer buf, int len);

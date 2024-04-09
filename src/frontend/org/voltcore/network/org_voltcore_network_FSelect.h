@@ -15,15 +15,15 @@ extern "C" {
  * Signature: (I)I
  */
 JNIEXPORT jint JNICALL Java_org_voltcore_network_FSelect_fOpen
-  (JNIEnv *, jobject, jint);
+  (JNIEnv *, jobject);
 
 /*
  * Class:     org_voltcore_network_FSelect
  * Method:    fRegister
- * Signature: (I)V
+ * Signature: (II)V
  */
 JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fRegister
-  (JNIEnv *, jobject, jint);
+  (JNIEnv *, jobject, jint, jint);
 
 /*
  * Class:     org_voltcore_network_FSelect
