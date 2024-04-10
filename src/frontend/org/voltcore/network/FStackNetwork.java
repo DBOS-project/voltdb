@@ -73,7 +73,10 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
             
             // FStackPort port = new FStackPort(conn);
             FStackPort port = m_ports.get(conn.getFd());
-            m_inputHandler.handleMessage(buffer, port);
+            System.out.println("Got port from fd " + conn.getFd() + " with port " + port);
+            port.handleData(buffer);
+            // m_inputHandler.handleMessage(buffer, port);
+            System.out.println("Handled message from fd " + conn.getFd());
         }
     }
 
@@ -103,6 +106,7 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
         m_numPorts.incrementAndGet();
         m_selector.register(sock_fd);
         FStackPort port = new FStackPort(new FSocketConn(sock_fd), handler);
+        port.registered();
         m_ports.put(sock_fd, port);
         return (Connection) port;
     }

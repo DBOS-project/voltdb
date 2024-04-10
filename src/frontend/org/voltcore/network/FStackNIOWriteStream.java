@@ -36,6 +36,18 @@ public class FStackNIOWriteStream extends NIOWriteStreamBase implements WriteStr
             return;
         }
         System.err.println("FStackNIOWriteStream.enqueue(DeferredSerialization) called");
+        try {
+            ByteBuffer buffer = ByteBuffer.allocateDirect(ds.getSerializedSize());
+            ds.serialize(buffer);
+            buffer.flip();
+            // print buffer stats
+            System.out.println("Buffer stats: capacity=" + buffer.capacity() + ", position=" + buffer.position() + ", limit=" + buffer.limit());
+            enqueue(buffer);
+        } catch (IOException e) {
+            ds.cancel();
+            System.err.println("Error on serialization: " + e.getMessage());
+            return;
+        }
     }
 
     @Override
@@ -58,7 +70,8 @@ public class FStackNIOWriteStream extends NIOWriteStreamBase implements WriteStr
             ds.cancel();
             return;
         }
-        System.err.println("FStackNIOWriteStream.enqueue(DeferredSerialization) called");
+        System.err.println("FStackNIOWriteStream.fastEnqueue(DeferredSerialization) called");
+        enqueue(ds);
     }
 
     public ByteBuffer dequeue() {
