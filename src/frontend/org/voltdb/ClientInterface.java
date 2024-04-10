@@ -515,13 +515,12 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
 
         @Override
         public void run() {
-            System.out.println("Starting ClientAcceptor thread");
             try {
                 do {
                     // final SocketChannel socket;
                     final int sock_fd = m_fsocket.accept();
                     final FSocketConn socket = new FSocketConn(sock_fd);
-                    System.out.println("Accepted client conn on port " + m_port + " with fd " + sock_fd);
+                    // System.out.println("Accepted client conn on port " + m_port + " with fd " + sock_fd);
                     // try {
                     //     // socket = m_serverSocket.accept();
                     // } catch (IOException ioe) {
@@ -611,7 +610,6 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             }, AUTH_TIMEOUT_MS, 0, TimeUnit.MILLISECONDS);
 
             ByteBuffer message = null;
-            System.out.println("Reading authentication message from client");
             try {
                 while (message == null) {
                     message = conn.read();
@@ -627,7 +625,6 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             }
 
             String username = Charset.defaultCharset().decode(message).toString();
-            System.out.println("Received username: " + username);
 
             /*
              * Since we got the login message, cancel the timeout.
@@ -655,7 +652,6 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             responseBuffer.putInt(VoltDB.instance().getHostMessenger().getInstanceId().getCoord());
             responseBuffer.putInt(buildString.length);
             responseBuffer.put(buildString).flip();
-            System.out.println("Sending authentication response to client");
             // String msg = Charset.defaultCharset().decode(responseBuffer).toString();
             // System.out.println("Sending message: " + msg);
             conn.write(responseBuffer);
@@ -1651,7 +1647,6 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
      * client
      */
     final ClientResponseImpl handleRead(ByteBuffer buf, ClientInputHandler handler, Connection ccxn) {
-        System.out.println("ClientInterface.handleRead: " + handler.getUserName());
         StoredProcedureInvocation task = new StoredProcedureInvocation();
         
         // System.out.println("Buf: " + Charset.defaultCharset().decode(buf).toString());
@@ -1659,12 +1654,10 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
         try {
             task.initFromBuffer(buf);
         } catch (Exception ex) {
-            System.out.println("Exception in initFromBuffer: " + ex.getMessage());
             return new ClientResponseImpl(
                     ClientResponseImpl.UNEXPECTED_FAILURE,
                     new VoltTable[0], ex.getMessage(), ccxn.connectionId());
         }
-        System.out.println("About to get auth user");
         AuthUser user = m_catalogContext.get().authSystem.getUser(handler.getUserName());
         if (user == null) {
             String errorMessage = "User " + handler.getUserName()
@@ -1672,11 +1665,9 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             authLog.info(errorMessage);
             return errorResponse(ccxn, task.clientHandle, ClientResponse.UNEXPECTED_FAILURE, errorMessage, null, false);
         }
-        System.out.println("got user. procname: " + task.getProcName());
         if (task.getProcName().equals("GetPosts")) {
             TimeTracker.add(TimeTracker.TrackingEvent.StartHandleSPRequest, System.nanoTime());
         }
-        System.out.println("About to dispatch procedure");
         final ClientResponseImpl errResp = m_dispatcher.dispatch(task, handler, ccxn, user, null, false);
 
         if (errResp != null) {

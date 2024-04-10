@@ -23,7 +23,7 @@ public class FSocketConn {
     public ByteBuffer read(int len) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocateDirect(len);
         int readLen = fread(fd, buffer, len);
-        System.out.println("Received a buffer of length " + buffer.capacity() + " with limit " + buffer.limit() + " and current position " + buffer.position() + " from fd " + fd + " to read");
+        // System.out.println("Received a buffer of length " + buffer.capacity() + " with limit " + buffer.limit() + " and current position " + buffer.position() + " from fd " + fd + " to read");
         return buffer;
     }
 
@@ -32,14 +32,6 @@ public class FSocketConn {
     }
 
     public int readInt() throws IOException {
-        // ByteBuffer buffer = fread(fd, 4);
-        // // buffer.flip();
-        // // System.out.println("Read" + buffer.array() + " from fd " + fd);
-        // System.out.println("Received a buffer of length " + buffer.capacity() + " from fd " + fd + " to read an int");
-        // if (buffer.order() == ByteOrder.LITTLE_ENDIAN) {
-        //     buffer.order(ByteOrder.BIG_ENDIAN);
-        // }
-        // return buffer.getInt();
         return freadInt(fd);
     }
 
@@ -54,12 +46,12 @@ public class FSocketConn {
             directBuffer.flip();
             buffer = directBuffer;
         }
-        System.out.println("Writing " + buffer.remaining() + " bytes to fd " + fd);
+        // System.out.println("Writing " + buffer.remaining() + " bytes to fd " + fd);
         if (write(fd, buffer, buffer.remaining()) < 0) {
             buffer.position(0);
-            System.out.println("Buf: " + Charset.defaultCharset().decode(buffer).toString());
-            buffer.position(0);
-            System.err.println("Bytebuffer is direct? " + buffer.isDirect());
+            // System.out.println("Buf: " + Charset.defaultCharset().decode(buffer).toString());
+            // buffer.position(0);
+            // System.err.println("Bytebuffer is direct? " + buffer.isDirect());
             throw new IOException("Failed to write to fd " + fd);
         }
     }

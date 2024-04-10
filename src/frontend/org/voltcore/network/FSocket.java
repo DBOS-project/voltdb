@@ -16,7 +16,7 @@ public class FSocket {
     private native int openAndBind(int port);
 
     public int accept() {
-        System.out.println("Accepting connection on port " + port);
+        // System.out.println("Accepting connection on port " + port);
         return accept(fd);
     }
 

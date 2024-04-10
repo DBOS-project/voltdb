@@ -55,7 +55,7 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
                 networkLog.error("Received message of length " + len + " but expected " + msgLen);
                 // throw new IOException("Received message of length " + len + " but expected " + msgLen);
             }
-            System.out.println("Received msg of length " + msgLen + " in a buffer of length " + buffer.capacity());
+            // System.out.println("Received msg of length " + msgLen + " in a buffer of length " + buffer.capacity());
             m_inputHandler.handleMessage(buffer, m_ports.get(fd));
             // m_inputHandler.handleMessage(buffer, port);
         }
@@ -67,16 +67,12 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
             }
             // Read an int first
             int msgLen = conn.readInt();
-            // System.out.println("About to read " + msgLen + " bytes from fd " + conn.getFd());
             ByteBuffer buffer = conn.read(msgLen);
-            System.out.println("Got " + buffer.remaining() + " bytes from fd " + conn.getFd() + " with capacity " + buffer.capacity());
+            // System.out.println("Got " + buffer.remaining() + " bytes from fd " + conn.getFd() + " with capacity " + buffer.capacity());
             
             // FStackPort port = new FStackPort(conn);
             FStackPort port = m_ports.get(conn.getFd());
-            System.out.println("Got port from fd " + conn.getFd() + " with port " + port);
             port.handleData(buffer);
-            // m_inputHandler.handleMessage(buffer, port);
-            System.out.println("Handled message from fd " + conn.getFd());
         }
     }
 

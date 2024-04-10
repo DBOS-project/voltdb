@@ -36,7 +36,7 @@ public class FStackPort implements Connection {
 
     @Override
     public Future<?> unregister() {
-        System.out.println("Called unregister on FStackPort");
+        // System.out.println("Called unregister on FStackPort");
         throw new UnsupportedOperationException();
     }
 
@@ -58,26 +58,26 @@ public class FStackPort implements Connection {
 
     @Override
     public NIOReadStream readStream() {
-        System.out.println("Called readStream on FStackPort");
+        // System.out.println("Called readStream on FStackPort");
         throw new UnsupportedOperationException();
     }
 
     @Override
     public void disableReadSelection() {
-        System.out.println("Called disableReadSelection on FStackPort");
+        // System.out.println("Called disableReadSelection on FStackPort");
         throw new UnsupportedOperationException();
     }
 
     @Override
     public void enableReadSelection() {
-        System.out.println("Called enableReadSelection on FStackPort");
+        // System.out.println("Called enableReadSelection on FStackPort");
         // DO nothing?
         // throw new UnsupportedOperationException();
     }
 
     @Override
     public void disableWriteSelection() {
-        System.out.println("Called disableWriteSelection on FStackPort");
+        // System.out.println("Called disableWriteSelection on FStackPort");
         throw new UnsupportedOperationException();
     }
 
@@ -93,7 +93,7 @@ public class FStackPort implements Connection {
 
     @Override
     public String getHostnameAndIPAndPort() {
-        System.out.println("Called getHostnameAndIPAndPort on FStackPort");
+        // System.out.println("Called getHostnameAndIPAndPort on FStackPort");
         throw new UnsupportedOperationException();
     }
 
@@ -105,25 +105,19 @@ public class FStackPort implements Connection {
 
     @Override
     public String getHostnameOrIP(long clientHandle) {
-        System.out.println("Called getHostnameOrIP on FStackPort");
-        // Print stack trace
-        StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
-        for (StackTraceElement stackTraceElement : stackTraceElements) {
-            System.out.println(stackTraceElement);
-        }
         return getHostnameOrIP();
         // throw new UnsupportedOperationException();
     }
 
     @Override
     public int getRemotePort() {
-        System.out.println("Called getRemotePort on FStackPort");
+        // System.out.println("Called getRemotePort on FStackPort");
         throw new UnsupportedOperationException();
     }
 
     @Override
     public InetSocketAddress getRemoteSocketAddress() {
-        System.out.println("Called getRemoteSocketAddress on FStackPort");
+        // System.out.println("Called getRemoteSocketAddress on FStackPort");
         throw new UnsupportedOperationException();
     }
 
@@ -139,7 +133,7 @@ public class FStackPort implements Connection {
 
     @Override
     public void queueTask(Runnable r) {
-        System.out.println("Called queueTask on FStackPort");
+        // System.out.println("Called queueTask on FStackPort");
         throw new UnsupportedOperationException();
     }
 }

@@ -52,7 +52,6 @@ public class FSelect {
     }
 
     public void processMsg(int sockfd, ByteBuffer buf, int len) throws IOException {
-        System.out.println("Processing message from fd " + sockfd + " with len " + len);
         try {
             read_callback.handleData(sockfd, buf, len);
         } catch (IOException e) {
