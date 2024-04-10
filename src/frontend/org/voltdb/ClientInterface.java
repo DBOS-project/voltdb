@@ -1305,8 +1305,6 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
         m_snapshotDaemonAdapter = new SnapshotDaemonAdapter();
         m_cartographer = cartographer;
 
-        messenger.getNetwork().setInputHandler(new ClientInputHandler("server", false));
-
         // pre-allocate single partition array
         // m_acceptor = null;
         m_acceptor = new ClientAcceptor(clientIntf, clientPort, messenger.getNetwork(), false, sslContext);
@@ -1655,6 +1653,9 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
     final ClientResponseImpl handleRead(ByteBuffer buf, ClientInputHandler handler, Connection ccxn) {
         System.out.println("ClientInterface.handleRead: " + handler.getUserName());
         StoredProcedureInvocation task = new StoredProcedureInvocation();
+        
+        // System.out.println("Buf: " + Charset.defaultCharset().decode(buf).toString());
+        // buf.position(0);
         try {
             task.initFromBuffer(buf);
         } catch (Exception ex) {

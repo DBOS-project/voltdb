@@ -107,11 +107,10 @@ JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_write
     int sentlen = 0;
 	int written;
 	char *data = (char *)(*env)->GetDirectBufferAddress(env, buf);
-    printf("FSelect data: %s\n", data);
-	while (sentlen < readlen) {
+  	while (sentlen < readlen) {
 	    written = write(fd, data + sentlen, readlen - sentlen);
 	    if (written < 0) {
-            perror("write failed");
+            perror("FSelect: write failed");
 	        break;
 	    }
 	    sentlen += written;

@@ -48,7 +48,6 @@ public class FSelect {
     public native void fSelect();
 
     public void indicateReadyForRead(int fd) throws IOException {
-        System.out.println("Indicating ready for read on fd " + fd);
         read_callback.handleReadyForRead(new FSocketConn(fd));
     }
 
