@@ -3,6 +3,7 @@ package org.voltcore.network;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.Charset;
 
 public class FSocketConn {
     private final int fd;
@@ -46,12 +47,24 @@ public class FSocketConn {
 
     private native int freadInt(int fd) throws IOException;
 
-    public void write(ByteBuffer buffer) {
+    public void write(ByteBuffer buffer) throws IOException {
+        if (!buffer.isDirect()) {
+            ByteBuffer directBuffer = ByteBuffer.allocateDirect(buffer.remaining());
+            directBuffer.put(buffer);
+            directBuffer.flip();
+            buffer = directBuffer;
+        }
         System.out.println("Writing " + buffer.remaining() + " bytes to fd " + fd);
-        write(fd, buffer, buffer.remaining());
+        if (write(fd, buffer, buffer.remaining()) < 0) {
+            buffer.position(0);
+            System.out.println("Buf: " + Charset.defaultCharset().decode(buffer).toString());
+            buffer.position(0);
+            System.err.println("Bytebuffer is direct? " + buffer.isDirect());
+            throw new IOException("Failed to write to fd " + fd);
+        }
     }
 
-    private native void write(int fd, ByteBuffer buffer, int length);
+    private native int write(int fd, ByteBuffer buffer, int length);
 
     public void close() throws IOException {
         close(fd);

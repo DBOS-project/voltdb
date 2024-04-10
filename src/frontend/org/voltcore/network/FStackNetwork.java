@@ -49,29 +49,30 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
             //     networkLog.error("Received data for unknown port " + fd + " registered ports: " + m_ports.entrySet());
             //     throw new IOException("Received data for unknown port " + fd);
             // }
-            FStackPort port = new FStackPort(fd, m_selector);
+            // FStackPort port = new FStackPort(new FSocketConn(fd));
             int msgLen = buffer.getInt();
             if (msgLen != len - 4) {
                 networkLog.error("Received message of length " + len + " but expected " + msgLen);
                 // throw new IOException("Received message of length " + len + " but expected " + msgLen);
             }
             System.out.println("Received msg of length " + msgLen + " in a buffer of length " + buffer.capacity());
-            // m_inputHandler.handleMessage(buffer, m_ports.get(fd));
-            m_inputHandler.handleMessage(buffer, port);
+            m_inputHandler.handleMessage(buffer, m_ports.get(fd));
+            // m_inputHandler.handleMessage(buffer, port);
         }
 
         public void handleReadyForRead(FSocketConn conn) throws IOException {
-            // if (!m_ports.containsKey(conn.getFd())) {
-            //     networkLog.error("Received ready for read for unknown port " + conn.getFd() + " registered ports: " + m_ports.entrySet());
-            //     throw new IOException("Received ready for read for unknown port " + conn.getFd());
-            // }
+            if (!m_ports.containsKey(conn.getFd())) {
+                networkLog.error("Received ready for read for unknown port " + conn.getFd() + " registered ports: " + m_ports.entrySet());
+                throw new IOException("Received ready for read for unknown port " + conn.getFd());
+            }
             // Read an int first
             int msgLen = conn.readInt();
-            System.out.println("About to read " + msgLen + " bytes from fd " + conn.getFd());
+            // System.out.println("About to read " + msgLen + " bytes from fd " + conn.getFd());
             ByteBuffer buffer = conn.read(msgLen);
             System.out.println("Got " + buffer.remaining() + " bytes from fd " + conn.getFd() + " with capacity " + buffer.capacity());
             
-            FStackPort port = new FStackPort(conn.getFd(), m_selector);
+            // FStackPort port = new FStackPort(conn);
+            FStackPort port = m_ports.get(conn.getFd());
             m_inputHandler.handleMessage(buffer, port);
         }
     }
@@ -101,7 +102,7 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
     public Connection registerChannel(int sock_fd, InputHandler handler) throws IOException {
         m_numPorts.incrementAndGet();
         m_selector.register(sock_fd);
-        FStackPort port = new FStackPort(sock_fd, m_selector);
+        FStackPort port = new FStackPort(new FSocketConn(sock_fd), handler);
         m_ports.put(sock_fd, port);
         return (Connection) port;
     }

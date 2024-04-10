@@ -1,5 +1,6 @@
 package org.voltcore.network;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
@@ -13,14 +14,18 @@ import org.voltcore.network.NIOWriteStreamBase;
 import org.voltcore.network.WriteStream;
 
 public class FStackPort implements Connection {
-    private final FSelect m_fselect;
-    private final int m_fd;
+    private final FSocketConn m_conn;
+    private final InputHandler m_inputHandler;
     private final FStackNIOWriteStream m_writeStream;
 
-    public FStackPort(int fd, FSelect fselect) {
-        m_fselect = fselect;
-        m_fd = fd;
+    public FStackPort(FSocketConn conn, InputHandler inputHandler) {
+        m_conn = conn;
+        m_inputHandler = inputHandler;
         m_writeStream = new FStackNIOWriteStream(this);
+    }
+
+    public FStackPort(int fd, InputHandler inputHandler) {
+        this(new FSocketConn(fd), inputHandler);
     }
 
     @Override
@@ -33,10 +38,10 @@ public class FStackPort implements Connection {
         return m_writeStream;
     }
 
-    private void drainWriteStream() {
+    private void drainWriteStream() throws IOException {
         while (!m_writeStream.isEmpty()) {
             ByteBuffer buffer = m_writeStream.dequeue();
-            m_fselect.write(m_fd, buffer, buffer.remaining());
+            m_conn.write(buffer);
         }
     }
 
@@ -62,7 +67,12 @@ public class FStackPort implements Connection {
 
     @Override
     public void enableWriteSelection() {
-        drainWriteStream();
+        try {
+            drainWriteStream();
+        } catch (IOException e) {
+            System.err.println("Failed to drain write stream");
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -72,7 +82,8 @@ public class FStackPort implements Connection {
 
     @Override
     public String getHostnameOrIP() {
-        throw new UnsupportedOperationException();
+        // throw new UnsupportedOperationException();
+        return "localhost"; // TODO: fix this
     }
 
     @Override
@@ -92,12 +103,12 @@ public class FStackPort implements Connection {
 
     @Override
     public long connectionId() {
-        throw new UnsupportedOperationException();
+        return m_inputHandler.connectionId();
     }
 
     @Override
     public long connectionId(long clientHandle) {
-        throw new UnsupportedOperationException();
+        return connectionId();
     }
 
     @Override

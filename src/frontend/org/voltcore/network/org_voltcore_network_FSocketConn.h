@@ -28,7 +28,7 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_freadInt
  * Method:    write
  * Signature: (ILjava/nio/ByteBuffer;I)V
  */
-JNIEXPORT void JNICALL Java_org_voltcore_network_FSocketConn_write
+JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_write
   (JNIEnv *, jobject, jint, jobject, jint);
 
 /*

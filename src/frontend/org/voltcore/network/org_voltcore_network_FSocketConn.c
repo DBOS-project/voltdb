@@ -32,8 +32,8 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_freadInt
   (JNIEnv *env, jobject thisObject, jint fd) {
     int buffer;
     int n = read(fd, &buffer, sizeof(int));
-    printf("read %d from fd %d\n", buffer, fd);
-    printf("The ntohl value is %d\n", ntohl(buffer));
+    // printf("read %d from fd %d\n", buffer, fd);
+    // printf("The ntohl value is %d\n", ntohl(buffer));
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return -1;
@@ -48,7 +48,7 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_freadInt
   }
 
 
-JNIEXPORT void JNICALL Java_org_voltcore_network_FSocketConn_write
+JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_write
   (JNIEnv *env, jobject thisObject, jint fd, jobject byteBuf, jint len) {
     printf("FSocketConn write: fd=%d, len=%d\n", fd, len);
     int sentlen = 0;
@@ -58,8 +58,8 @@ JNIEXPORT void JNICALL Java_org_voltcore_network_FSocketConn_write
     while (sentlen < len) {
         written = write(fd, data + sentlen, len - sentlen);
         if (written < 0) {
-              perror("write failed");
-            break;
+              perror("FSOcketConn: write failed");
+              return -1;
         }
         sentlen += written;
     }
