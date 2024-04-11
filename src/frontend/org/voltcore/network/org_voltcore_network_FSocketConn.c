@@ -17,13 +17,13 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_fread
     int n = read(fd, buffer, len);
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            return NULL;
+            return -1;
         }
         perror("read failed");
         exit(1);
     }
     if (n == 0) {
-        return NULL;
+        return 0;
     }
     return n;
   }
@@ -40,7 +40,7 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_freadInt
         exit(1);
     }
     if (n == 0) {
-        return -1;
+        return 0;
     }
     return ntohl(buffer);
   }

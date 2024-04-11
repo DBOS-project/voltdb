@@ -48,17 +48,17 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocket_accept
     struct sockaddr_in client_addr;
     socklen_t addrlen = sizeof(client_addr);
     while (1) {
-		int client_sock = accept(sock_fd, (struct sockaddr *)&client_addr, &addrlen);
-		// Error check
-		if (client_sock < 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				// Resource temporarily unavailable, retry
-				continue;
-			}
-			perror("accept failed");
-			exit(1);
-		}
-		return client_sock;
+      int client_sock = accept(sock_fd, (struct sockaddr *)&client_addr, &addrlen);
+      // Error check
+      if (client_sock < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+          // Resource temporarily unavailable, retry
+          continue;
+        }
+        perror("accept failed");
+        exit(1);
+      }
+      return client_sock;
 	}
   }
 

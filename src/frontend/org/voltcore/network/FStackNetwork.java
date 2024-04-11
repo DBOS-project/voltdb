@@ -67,6 +67,12 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
             }
             // Read an int first
             int msgLen = conn.readInt();
+            if (msgLen == 0) {
+                // The client closed connection
+                conn.close();
+                return;
+            } else if (msgLen == -1)
+                return;
             ByteBuffer buffer = conn.read(msgLen);
             // System.out.println("Got " + buffer.remaining() + " bytes from fd " + conn.getFd() + " with capacity " + buffer.capacity());
             

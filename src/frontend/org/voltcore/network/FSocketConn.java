@@ -24,7 +24,13 @@ public class FSocketConn {
         ByteBuffer buffer = ByteBuffer.allocateDirect(len);
         int readLen = fread(fd, buffer, len);
         // System.out.println("Received a buffer of length " + buffer.capacity() + " with limit " + buffer.limit() + " and current position " + buffer.position() + " from fd " + fd + " to read");
-        return buffer;
+        if (readLen < 0) {
+            throw new IOException("Failed to read from fd " + fd);
+        } else if (readLen == 0) {
+            return null;
+        } else {
+            return buffer;
+        }
     }
 
     public ByteBuffer read() throws IOException {
@@ -32,7 +38,11 @@ public class FSocketConn {
     }
 
     public int readInt() throws IOException {
-        return freadInt(fd);
+        ByteBuffer buf = read(4);
+        if (buf == null) {
+            return 0;
+        }
+        return buf.getInt();
     }
 
     private native int fread(int fd, ByteBuffer buf, int len) throws IOException;
