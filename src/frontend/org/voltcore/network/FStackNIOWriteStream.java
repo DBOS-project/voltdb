@@ -36,7 +36,13 @@ public class FStackNIOWriteStream extends NIOWriteStreamBase implements WriteStr
             return;
         }
         try {
-            ByteBuffer buffer = ByteBuffer.allocateDirect(ds.getSerializedSize());
+            int size = ds.getSerializedSize();
+            if (size < 0) {
+                ds.cancel();
+                System.err.println("Error on serialization: size < 0");
+                return;
+            }
+            ByteBuffer buffer = ByteBuffer.allocateDirect(size);
             ds.serialize(buffer);
             buffer.flip();
             enqueue(buffer);
