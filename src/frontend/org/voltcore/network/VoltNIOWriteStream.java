@@ -324,6 +324,7 @@ public class VoltNIOWriteStream extends NIOWriteStreamBase implements WriteStrea
      */
     @Override
     int drainTo (final GatheringByteChannel channel) throws IOException {
+        // System.out.println("drainTo" + channel.toString());
         int bytesWritten = 0;
         try {
             long rc = 0;

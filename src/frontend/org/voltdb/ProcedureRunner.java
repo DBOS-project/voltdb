@@ -597,7 +597,9 @@ public class ProcedureRunner {
                         }
                     } else {
                         // System.out.println("--- Normal procedure call");
+
                         try {
+                            TimeTracker.add(TimeTracker.TrackingEvent.StartHandleSPRequest, System.nanoTime());
                             Object rawResult = m_procMethod.invoke(m_procedure, paramList);
                             if (returnResults) {
                                 results = ParameterConverter.getResultsFromRawResults(m_procedureName, rawResult);
@@ -732,7 +734,7 @@ public class ProcedureRunner {
 
             m_site.completeProcedure();
         }
-
+        TimeTracker.add(TimeTracker.TrackingEvent.FinishHandleSPRequest, System.nanoTime());
         return retval;
     }
 

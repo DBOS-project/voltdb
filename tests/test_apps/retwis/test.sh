@@ -6,7 +6,7 @@
 # fi
 
 if [ -z "$PERF_PATH" ]; then
-    PERF_PATH="/lib/linux-tools-5.15.0-89/perf"
+    PERF_PATH="/lib/linux-tools-5.15.0-92/perf"
 fi
 
 if [ -z "$APP_PATH" ]; then
@@ -40,6 +40,7 @@ function stop() {
     then
         # Kill all running perf processes
         sudo -A pkill -x perf
+        sleep 0.5
         /home/zxjcarrot/Workspace/networking/perf-map-agent/bin/create-java-perf-map.sh $volt_pid
         PERF_FILE=$APP_PATH/perf-$volt_pid.data
         SCRIPT_OUT_FILE=$APP_PATH/$volt_pid.perf

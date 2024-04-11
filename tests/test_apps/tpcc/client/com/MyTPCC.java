@@ -37,20 +37,24 @@ import org.voltdb.client.exampleutils.ClientConnection;
 import org.voltdb.client.exampleutils.ClientConnectionPool;
 
 import java.io.IOException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class MyTPCC
-    implements TPCCSimulation.ProcCaller
+    implements TPCCSimulation.ProcCaller, Runnable
 {
     private ClientConnection m_clientCon;
     final TPCCSimulation tpccSim;
     private final ScaleParameters scaleParams;
-
+    private int m_client_id;
     private AppHelper m_helpah;
-
+    private CountDownLatch m_latch;
     private String procNames[];
-    private AtomicLong procCounts[];
+    private static AtomicLong procCounts[];
 
     public static long minExecutionMilliseconds = 999999999l;
     public static long maxExecutionMilliseconds = -1l;
@@ -60,12 +64,29 @@ public class MyTPCC
     public static long[] latencyCounter = new long[] {0,0,0,0,0,0,0,0,0};
     public static boolean checkLatency = false;
     public static final ReentrantLock counterLock = new ReentrantLock();
+    public static boolean async = false;
 
     public static void main(String args[])
     {
-        (new MyTPCC(args)).run();
+        int threads = 256;
+        ExecutorService service = Executors.newFixedThreadPool(threads);
+        MyTPCC[] tpcc_threads = new MyTPCC[threads];
+        CountDownLatch latch = new CountDownLatch(1);
+        for (int i = 0; i < threads; i++) {
+            tpcc_threads[i] = new MyTPCC(latch, i, args);
+        }
+        for (int i = 0; i < threads; i++) {
+            service.execute(tpcc_threads[i]);
+        }
+        try {
+            latch.await();    
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        System.out.println("main finished");
+        System.exit(0);
     }
-
+    public static AtomicInteger numSPCalls = new AtomicInteger();
     public void run()
     {
         long transactions_per_second = m_helpah.longValue("ratelimit");
@@ -88,18 +109,15 @@ public class MyTPCC
         long endTime = startTime + (1000l * testDurationSecs);
         long currentTime = startTime;
         long lastFeedbackTime = startTime;
-        long numSPCalls = 0;
         long startRecordingLatency = startTime + lag_latency_millis;
 
         while (endTime > currentTime)
         {
-            numSPCalls++;
+            numSPCalls.getAndIncrement();
 
             try
             {
                 tpccSim.doOne();
-                // int trans = tpccSim.doOne();
-                // System.out.println("^ DOING TRANSACTION " + trans);
             }
             catch (IOException e)
             {}
@@ -142,17 +160,19 @@ public class MyTPCC
                 {
                     percentComplete = 100.0;
                 }
-
+                if (m_client_id != 0) {
+                    continue;
+                }
                 counterLock.lock();
                 try
                 {
-                    thisOutstanding = numSPCalls - totExecutions;
+                    thisOutstanding = numSPCalls.get() - totExecutions;
 
                     double avgLatency = (double) totExecutionMilliseconds / (double) totExecutionsLatency;
-                    double tps = numSPCalls / elapsedTimeSec2;
+                    double tps = numSPCalls.get() / elapsedTimeSec2;
 
                     System.out.printf("%.3f%% Complete | Allowing %,d SP calls/sec: made %,d SP calls at %,.2f SP/sec | outstanding = %d (%d) | min = %d | max = %d | avg = %.2f\n",
-                            percentComplete, (transactions_per_milli * 1000l), numSPCalls, tps, thisOutstanding, (thisOutstanding - lastOutstanding), minExecutionMilliseconds, maxExecutionMilliseconds, avgLatency);
+                            percentComplete, (transactions_per_milli * 1000l), numSPCalls.get(), tps, thisOutstanding, (thisOutstanding - lastOutstanding), minExecutionMilliseconds, maxExecutionMilliseconds, avgLatency);
                     for (int i = 0; i < procNames.length; i++)
                     {
                         System.out.printf("%16s: %10d total,", procNames[i], procCounts[i].intValue());
@@ -166,9 +186,6 @@ public class MyTPCC
                     counterLock.unlock();
                 }
             }
-
-            // END FAST
-            // break;
         }
 
         try
@@ -180,14 +197,17 @@ public class MyTPCC
             e.printStackTrace();
             System.exit(-1);
         }
+        if (m_client_id != 0) {
+            return;
+        }
 
         long elapsedTimeMillis = System.currentTimeMillis() - startTime;
         float elapsedTimeSec = elapsedTimeMillis / 1000F;
 
         System.out.println("============================== BENCHMARK RESULTS ==============================");
         System.out.printf("Time: %d ms\n", elapsedTimeMillis);
-        System.out.printf("Total transactions: %d\n", numSPCalls);
-        System.out.printf("Transactions per second: %.2f\n", (float)numSPCalls / elapsedTimeSec);
+        System.out.printf("Total transactions: %d\n", numSPCalls.get());
+        System.out.printf("Transactions per second: %.2f\n", (float)numSPCalls.get() / elapsedTimeSec);
         for (int i = 0; i < procNames.length; i++)
         {
             System.out.printf("%23s: %10d total %12.2f txn/s %12.2f txn/m\n",
@@ -201,8 +221,8 @@ public class MyTPCC
         System.out.println("*************************************************************************");
 
         System.out.printf(" - Ran for %,.2f seconds\n", elapsedTimeSec);
-        System.out.printf(" - Performed %,d Stored Procedure calls\n", numSPCalls);
-        System.out.printf(" - At %,.2f calls per second\n", numSPCalls / elapsedTimeSec);
+        System.out.printf(" - Performed %d Stored Procedure calls\n", numSPCalls.get());
+        System.out.printf(" - At %,.2f calls per second\n", numSPCalls.get() / elapsedTimeSec);
         System.out.printf(" - Average Latency = %.2f ms\n", ((double) totExecutionMilliseconds / (double) totExecutionsLatency));
         System.out.printf(" -   Latency   0ms -  25ms = %,d\n", latencyCounter[0]);
         System.out.printf(" -   Latency  25ms -  50ms = %,d\n", latencyCounter[1]);
@@ -227,12 +247,15 @@ public class MyTPCC
         } catch (IOException e) {
             System.err.println("Unable to save statistics file: " + e.getMessage());
         }
-
+        System.out.println("MyTPCC run ended");
         m_clientCon.close();
+        m_latch.countDown();
     }
 
-    public MyTPCC(String args[])
+    public MyTPCC(CountDownLatch latch, int client_id, String args[])
     {
+        m_latch = latch;
+        m_client_id = client_id;
         m_helpah = new AppHelper(MyTPCC.class.getCanonicalName());
         m_helpah.add("duration", "run_duration_in_seconds", "Benchmark duration, in seconds.", 180);
         m_helpah.add("warehouses", "number_of_warehouses", "Number of warehouses", 256);
@@ -242,8 +265,10 @@ public class MyTPCC
         m_helpah.add("ratelimit", "rate_limit", "Rate limit to start from (tps)", 200000);
         m_helpah.add("displayinterval", "display_interval_in_seconds", "Interval for performance feedback, in seconds.", 10);
         m_helpah.add("servers", "comma_separated_server_list", "List of VoltDB servers to connect to.", "localhost");
+        m_helpah.add("async", "async", "async", "false");
         m_helpah.setArguments(args);
 
+        async = m_helpah.booleanValue("async");
         // default values
         int warehouses = m_helpah.intValue("warehouses");
         double scalefactor = m_helpah.doubleValue("scalefactor");
@@ -256,7 +281,7 @@ public class MyTPCC
         {
             try
             {
-                m_clientCon = ClientConnectionPool.get(servers, 21212);
+                m_clientCon = ClientConnectionPool.get(servers, 21212, "", "", false, m_client_id + 50);
                 break;
             }
             catch (Exception e)
@@ -269,21 +294,26 @@ public class MyTPCC
         }
         System.out.println("Connected.  Starting benchmark.");
 
-        try
-        {
-            try {
-                m_clientCon.execute("@AdHoc", "INSERT INTO LOADER_PERMIT VALUES ( 42 );");
-                (new MyLoader(args, m_clientCon)).run();
-                m_clientCon.execute("@AdHoc", "INSERT INTO RUN_PERMIT VALUES ( 42 );");
-            } catch (ProcCallException e) {
-                while ((int)(m_clientCon.execute("@AdHoc", "SELECT COUNT(*) FROM RUN_PERMIT").getResults()[0].fetchRow(0).getLong(0)) < 1)
-                    ;
+        if (client_id == 0) {
+            long start = System.nanoTime();
+            try
+            {
+                try {
+                    m_clientCon.execute("@AdHoc", "INSERT INTO LOADER_PERMIT VALUES ( 42 );");
+                    (new MyLoader(args, m_clientCon)).run();
+                    m_clientCon.execute("@AdHoc", "INSERT INTO RUN_PERMIT VALUES ( 42 );");
+                } catch (ProcCallException e) {
+                    while ((int)(m_clientCon.execute("@AdHoc", "SELECT COUNT(*) FROM RUN_PERMIT").getResults()[0].fetchRow(0).getLong(0)) < 1)
+                        ;
+                }
             }
-        }
-        catch (Exception e)
-        {
-            e.printStackTrace();
-            System.exit(-1);
+            catch (Exception e)
+            {
+                e.printStackTrace();
+                System.exit(-1);
+            }
+            long end = System.nanoTime();
+            System.out.println("loading took " + (end - start ) / 1000000.0 + " msecs");
         }
 
         // makeForRun requires the value cLast from the load generator in
@@ -312,10 +342,10 @@ public class MyTPCC
             if (status && clientResponse.getResults()[0].getRowCount()
                     != scaleParams.districtsPerWarehouse)
             {
-                System.err.println(
-                        "Only delivered from "
-                        + clientResponse.getResults()[0].getRowCount()
-                        + " districts.");
+                // System.err.println(
+                //         "Only delivered from "
+                //         + clientResponse.getResults()[0].getRowCount()
+                //         + " districts.");
             }
             procCounts[TPCCSimulation.Transaction.DELIVERY.ordinal()].incrementAndGet();
 
@@ -362,10 +392,17 @@ public class MyTPCC
     public void callDelivery(short w_id, int carrier, TimestampType date)
         throws IOException
     {
+        ProcedureCallback cb = new DeliveryCallback();
         try
         {
-            m_clientCon.executeAsync(new DeliveryCallback(),
+            if (async) {
+                m_clientCon.executeAsync(cb,
                                      Constants.DELIVERY, w_id, carrier, date);
+            } else {
+                ClientResponse resp = m_clientCon.execute(
+                                     Constants.DELIVERY, w_id, carrier, date);
+                cb.clientCallback(resp);
+            }
         }
         catch (Exception e)
         {
@@ -439,8 +476,13 @@ public class MyTPCC
     {
         try
         {
-            m_clientCon.executeAsync(new NewOrderCallback(rollback),
-                        Constants.NEWORDER, paramlist);
+            ProcedureCallback cb = new NewOrderCallback(rollback);
+            if (async) {
+                m_clientCon.executeAsync(cb, Constants.NEWORDER, paramlist);
+            } else {
+                ClientResponse resp = m_clientCon.execute(Constants.NEWORDER, paramlist);
+                cb.clientCallback(resp);
+            }
         }
         catch (Exception e)
         {
@@ -535,8 +577,12 @@ public class MyTPCC
     {
         try
         {
-            m_clientCon.executeAsync(new VerifyBasicCallback(TPCCSimulation.Transaction.ORDER_STATUS,
-                                                                                 proc), proc, paramlist);
+            ProcedureCallback cb = new VerifyBasicCallback(TPCCSimulation.Transaction.ORDER_STATUS, proc);
+            if (async) {
+                m_clientCon.executeAsync(cb, proc, paramlist);
+            } else {
+                cb.clientCallback(m_clientCon.execute(proc, paramlist));
+            }
         }
         catch (Exception e)
         {
@@ -552,22 +598,41 @@ public class MyTPCC
     {
         try
         {
-            if (scaleParams.warehouses > 1)
-            {
-                m_clientCon.executeAsync(new VerifyBasicCallback(), Constants.PAYMENT_BY_ID_W,
-                                         w_id, d_id, h_amount, c_w_id, c_d_id, c_id, now);
-                m_clientCon.executeAsync(new VerifyBasicCallback(TPCCSimulation.Transaction.PAYMENT,
-                                                                 Constants.PAYMENT_BY_ID_C),
-                                                                 Constants.PAYMENT_BY_ID_C,
-                                                                 w_id, d_id, h_amount, c_w_id, c_d_id, c_id, now);
+            if (async) {
+                if (scaleParams.warehouses > 1)
+                {
+                    m_clientCon.executeAsync(new VerifyBasicCallback(), Constants.PAYMENT_BY_ID_W,
+                                            w_id, d_id, h_amount, c_w_id, c_d_id, c_id, now);
+                    m_clientCon.executeAsync(new VerifyBasicCallback(TPCCSimulation.Transaction.PAYMENT,
+                                                                    Constants.PAYMENT_BY_ID_C),
+                                                                    Constants.PAYMENT_BY_ID_C,
+                                                                    w_id, d_id, h_amount, c_w_id, c_d_id, c_id, now);
+                }
+                else
+                {
+                    m_clientCon.executeAsync(new VerifyBasicCallback(TPCCSimulation.Transaction.PAYMENT,
+                                                                    Constants.PAYMENT_BY_ID),
+                                                                    Constants.PAYMENT_BY_ID,
+                                                                    w_id, d_id, h_amount, c_w_id, c_d_id, c_id, now);
+                }
+            } else {
+                if (scaleParams.warehouses > 1)
+                {
+                    new VerifyBasicCallback().clientCallback(m_clientCon.execute(Constants.PAYMENT_BY_ID_W,
+                                        w_id, d_id, h_amount, c_w_id, c_d_id, c_id, now));
+                    new VerifyBasicCallback(TPCCSimulation.Transaction.PAYMENT,
+                                        Constants.PAYMENT_BY_ID_C).clientCallback(m_clientCon.execute(
+                                                                Constants.PAYMENT_BY_ID_C,
+                                                                w_id, d_id, h_amount, c_w_id, c_d_id, c_id, now));
+                }
+                else
+                {
+                    new VerifyBasicCallback(TPCCSimulation.Transaction.PAYMENT,
+                                        Constants.PAYMENT_BY_ID).clientCallback(m_clientCon.execute(Constants.PAYMENT_BY_ID,
+                                                                w_id, d_id, h_amount, c_w_id, c_d_id, c_id, now));
+                }
             }
-            else
-            {
-                m_clientCon.executeAsync(new VerifyBasicCallback(TPCCSimulation.Transaction.PAYMENT,
-                                                                 Constants.PAYMENT_BY_ID),
-                                                                 Constants.PAYMENT_BY_ID,
-                                                                 w_id, d_id, h_amount, c_w_id, c_d_id, c_id, now);
-            }
+            
         }
         catch (Exception e)
         {
@@ -581,21 +646,39 @@ public class MyTPCC
     {
         try
         {
-            if ((scaleParams.warehouses > 1) || (c_last != null))
-            {
-                m_clientCon.executeAsync(new VerifyBasicCallback(), Constants.PAYMENT_BY_NAME_W,
-                                         w_id, d_id, h_amount, c_w_id, c_d_id, c_last, now);
-                m_clientCon.executeAsync(new VerifyBasicCallback(TPCCSimulation.Transaction.PAYMENT,
-                                                                 Constants.PAYMENT_BY_NAME_C),
-                                                                 Constants.PAYMENT_BY_NAME_C, w_id, d_id, h_amount,
-                                                                 c_w_id, c_d_id, c_last, now);
-            }
-            else
-            {
-                m_clientCon.executeAsync(new VerifyBasicCallback(TPCCSimulation.Transaction.PAYMENT,
-                                                                 Constants.PAYMENT_BY_ID),
-                                                                 Constants.PAYMENT_BY_ID, w_id,
-                                                                 d_id, h_amount, c_w_id, c_d_id, c_last, now);
+            if (async) {
+                if ((scaleParams.warehouses > 1) || (c_last != null))
+                {
+                    m_clientCon.executeAsync(new VerifyBasicCallback(), Constants.PAYMENT_BY_NAME_W,
+                                            w_id, d_id, h_amount, c_w_id, c_d_id, c_last, now);
+                    m_clientCon.executeAsync(new VerifyBasicCallback(TPCCSimulation.Transaction.PAYMENT,
+                                                                    Constants.PAYMENT_BY_NAME_C),
+                                                                    Constants.PAYMENT_BY_NAME_C, w_id, d_id, h_amount,
+                                                                    c_w_id, c_d_id, c_last, now);
+                }
+                else
+                {
+                    m_clientCon.executeAsync(new VerifyBasicCallback(TPCCSimulation.Transaction.PAYMENT,
+                                                                    Constants.PAYMENT_BY_ID),
+                                                                    Constants.PAYMENT_BY_ID, w_id,
+                                                                    d_id, h_amount, c_w_id, c_d_id, c_last, now);
+                }
+            } else {
+                if ((scaleParams.warehouses > 1) || (c_last != null))
+                {
+                    new VerifyBasicCallback().clientCallback(m_clientCon.execute(Constants.PAYMENT_BY_NAME_W,
+                                        w_id, d_id, h_amount, c_w_id, c_d_id, c_last, now));
+                    new VerifyBasicCallback(TPCCSimulation.Transaction.PAYMENT,
+                                        Constants.PAYMENT_BY_NAME_C).clientCallback(m_clientCon.execute(
+                                                                Constants.PAYMENT_BY_NAME_C, w_id, d_id, h_amount,
+                                                                c_w_id, c_d_id, c_last, now));
+                }
+                else
+                {
+                    new VerifyBasicCallback(TPCCSimulation.Transaction.PAYMENT,
+                                        Constants.PAYMENT_BY_ID).clientCallback(m_clientCon.execute(Constants.PAYMENT_BY_ID,
+                                                                w_id, d_id, h_amount, c_w_id, c_d_id, c_last, now));
+                }
             }
         }
         catch (Exception e)
@@ -662,7 +745,11 @@ public class MyTPCC
         final StockLevelCallback cb = new StockLevelCallback();
         try
         {
-            m_clientCon.executeAsync(cb, Constants.STOCK_LEVEL, w_id, d_id, threshold);
+            if (async) {
+                m_clientCon.executeAsync(cb, Constants.STOCK_LEVEL, w_id, d_id, threshold);
+            } else {
+                cb.clientCallback(m_clientCon.execute(Constants.STOCK_LEVEL, w_id, d_id, threshold));
+            }
         }
         catch (Exception e)
         {
@@ -726,9 +813,16 @@ public class MyTPCC
     {
         try
         {
-            m_clientCon.executeAsync(new ResetWarehouseCallback(),
-                                     Constants.RESET_WAREHOUSE, w_id, districtsPerWarehouse,
-                                     customersPerDistrict, newOrdersPerDistrict);
+            ProcedureCallback cb = new ResetWarehouseCallback();
+            if (async) {
+                m_clientCon.executeAsync(new ResetWarehouseCallback(),
+                    Constants.RESET_WAREHOUSE, w_id, districtsPerWarehouse,
+                    customersPerDistrict, newOrdersPerDistrict);
+            } else {
+                cb.clientCallback(m_clientCon.execute(
+                    Constants.RESET_WAREHOUSE, w_id, districtsPerWarehouse,
+                    customersPerDistrict, newOrdersPerDistrict));
+            }
         }
         catch (Exception e)
         {

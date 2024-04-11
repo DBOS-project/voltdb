@@ -150,11 +150,11 @@ public class ClientStats {
         return retval;
     }
 
-    static ClientStats merge(Iterable<ClientStats> statsIterable) {
+    public static ClientStats merge(Iterable<ClientStats> statsIterable) {
         return merge(statsIterable.iterator());
     }
 
-    static ClientStats merge(Iterator<ClientStats> statsIter) {
+    public static ClientStats merge(Iterator<ClientStats> statsIter) {
         // empty set
         if (!statsIter.hasNext()) {
             return new ClientStats();

@@ -970,7 +970,7 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         final MinimumRatioMaintainer mrm = new MinimumRatioMaintainer(m_taskLogReplayRatio);
         int count = 0;
         try {
-            System.out.printf("Starting while loop in site\n");
+            // System.out.printf("Starting while loop in site\n");
             while (m_shouldContinue) {
                 if (m_runningState.isRunning()) {
                     // Normal operation blocks the site thread on the sitetasker queue.
@@ -979,7 +979,7 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
                         stagedTasks.offer(m_pendingSiteTasks.take());
                     }
                     SiteTasker task = stagedTasks.poll();
-                    System.out.printf("Got a new task: %s\n", task);
+                    // System.out.printf("Got a new task: %s\n", task);
                     //SiteTasker task = m_pendingSiteTasks.take();
                     if (task instanceof TransactionTask) {
                         m_currentTxnId = ((TransactionTask) task).getTxnId();

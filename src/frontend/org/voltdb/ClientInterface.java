@@ -26,6 +26,7 @@ import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -848,6 +849,10 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
 
         @Override
         public void started(final Connection c) {
+            StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
+            for (StackTraceElement stackTraceElement : stackTraceElements) {
+                System.out.println(stackTraceElement);
+            }
             m_connection = c;
             m_cihm.put(c.connectionId(),
                     new ClientInterfaceHandleManager(m_isAdmin, c, null, m_acg.get()));
@@ -1547,6 +1552,15 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
      */
     final ClientResponseImpl handleRead(ByteBuffer buf, ClientInputHandler handler, Connection ccxn) {
         StoredProcedureInvocation task = new StoredProcedureInvocation();
+        // Copy buffer
+        // ByteBuffer bufCopy = ByteBuffer.allocate(buf.remaining());
+        // bufCopy.put(buf);
+        // bufCopy.flip();
+        // System.out.println("Buf: " + Charset.defaultCharset().decode(bufCopy).toString());
+        // print capacity, limit and position of buffer
+        System.out.println("Received a buffer of length " + buf.capacity() + " with limit " + buf.limit() + " and current position " + buf.position());
+        // System.out.println("Buf: " + Charset.defaultCharset().decode(buf).toString());
+        // buf.position(0);
         try {
             task.initFromBuffer(buf);
         } catch (Exception ex) {
@@ -1561,8 +1575,8 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             authLog.info(errorMessage);
             return errorResponse(ccxn, task.clientHandle, ClientResponse.UNEXPECTED_FAILURE, errorMessage, null, false);
         }
+        // System.out.println("ClientInterface.handleRead: " + task.getProcName());
         if (task.getProcName().equals("GetPosts")) {
-            // System.out.println("ClientInterface.handleRead: " + task.getProcName() + " " + task.getParams());
             TimeTracker.add(TimeTracker.TrackingEvent.StartHandleSPRequest, System.nanoTime());
         }
         final ClientResponseImpl errResp = m_dispatcher.dispatch(task, handler, ccxn, user, null, false);

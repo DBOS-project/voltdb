@@ -159,7 +159,7 @@ public class SpProcedureTask extends ProcedureTask
         // does not improve latencies. See ENG-21040.
         m_initiator.deliver(response);
         // System.out.println("SpProcedureTask.run() delivered response: " + response);
-        TimeTracker.add(TimeTracker.TrackingEvent.FinishHandleSPRequest, System.nanoTime());
+        // TimeTracker.add(TimeTracker.TrackingEvent.FinishHandleSPRequest, System.nanoTime());
         if (EXEC_TRACE_ENABLED) {
             execLog.trace("ExecutionSite sending completed workunit to dtxn.");
         }

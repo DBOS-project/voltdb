@@ -133,6 +133,10 @@ public class ClientConnection implements Closeable
         ClientConnectionPool.dispose(this);
     }
 
+    public ClientStatsContext createClientStatsContext() {
+        return this.Client.createStatsContext();
+    }
+
     /**
      * Executes a procedure synchronously and returns the result to the caller.  The method internally tracks execution performance.
      *

@@ -543,8 +543,10 @@ class Distributer {
             // Check actually connected before enqueing. This may flag backpressure
             // in the connection, based on the size of the queue, but the message
             // is still queued. We'll see the backpressure on the next request.
+            // System.out.println("About to enqueue to writestream");
             if (m_isConnected) {
                 m_connection.writeStream().enqueue(buffer);
+                // System.out.println("Wrote to writestream");
                 return;
             }
 

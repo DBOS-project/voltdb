@@ -113,19 +113,19 @@ function warmup() {
 
 function remote_init() {
     print_time "Performing remote init"
-    res=$(curl -X POST "http://18.26.2.124:3001/?init_volt=1&init_db=1&record_perf=1&app=retwis&id=$1&num_cores=$3&warmup_time=$2" -s)
+    res=$(curl -X POST "http://localhost:3001/?init_volt=1&init_db=1&record_perf=1&app=retwis&id=$1&num_cores=$3&warmup_time=$2" -s)
     print_time "Remote returned- $res"
 }
 
 function stop_perf() {
     print_time "Stopping perf on remote"
-    res=$(curl -X POST "http://18.26.2.124:3001/stop-perf?id=$1" -s)
+    res=$(curl -X POST "http://localhost:3001/stop-perf?id=$1" -s)
     print_time "Remote returned- $res"
 }
 
 function start_sp() {
     cd /home/zxjcarrot/Workspace/networking/voltdb/
-    sleep 1
+    # sleep 1
     # Spin up MP Site SP process
     nohup voltdb start --procedureprocess --vmid=0 --vmisolation=TCP --vmpvaccel --vmisolationtcpport=3030 --vmisolationtcphost=localhost  > log_sp.txt 2>&1 &
     sp_pid=$!
@@ -143,10 +143,10 @@ function start_sp() {
 
 function remote_bench() {
     id=$RANDOM
-    warmup_time=180
+    warmup_time=60
     num_cores=1
     jars
-    start_sp $num_cores &
+    # start_sp $num_cores &
     remote_init $id $warmup_time $num_cores
     print_time "Sleeping for $warmup_time s"
     sleep $warmup_time

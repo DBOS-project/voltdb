@@ -498,8 +498,10 @@ public final class ClientImpl implements Client {
         // and nor do they support non-blocking operation
         boolean isBlessed = m_blessedThreadIds.contains(Thread.currentThread().getId());
 
+        // System.out.printf("About to queue %s\n", invocation.getProcName());
         // Non-blocking mode
         if (nonblockingAsync && !isBlessed) {
+            // System.out.println("Non-blocking or not blesses");
             boolean queued = m_distributer.queueNonblocking(invocation, callback, startNanos, clientTimeoutNanos);
             if (!queued && m_asyncBlockingTimeout > 0) {
 
@@ -519,7 +521,7 @@ public final class ClientImpl implements Client {
             }
             return queued;
         }
-
+        // System.out.println("Blocking");
         // Blocking mode
         while (!m_distributer.queue(invocation, callback, isBlessed, startNanos, clientTimeoutNanos)) {
 

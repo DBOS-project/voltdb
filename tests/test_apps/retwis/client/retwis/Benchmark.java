@@ -26,7 +26,7 @@ public class Benchmark {
     private ClientConnection m_clientCon;
     private boolean async;
     private int numClients;
-    private static int totalSPCalls = 1_000_000;
+    private static int totalSPCalls = 1_000_000_00;
     public static final ReentrantLock counterLock = new ReentrantLock();
     public static long totExecutions = 0;
     public static long totExecutionNanoseconds = 0;
@@ -42,6 +42,8 @@ public class Benchmark {
         this.numClients = Integer.parseInt(args.get("c").get(0));
         Benchmark.totalSPCalls = Integer.parseInt(args.get("n").get(0));
         System.out.printf("Running %d clients\n", this.numClients);
+
+        System.out.printf("async %b, totalSPCalls %d \n", this.async, totalSPCalls);
         
         this.m_clientCon = Benchmark.getClient(this.servers);
         this.simulator = new RetwisSimulation(this.m_clientCon, this.async);
