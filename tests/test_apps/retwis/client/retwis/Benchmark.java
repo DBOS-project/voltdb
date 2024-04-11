@@ -76,6 +76,8 @@ public class Benchmark {
         System.out.println("Initializing data in db");
         // Insert ~30,000 users, ~850,000 posts, ~120,000 follows
         for (int i = 0; i < 1_000_000; i++) {
+            if (i % 100_000 == 0 && i != 0)
+                System.out.printf("Iteration %d\n", i);
             try {
                 this.simulator.doInsertOne(new RetwisCallback(true));
             }
