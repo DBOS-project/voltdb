@@ -6,7 +6,7 @@ import org.voltdb.VoltProcedure.VoltAbortException;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltVMProcedure;
 
-public class GetFollowers extends VoltVMProcedure {
+public class GetFollowers extends VoltProcedure {
     public final SQLStmt getFollowers =
         new SQLStmt("SELECT follower_u_id " + 
                     "FROM RetwisFollowers " + 

@@ -6,7 +6,7 @@ import org.voltdb.VoltProcedure.VoltAbortException;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltVMProcedure;
 
-public class GetTimeline extends VoltVMProcedure {
+public class GetTimeline extends VoltProcedure {
     public final SQLStmt getTimeline =
         new SQLStmt("SELECT RetwisPosts.u_id, RetwisPosts.post, RetwisPosts.posted_at " + 
                     "FROM RetwisFollowers JOIN RetwisPosts ON RetwisFollowers.u_id = RetwisPosts.u_id " + 
