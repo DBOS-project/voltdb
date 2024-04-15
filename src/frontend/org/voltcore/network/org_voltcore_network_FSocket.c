@@ -5,6 +5,10 @@
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
 
+#include "ff_config.h"
+#include "ff_api.h"
+#include "ff_epoll.h"
+
 #include "org_voltcore_network_FSocket.h"
 
 #define MAX_EVENTS 512
@@ -12,7 +16,7 @@
 JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocket_openAndBind
   (JNIEnv *env, jobject thisObject, jint j_port) {
     int port = (int) j_port;
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    int sockfd = ff_socket(AF_INET, SOCK_STREAM, 0);
     // printf("sockfd:%d\n", sockfd);
     if (sockfd < 0) {
         perror("socket failed");
@@ -20,7 +24,7 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocket_openAndBind
     }
 
     int on = 1;
-    ioctl(sockfd, FIONBIO, &on);
+    ff_ioctl(sockfd, FIONBIO, &on);
 
     struct sockaddr_in my_addr;
     bzero(&my_addr, sizeof(my_addr));
@@ -28,14 +32,14 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocket_openAndBind
     my_addr.sin_port = htons((int) port);
     my_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    int ret = bind(sockfd, (struct sockaddr *)&my_addr, sizeof(my_addr));
+    int ret = ff_bind(sockfd, (struct sockaddr *)&my_addr, sizeof(my_addr));
 
     if (ret < 0) {
         perror("bind failed");
         exit(1);
     }
 
-    ret = listen(sockfd, MAX_EVENTS);
+    ret = ff_listen(sockfd, MAX_EVENTS);
     if (ret < 0) {
         perror("listen failed");
         exit(1);
@@ -48,7 +52,7 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocket_accept
     struct sockaddr_in client_addr;
     socklen_t addrlen = sizeof(client_addr);
     while (1) {
-		int client_sock = accept(sock_fd, (struct sockaddr *)&client_addr, &addrlen);
+		int client_sock = ff_accept(sock_fd, (struct sockaddr *)&client_addr, &addrlen);
 		// Error check
 		if (client_sock < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -64,5 +68,5 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocket_accept
 
 JNIEXPORT void JNICALL Java_org_voltcore_network_FSocket_close
   (JNIEnv *env, jobject thisObject, jint sock_fd) {
-    close(sock_fd);
+    ff_close(sock_fd);
   }

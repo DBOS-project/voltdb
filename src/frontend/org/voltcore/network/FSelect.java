@@ -10,6 +10,8 @@ public class FSelect {
         public void handleReadyForRead(FSocketConn conn) throws IOException;
     }
 
+    public static native void fInit();
+
     private static final int MAX_EVENTS = 1024;
     private int epoll_fd;
     private ReadHandler read_callback;

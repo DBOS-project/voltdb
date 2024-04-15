@@ -1,0 +1,5 @@
+export PATH="$PATH:/home/zxjcarrot/Workspace/networking/voltdb_dpdk/bin/"
+alias perf="/lib/linux-tools-5.15.0-92/perf"
+export PERF_PATH="/lib/linux-tools-5.15.0-92/perf"
+export JAVA_HOME="/usr/lib/jvm/java-8-openjdk-amd64"
+export SUDO_ASKPASS="/home/zxjcarrot/Workspace/networking/askpass.sh"

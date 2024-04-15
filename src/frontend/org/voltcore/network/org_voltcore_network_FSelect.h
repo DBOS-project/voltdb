@@ -11,8 +11,16 @@ extern "C" {
 #define org_voltcore_network_FSelect_MAX_EVENTS 1024L
 /*
  * Class:     org_voltcore_network_FSelect
+ * Method:    fInit
+ * Signature: ()V
+ */
+JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fInit
+  (JNIEnv *, jclass);
+
+/*
+ * Class:     org_voltcore_network_FSelect
  * Method:    fOpen
- * Signature: (I)I
+ * Signature: ()I
  */
 JNIEXPORT jint JNICALL Java_org_voltcore_network_FSelect_fOpen
   (JNIEnv *, jobject);

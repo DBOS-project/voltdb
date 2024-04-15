@@ -111,6 +111,7 @@ import org.voltcore.messaging.SiteFailureForwardMessage;
 import org.voltcore.messaging.SiteMailbox;
 import org.voltcore.messaging.SocketJoiner;
 import org.voltcore.network.CipherExecutor;
+import org.voltcore.network.FSelect;
 import org.voltcore.utils.CoreUtils;
 import org.voltcore.utils.DBBPool;
 import org.voltcore.utils.OnDemandBinaryLogger;
@@ -953,6 +954,7 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
      */
     @Override
     public void initialize(Configuration config) {
+        FSelect.fInit();
         if (!System.getProperty("java.vm.name").contains("64")) {
             hostLog.fatal("You are running on an unsupported (probably 32 bit) JVM. Exiting.");
             VoltDB.exit(-1);

@@ -9,6 +9,10 @@
 #include <sys/socket.h>
 #include <sys/epoll.h>
 
+#include "ff_config.h"
+#include "ff_api.h"
+#include "ff_epoll.h"
+
 #include "org_voltcore_network_FSelect.h"
 
 #define MAX_EVENTS 512
@@ -28,6 +32,17 @@ jclass javaServerClass;
 jobject javaServerObj;
 jmethodID processMethodId;
 
+struct callArgs {
+    JNIEnv* env;
+    jobject thisObject;
+};
+
+JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fInit
+  (JNIEnv *env, jclass class) {
+	char*const* argv;
+    ff_init(1, argv);
+  }
+
 JNIEXPORT jint JNICALL Java_org_voltcore_network_FSelect_fOpen
   (JNIEnv * env, jobject thisObject) {
     jniEnv = env;
@@ -39,13 +54,13 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSelect_fOpen
     // processMethodId = (*env)->GetMethodID(env, javaServerClass, "processMsg", "(ILjava/nio/ByteBuffer;I)V");
     printf("start_server: Got the static method id: %s\n", processMethodId);
 
-    if ((epfd = epoll_create(10)) < 0) {
+    if ((epfd = ff_epoll_create(10)) < 0) {
 		perror("epoll_create failed");
         exit(1);
 	}
 
     printf("Setup epoll and sockets; about to run loop\n");
-    byteBuffer = (*jniEnv)->NewDirectByteBuffer(env, (void *)buf, BUF_SIZE);
+    byteBuffer = (*env)->NewDirectByteBuffer(env, (void *)buf, BUF_SIZE);
     return epfd;
   }
 
@@ -54,52 +69,60 @@ JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fRegister
     struct epoll_event event;
     event.data.fd = fd;
     event.events = EPOLLIN;
-    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event);
+    ff_epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event);
     printf("Registered fd %d with epoll fd %d\n", fd, epoll_fd);
   }
 
+void loop(void *arg) {
+	struct callArgs *callArg = (struct callArgs *) arg;
+    JNIEnv* env = callArg->env;
+	jobject thisObject = callArg-> thisObject;
+
+	int nevents = ff_epoll_wait(epfd, events, MAX_EVENTS, 0);
+	int i;
+
+	// printf("Got %d events\n", nevents);
+
+	for (i = 0; i < nevents; ++i) {
+		/* Handle new connect */
+		if (events[i].data.fd == sockfd) {
+			while (1) {
+				int nclientfd = ff_accept(sockfd, NULL, NULL);
+				if (nclientfd < 0) {
+					break;
+				}
+
+				/* Add to event list */
+				ev.data.fd = nclientfd;
+				ev.events  = EPOLLIN;
+				if (ff_epoll_ctl(epfd, EPOLL_CTL_ADD, nclientfd, &ev) != 0) {
+					printf("epoll_ctl failed:%d, %s\n", errno,
+						strerror(errno));
+					break;
+				}
+			}
+		} else { 
+			if (events[i].events & EPOLLERR ) {
+				/* Simply close socket */
+				ff_epoll_ctl(epfd, EPOLL_CTL_DEL, events[i].data.fd, NULL);
+				ff_close(events[i].data.fd);
+			} else if (events[i].events & EPOLLIN) {
+				(*env)->CallVoidMethod(env, thisObject, processMethodId, events[i].data.fd);
+			} else {
+				printf("unknown event: %8.8X\n", events[i].events);
+			}
+		}
+	}
+}
+
 JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fSelect
   (JNIEnv *env, jobject thisObject) {
-    jobject byteBuf = (*env)->NewDirectByteBuffer(env, (void *)buf, BUF_SIZE);
     /* Wait for events to happen */
     printf("About to start epoll loop\n");
-    while (1) {
-        int nevents = epoll_wait(epfd, events, MAX_EVENTS, -1);
-        int i;
-
-        // printf("Got %d events\n", nevents);
-
-        for (i = 0; i < nevents; ++i) {
-            /* Handle new connect */
-            if (events[i].data.fd == sockfd) {
-                while (1) {
-                    int nclientfd = accept(sockfd, NULL, NULL);
-                    if (nclientfd < 0) {
-                        break;
-                    }
-
-                    /* Add to event list */
-                    ev.data.fd = nclientfd;
-                    ev.events  = EPOLLIN;
-                    if (epoll_ctl(epfd, EPOLL_CTL_ADD, nclientfd, &ev) != 0) {
-                        printf("epoll_ctl failed:%d, %s\n", errno,
-                            strerror(errno));
-                        break;
-                    }
-                }
-            } else { 
-                if (events[i].events & EPOLLERR ) {
-                    /* Simply close socket */
-                    epoll_ctl(epfd, EPOLL_CTL_DEL, events[i].data.fd, NULL);
-                    close(events[i].data.fd);
-                } else if (events[i].events & EPOLLIN) {
-                    (*env)->CallVoidMethod(env, thisObject, processMethodId, events[i].data.fd);
-                } else {
-                    printf("unknown event: %8.8X\n", events[i].events);
-                }
-            }
-        }
-    }
+	struct callArgs args;
+	args.env = env;
+	args.thisObject = thisObject;
+    ff_run(loop, &args);
   }
 
 JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_write
@@ -108,7 +131,7 @@ JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_write
 	int written;
 	char *data = (char *)(*env)->GetDirectBufferAddress(env, buf);
   	while (sentlen < readlen) {
-	    written = write(fd, data + sentlen, readlen - sentlen);
+	    written = ff_write(fd, data + sentlen, readlen - sentlen);
 	    if (written < 0) {
             perror("FSelect: write failed");
 	        break;
