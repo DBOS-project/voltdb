@@ -8,6 +8,8 @@ public class FSelect {
     public static interface ReadHandler {
         public void handleData(int fd, ByteBuffer buffer, int len) throws IOException;
         public void handleReadyForRead(FSocketConn conn) throws IOException;
+        public void handleAccept(FSocketConn conn) throws IOException;
+        public void handleReadyForWrite() throws IOException;
     }
 
     public static native void fInit();
@@ -47,10 +49,21 @@ public class FSelect {
         
     }
 
-    public native void fSelect();
+    public native void fSelect(int sockfd);
+
+    public native void indicateReadyForWrite();
 
     public void indicateReadyForRead(int fd) throws IOException {
         read_callback.handleReadyForRead(new FSocketConn(fd));
+    }
+
+    public void handleAccept(int sockfd) throws IOException {
+        System.out.println("Got a new client connection with sockfd " + sockfd);
+        read_callback.handleAccept(new FSocketConn(sockfd));
+    }
+
+    public void handleReadyForWrite() throws IOException {
+        read_callback.handleReadyForWrite();
     }
 
     public void processMsg(int sockfd, ByteBuffer buf, int len) throws IOException {

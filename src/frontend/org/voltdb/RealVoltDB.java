@@ -954,7 +954,6 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
      */
     @Override
     public void initialize(Configuration config) {
-        FSelect.fInit();
         if (!System.getProperty("java.vm.name").contains("64")) {
             hostLog.fatal("You are running on an unsupported (probably 32 bit) JVM. Exiting.");
             VoltDB.exit(-1);

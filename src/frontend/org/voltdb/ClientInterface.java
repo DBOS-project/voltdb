@@ -66,6 +66,7 @@ import org.voltcore.network.CipherExecutor;
 import org.voltcore.network.Connection;
 import org.voltcore.network.FSocket;
 import org.voltcore.network.FSocketConn;
+import org.voltcore.network.FStackPort;
 import org.voltcore.network.NIOReadStream;
 import org.voltcore.network.QueueMonitor;
 import org.voltcore.network.ReverseDNSPolicy;
@@ -200,6 +201,7 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
         NONE, EXPLAIN_ADHOC, EXPLAIN_DEFAULT_PROC, EXPLAIN_JSON;
     }
 
+    private final int m_clientPort;
     private final ClientAcceptor m_acceptor;
     private ClientAcceptor m_adminAcceptor;
 
@@ -275,8 +277,8 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
     public class ClientAcceptor implements Runnable {
         private final int m_port;
         private final ServerSocketChannel m_serverSocket;
-        private final FSocket m_fsocket;
-        private final VoltNetworkPool m_network;
+        // public final FSocket m_fsocket;
+        public final VoltNetworkPool m_network;
         private volatile boolean m_running = true;
         private Thread m_thread = null;
         private final boolean m_isAdmin;
@@ -308,7 +310,7 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
                 throw new RuntimeException(e);
             }
             m_serverSocket = socket;
-            m_fsocket = new FSocket(port);
+            // m_fsocket = new FSocket(port);
             m_sslContext = sslContext;
         }
 
@@ -332,9 +334,9 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             // }
             m_running = true;
             String threadName = m_isAdmin ? "AdminPort connection acceptor" : "ClientPort connection acceptor";
-            m_thread = new Thread(null, this, threadName, 262144);
-            m_thread.setDaemon(true);
-            m_thread.start();
+            // m_thread = new Thread(null, this, threadName, 262144);
+            // m_thread.setDaemon(true);
+            // m_thread.start();
         }
 
         public void shutdown() throws InterruptedException {
@@ -513,13 +515,32 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             }
         }
 
+        public void handleNewConnection(FSocketConn conn) {
+            try {
+                final AuthRunnable authRunnable = new AuthRunnable(conn);
+                // while (true) {
+                //     try {
+                //         m_executor.execute(authRunnable);
+                //         // final ClientInputHandler handler = new ClientInputHandler("VoltServer", m_isAdmin);
+                //         // m_network.registerChannel(sock_fd, handler);
+                //         break;
+                //     } catch (RejectedExecutionException e) {
+                //         Thread.sleep(1);
+                //     }
+                // }
+                authRunnable.run();
+            } catch (Exception e) {
+                hostLog.error("Exception in ClientAcceptor. The acceptor has died", e);
+            }
+        }
+
         @Override
         public void run() {
             try {
                 do {
                     // final SocketChannel socket;
-                    final int sock_fd = m_fsocket.accept();
-                    final FSocketConn socket = new FSocketConn(sock_fd);
+                    // final int sock_fd = m_fsocket.accept();
+                    // final FSocketConn socket = new FSocketConn(sock_fd);
                     // System.out.println("Accepted client conn on port " + m_port + " with fd " + sock_fd);
                     // try {
                     //     // socket = m_serverSocket.accept();
@@ -532,18 +553,19 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
                     //     }
                     //     throw ioe;
                     // }
+                    // handleNewConnection(socket);
 
-                    final AuthRunnable authRunnable = new AuthRunnable(socket);
-                    while (true) {
-                        try {
-                            m_executor.execute(authRunnable);
-                            // final ClientInputHandler handler = new ClientInputHandler("VoltServer", m_isAdmin);
-                            // m_network.registerChannel(sock_fd, handler);
-                            break;
-                        } catch (RejectedExecutionException e) {
-                            Thread.sleep(1);
-                        }
-                    }
+                    // final AuthRunnable authRunnable = new AuthRunnable(socket);
+                    // while (true) {
+                    //     try {
+                    //         m_executor.execute(authRunnable);
+                    //         // final ClientInputHandler handler = new ClientInputHandler("VoltServer", m_isAdmin);
+                    //         // m_network.registerChannel(sock_fd, handler);
+                    //         break;
+                    //     } catch (RejectedExecutionException e) {
+                    //         Thread.sleep(1);
+                    //     }
+                    // }
                 } while (m_running);
             } catch (Exception e) {
                 if (m_running) {
@@ -894,6 +916,26 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             return handler;
         }
 
+    }
+
+    public class ClientAcceptHandler extends ClientInputHandler {
+        private final ClientAcceptor m_acceptor;
+
+        public ClientAcceptHandler(ClientAcceptor acceptor) {
+            super("clientAcceptor", acceptor.m_isAdmin);
+            m_acceptor = acceptor;
+        }
+
+        public void handleNewConn(FSocketConn socket) {
+            m_acceptor.handleNewConnection(socket);
+        }
+
+        @Override
+        public void handleMessage(ByteBuffer message, Connection c) {
+            FStackPort socket = (FStackPort) c;
+            m_acceptor.handleNewConnection(socket.getConn());
+            // throw new UnsupportedOperationException();
+        }
     }
 
     /** A port that reads client procedure invocations and writes responses */
@@ -1301,9 +1343,12 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
         m_snapshotDaemonAdapter = new SnapshotDaemonAdapter();
         m_cartographer = cartographer;
 
+        m_clientPort = clientPort;
+
         // pre-allocate single partition array
         // m_acceptor = null;
         m_acceptor = new ClientAcceptor(clientIntf, clientPort, messenger.getNetwork(), false, sslContext);
+
         m_adminAcceptor = null;
         // m_adminAcceptor = new ClientAcceptor(adminIntf, adminPort, messenger.getNetwork(), true, sslContext);
 
@@ -1922,9 +1967,15 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
          */
         m_fileDescriptorTracker.start();
         
-        if (m_acceptor != null)
-            m_acceptor.start();
+        if (m_acceptor != null) {
+            // Register this to the epoll instead of starting the thread
+            // m_acceptor.start();
+            ClientAcceptHandler handler = new ClientAcceptHandler(m_acceptor);
+            m_acceptor.m_network.registerAcceptor(m_clientPort, handler);
+            System.out.println("Registering client acceptor on port " + m_clientPort);
+        }
         if (m_adminAcceptor != null) {
+            System.out.println("Calling admin acceptor start");
             m_adminAcceptor.start();
         }
         mayActivateSnapshotDaemon();

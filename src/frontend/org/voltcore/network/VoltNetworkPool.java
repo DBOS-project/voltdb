@@ -91,6 +91,19 @@ public class VoltNetworkPool {
         }
     }
 
+    public void registerAcceptor(int port, final InputHandler handler) throws IOException {
+        //Start with a round robin base policy
+        FStackNetwork vn = m_networks[(int)(m_nextNetwork.getAndIncrement() % m_networks.length)];
+        //Then do a load based policy which is a little racy
+        for (int ii = 0; ii < m_networks.length; ii++) {
+            if (m_networks[ii] == vn) continue;
+            if (vn.numPorts() > m_networks[ii].numPorts()) {
+                vn = m_networks[ii];
+            }
+        }
+        vn.registerAcceptor(port, handler);
+    }
+
     public Connection registerChannel(
             final int sock_fd,
             final InputHandler handler) throws IOException {

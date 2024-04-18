@@ -20,9 +20,13 @@ public class FSocketConn {
         return fd;
     }
 
+    public int read(ByteBuffer buffer) throws IOException {
+        return fread(fd, buffer, buffer.remaining());
+    }
+
     public ByteBuffer read(int len) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocateDirect(len);
-        int readLen = fread(fd, buffer, len);
+        int readLen = read(buffer);
         // System.out.println("Received a buffer of length " + buffer.capacity() + " with limit " + buffer.limit() + " and current position " + buffer.position() + " from fd " + fd + " to read");
         return buffer;
     }
@@ -47,7 +51,9 @@ public class FSocketConn {
             buffer = directBuffer;
         }
         // System.out.println("Writing " + buffer.remaining() + " bytes to fd " + fd);
-        if (write(fd, buffer, buffer.remaining()) < 0) {
+        int written = write(fd, buffer, buffer.remaining());
+        System.out.println("Wrote " + written + " bytes to fd " + fd + " with remaining " + buffer.remaining());
+        if (written < 0) {
             buffer.position(0);
             // System.out.println("Buf: " + Charset.defaultCharset().decode(buffer).toString());
             // buffer.position(0);

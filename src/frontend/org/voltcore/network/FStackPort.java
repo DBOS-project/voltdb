@@ -19,15 +19,21 @@ public class FStackPort implements Connection {
     private final FSocketConn m_conn;
     private final InputHandler m_inputHandler;
     private final FStackNIOWriteStream m_writeStream;
+    private final FStackNetwork m_network;
 
-    public FStackPort(FSocketConn conn, InputHandler inputHandler) {
+    public FStackPort(FSocketConn conn, InputHandler inputHandler, FStackNetwork network) {
         m_conn = conn;
         m_inputHandler = inputHandler;
         m_writeStream = new FStackNIOWriteStream(this);
+        m_network = network;
     }
 
-    public FStackPort(int fd, InputHandler inputHandler) {
-        this(new FSocketConn(fd), inputHandler);
+    public FStackPort(int fd, InputHandler inputHandler, FStackNetwork network) {
+        this(new FSocketConn(fd), inputHandler, network);
+    }
+
+    public FSocketConn getConn() {
+        return m_conn;
     }
 
     public void registered() {
@@ -49,7 +55,7 @@ public class FStackPort implements Connection {
         return m_writeStream;
     }
 
-    private void drainWriteStream() throws IOException {
+    public void drainWriteStream() throws IOException {
         while (!m_writeStream.isEmpty()) {
             ByteBuffer buffer = m_writeStream.dequeue();
             m_conn.write(buffer);
@@ -83,12 +89,13 @@ public class FStackPort implements Connection {
 
     @Override
     public void enableWriteSelection() {
-        try {
-            drainWriteStream();
-        } catch (IOException e) {
-            System.err.println("Failed to drain write stream");
-            e.printStackTrace();
-        }
+        m_network.indicateWriteReady(m_conn.getFd());
+        // try {
+        //     drainWriteStream();
+        // } catch (IOException e) {
+        //     System.err.println("Failed to drain write stream");
+        //     e.printStackTrace();
+        // }
     }
 
     @Override

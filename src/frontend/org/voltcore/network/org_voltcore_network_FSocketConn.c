@@ -56,11 +56,12 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_write
     int sentlen = 0;
     int written;
     char *data = (char *)(*env)->GetDirectBufferAddress(env, byteBuf);
-    // printf("data: %s\n", data);
+    // printf("Writing back: %s of length %d\n", data, len);
     while (sentlen < len) {
         written = ff_write(fd, data + sentlen, len - sentlen);
         if (written < 0) {
-              perror("FSOcketConn: write failed");
+              perror("FSocketConn: write failed");
+              printf("errno: %d in write\n", errno);
               return -1;
         }
         sentlen += written;

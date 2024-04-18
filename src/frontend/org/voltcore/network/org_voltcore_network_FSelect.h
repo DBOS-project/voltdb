@@ -36,9 +36,17 @@ JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fRegister
 /*
  * Class:     org_voltcore_network_FSelect
  * Method:    fSelect
- * Signature: ()V
+ * Signature: (I)V
  */
 JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fSelect
+  (JNIEnv *, jobject, jint);
+
+/*
+ * Class:     org_voltcore_network_FSelect
+ * Method:    indicateReadyForWrite
+ * Signature: ()V
+ */
+JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_indicateReadyForWrite
   (JNIEnv *, jobject);
 
 /*
