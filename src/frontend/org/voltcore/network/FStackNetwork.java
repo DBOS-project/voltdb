@@ -29,7 +29,7 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
     private static final VoltLogger m_logger = new VoltLogger(VoltNetwork.class.getName());
     protected static final VoltLogger networkLog = new VoltLogger("NETWORK");
 
-    private FSelect m_selector;
+    public FSelect m_selector;
     private boolean acceptorRegistered = false;
     private int m_clientPort;
     private InputHandler m_acceptHandler;
@@ -90,31 +90,40 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
             m_acceptHandler.handleMessage(null, port);
         }
 
-        public void handleReadyForWrite() throws IOException {
-            // write_Lock.lock();
-            System.out.println("Got lock; draining write stream");
-            Set<Integer> writeQueuedFDsCopy = new HashSet<Integer>(m_network.writeQueuedFDs);
-            for (int fd : writeQueuedFDsCopy) {
-                if (!m_ports.containsKey(fd)) {
-                    networkLog.error("Received ready for write for unknown port " + fd + " registered ports: " + m_ports.entrySet());
-                    // write_Lock.unlock();
-                    throw new IOException("Received ready for write for unknown port " + fd);
-                }
-                FStackPort port = m_ports.get(fd);
-                try {
-                    port.drainWriteStream();
-                    writeQueuedFDs.remove(fd);
-                } catch (IOException e) {
-                    networkLog.error("Failed to drain write stream for port " + fd);
-                    System.out.println("Failed to drain write stream for port " + fd);
-                    // write_Lock.unlock();
-                    throw e;
-                }
+        public void handleReadyForWrite(FSocketConn conn) throws IOException {
+            if (!m_ports.containsKey(conn.getFd())) {
+                networkLog.error("Received ready for write for unknown port " + conn.getFd() + " registered ports: " + m_ports.entrySet());
+                throw new IOException("Received ready for write for unknown port " + conn.getFd());
             }
-            writeQueuedFDs = writeQueuedFDsCopy;
-            // writeQueuedFDs.clear();
-            // write_Lock.unlock();
+            FStackPort port = m_ports.get(conn.getFd());
+            port.drainWriteStream();
         }
+
+        // public void handleReadyForWrite() throws IOException {
+        //     // write_Lock.lock();
+        //     System.out.println("Got lock; draining write stream");
+        //     Set<Integer> writeQueuedFDsCopy = new HashSet<Integer>(m_network.writeQueuedFDs);
+        //     for (int fd : writeQueuedFDsCopy) {
+        //         if (!m_ports.containsKey(fd)) {
+        //             networkLog.error("Received ready for write for unknown port " + fd + " registered ports: " + m_ports.entrySet());
+        //             // write_Lock.unlock();
+        //             throw new IOException("Received ready for write for unknown port " + fd);
+        //         }
+        //         FStackPort port = m_ports.get(fd);
+        //         try {
+        //             port.drainWriteStream();
+        //             writeQueuedFDs.remove(fd);
+        //         } catch (IOException e) {
+        //             networkLog.error("Failed to drain write stream for port " + fd);
+        //             System.out.println("Failed to drain write stream for port " + fd);
+        //             // write_Lock.unlock();
+        //             throw e;
+        //         }
+        //     }
+        //     writeQueuedFDs = writeQueuedFDsCopy;
+        //     // writeQueuedFDs.clear();
+        //     // write_Lock.unlock();
+        // }
     }
 
     public FStackNetwork(String networkName, int networkId) {
@@ -149,7 +158,7 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
 
     public Connection registerChannel(int sock_fd, InputHandler handler) throws IOException {
         m_numPorts.incrementAndGet();
-        m_selector.register(sock_fd);
+        m_selector.register(sock_fd, true);
         FStackPort port = new FStackPort(new FSocketConn(sock_fd), handler, this);
         port.registered();
         m_ports.put(sock_fd, port);
@@ -195,7 +204,7 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
         System.out.println("Listening to port " + m_clientPort + " in thread id "  + Thread.currentThread().getId());
         // try {
             // registerChannel(socket.getFd(), m_acceptHandler);
-            m_selector.register(socket.getFd());
+            m_selector.register(socket.getFd(), true);
         // } catch (IOException e) {
         //     e.printStackTrace();
         //     throw new RuntimeException("Failed to register acceptor");

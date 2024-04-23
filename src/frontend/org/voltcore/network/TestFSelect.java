@@ -20,9 +20,9 @@ public class TestFSelect {
         }
         public void handleAccept(FSocketConn conn) throws IOException {
             System.out.println("Accepting connection");
-            fselect.register(conn.getFd());
+            fselect.register(conn.getFd(), true);
         }
-        public void handleReadyForWrite() throws IOException {}
+        public void handleReadyForWrite(FSocketConn conn) throws IOException {}
     }
 
     public TestFSelect(int port) {
@@ -33,7 +33,7 @@ public class TestFSelect {
                 FSelect.fInit();
                 fselect = FSelect.open(rh);
                 FSocket fsocket = new FSocket(port);
-                fselect.register(fsocket.getFd());
+                fselect.register(fsocket.getFd(), true);
                 fselect.fSelect(fsocket.getFd());
             }
         });

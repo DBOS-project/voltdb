@@ -1,5 +1,8 @@
 package org.voltcore.network;
 
+import java.util.Map;
+import java.util.HashMap;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import org.voltcore.network.FSocketConn;
@@ -9,7 +12,7 @@ public class FSelect {
         public void handleData(int fd, ByteBuffer buffer, int len) throws IOException;
         public void handleReadyForRead(FSocketConn conn) throws IOException;
         public void handleAccept(FSocketConn conn) throws IOException;
-        public void handleReadyForWrite() throws IOException;
+        public void handleReadyForWrite(FSocketConn conn) throws IOException;
     }
 
     public static native void fInit();
@@ -17,6 +20,7 @@ public class FSelect {
     private static final int MAX_EVENTS = 1024;
     private int epoll_fd;
     private ReadHandler read_callback;
+    private Map<Integer, Integer> fd_to_interest_ops = new HashMap<Integer, Integer>();
 
     static {
         System.loadLibrary("native_epoll");
@@ -34,12 +38,51 @@ public class FSelect {
 
     private native int fOpen();
 
-    public void register(int fd) {
-        System.out.println("Registering fd " + fd + " with epoll_fd " + epoll_fd);
-        fRegister(epoll_fd, fd);
+    public void register(int fd, boolean isRead) {
+        System.out.println("Registering fd " + fd + " with epoll_fd " + epoll_fd + " for " + (isRead ? "read" : "write"));
+        if (fd_to_interest_ops.containsKey(fd)) {
+            int interestOps = fd_to_interest_ops.get(fd);
+            if (isRead) {
+                interestOps |= 1;
+            } else {
+                interestOps |= 2;
+            }
+            fd_to_interest_ops.put(fd, interestOps);
+            fRegister(epoll_fd, fd, interestOps, true);
+        } else {
+            int interestOps = 0;
+            if (isRead) {
+                interestOps |= 1;
+            } else {
+                interestOps |= 2;
+            }
+            fd_to_interest_ops.put(fd, interestOps);
+            fRegister(epoll_fd, fd, interestOps, false);
+        }
     }
 
-    public native void fRegister(int epoll_fd, int fd);
+    public void unregister(int fd, boolean isRead) {
+        System.out.println("Unregistering fd " + fd + " with epoll_fd " + epoll_fd + " for " + (isRead ? "read" : "write"));
+        if (fd_to_interest_ops.containsKey(fd)) {
+            int interestOps = fd_to_interest_ops.get(fd);
+            if (isRead) {
+                interestOps &= ~1;
+            } else {
+                interestOps &= ~2;
+            }
+            fd_to_interest_ops.put(fd, interestOps);
+            fRegister(epoll_fd, fd, interestOps, true);
+        } else {
+            System.out.println("Trying to unregister a non-registered fd " + fd);
+        }
+    }
+
+    public void deleteInterest(int fd) {
+        System.out.println("Deleting fd " + fd + " from epoll_fd " + epoll_fd);
+        fd_to_interest_ops.remove(fd);
+    }
+
+    public native void fRegister(int epoll_fd, int fd, int interestOps, boolean isModify);
 
     public void close() {
         
@@ -62,8 +105,8 @@ public class FSelect {
         read_callback.handleAccept(new FSocketConn(sockfd));
     }
 
-    public void handleReadyForWrite() throws IOException {
-        read_callback.handleReadyForWrite();
+    public void handleReadyForWrite(int fd) throws IOException {
+        read_callback.handleReadyForWrite(new FSocketConn(fd));
     }
 
     public void processMsg(int sockfd, ByteBuffer buf, int len) throws IOException {

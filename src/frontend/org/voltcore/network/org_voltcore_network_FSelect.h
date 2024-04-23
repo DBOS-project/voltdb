@@ -28,10 +28,10 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSelect_fOpen
 /*
  * Class:     org_voltcore_network_FSelect
  * Method:    fRegister
- * Signature: (II)V
+ * Signature: (IIIZ)V
  */
 JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fRegister
-  (JNIEnv *, jobject, jint, jint);
+  (JNIEnv *, jobject, jint, jint, jint, jboolean);
 
 /*
  * Class:     org_voltcore_network_FSelect

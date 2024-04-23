@@ -71,7 +71,8 @@ public class FStackPort implements Connection {
     @Override
     public void disableReadSelection() {
         // System.out.println("Called disableReadSelection on FStackPort");
-        throw new UnsupportedOperationException();
+        // throw new UnsupportedOperationException();
+        m_network.m_selector.unregister(m_conn.getFd(), true);
     }
 
     @Override
@@ -79,17 +80,19 @@ public class FStackPort implements Connection {
         // System.out.println("Called enableReadSelection on FStackPort");
         // DO nothing?
         // throw new UnsupportedOperationException();
+        m_network.m_selector.register(m_conn.getFd(), true);
     }
 
     @Override
     public void disableWriteSelection() {
         // System.out.println("Called disableWriteSelection on FStackPort");
-        throw new UnsupportedOperationException();
+        m_network.m_selector.unregister(m_conn.getFd(), false);
     }
 
     @Override
     public void enableWriteSelection() {
-        m_network.indicateWriteReady(m_conn.getFd());
+        // m_network.indicateWriteReady(m_conn.getFd());
+        m_network.m_selector.register(m_conn.getFd(), false);
         // try {
         //     drainWriteStream();
         // } catch (IOException e) {
