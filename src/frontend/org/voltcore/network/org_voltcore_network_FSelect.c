@@ -93,16 +93,15 @@ JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_indicateReadyForWrite
   }
 
 void add_to_epoll(int fd, int interestOps, int isModify) {
-	printf("Registering fd %d with epoll fd %d for ops %d\n", fd, epfd, interestOps);
 	struct epoll_event event;
 	event.data.fd = fd;
-	event.events = ((interestOps & 1) ? EPOLLIN : 0) | ((interestOps & 2) ? EPOLLOUT : 0);
+	event.events = ((interestOps & 1) ? EPOLLIN | EPOLLET : 0) | ((interestOps & 2) ? EPOLLOUT : 0);
 	int event_op = isModify ? EPOLL_CTL_MOD : EPOLL_CTL_ADD;
 	if (ff_epoll_ctl(epfd, event_op, fd, &event) < 0) {
 		perror("epoll_ctl failed");
 		exit(1);
 	}
-	printf("Registered fd %d with epoll fd %d for ops %d and events %d\n", fd, epfd, interestOps, event.events);
+	// printf("Registered fd %d with epoll fd %d for ops %d and events %d\n", fd, epfd, interestOps, event.events);
 }
 
 JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fRegister
@@ -114,8 +113,6 @@ JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fRegister
 	// queuedFdsCount--;
 	opIsModify[queuedFdsCount] = isModify;
 	queuedFdsCount++;
-	printf("Added fd %d to queue with ops %d\n", fd, queuedOpType[queuedFdsCount]);
-	printf("Address of fd queue: %p\n", queuedOpType);
 	pthread_mutex_unlock(&lock);
 	// if (interestOps & 1) {
 	// 	add_to_epoll(fd, EPOLLIN, isModify);
@@ -153,8 +150,6 @@ void loop(void *arg) {
 	if (queuedFdsCount > 0) {
 		int i;
 		for (i = 0; i < queuedFdsCount; i++) {
-			printf("Adding to epoll from queue: fd %d, ops %d\n", queuedFds[i], queuedOpType[i]);
-			printf("Address of fd queue: %p\n", queuedOpType);
 			add_to_epoll(queuedFds[i], queuedOpType[i], opIsModify[i]);
 		}
 		queuedFdsCount = 0;
@@ -167,7 +162,7 @@ void loop(void *arg) {
 	// printf("Got %d events\n", nevents);
 
 	for (i = 0; i < nevents; ++i) {
-		printf("Got event on fd %d\n", events[i].data.fd);
+		// printf("Got event on fd %d\n", events[i].data.fd);
 		/* Handle new connect */
 		if (events[i].data.fd == sockfd) {
 			while (1) {

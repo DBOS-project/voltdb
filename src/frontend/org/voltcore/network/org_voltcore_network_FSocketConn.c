@@ -17,19 +17,17 @@
 #define MAX_SIZE 1024 * 256  /// 256KB- the tcp max buffer size
 
 JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_fread
-  (JNIEnv *env, jobject thisObject, jint fd, jobject byteBuf, jint len) {
+  (JNIEnv *env, jobject thisObject, jint fd, jobject byteBuf, jint len, jint offset) {
     char *buffer = (char *)(*env)->GetDirectBufferAddress(env, byteBuf);
     // char buffer[len];
-    int n = ff_read(fd, buffer, len);
+    int n = ff_read(fd, buffer + (int) offset, len);
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            return NULL;
+            return -1;
         }
         perror("read failed");
-        exit(1);
-    }
-    if (n == 0) {
-        return NULL;
+        // exit(1);
+        return -2;
     }
     return n;
   }
@@ -63,15 +61,15 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_write
         len_to_send = len - sentlen > MAX_SIZE ? MAX_SIZE : len - sentlen;
         written = ff_write(fd, data + sentlen, len_to_send);
         if (written < 0) {
-              if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                  continue;
-              }
+              // IDK how to handle this in F_Stack. The folloring lines would handle it in normal linux socket
+              // if (errno == EAGAIN || errno == EWOULDBLOCK) {
+              //     continue;
+              // }
               perror("FSocketConn: write failed");
               printf("errno: %d in write\n", errno);
               return -1;
         }
         sentlen += written;
-        printf("Wrote back %d bytes\n", sentlen);
     }
     return sentlen;
   }

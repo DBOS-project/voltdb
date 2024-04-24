@@ -21,7 +21,37 @@ public class FSocketConn {
     }
 
     public int read(ByteBuffer buffer) throws IOException {
-        return fread(fd, buffer, buffer.remaining());
+        int pos = buffer.position();
+        int readLen = fread(fd, buffer, buffer.remaining(), pos);
+        buffer.position(pos + readLen);
+        return readLen;
+        // int msgLen = buffer.capacity();
+        // int totalRead = 0;
+        // int retries = 0;
+        // while (totalRead < msgLen) {
+        //     int readLen = fread(fd, buffer, buffer.remaining(), totalRead);
+        //     if (readLen == -1) { // Handle EAGAIN which returns -1
+        //         if (retries < 50) {
+        //             retries++;
+        //             try {
+        //                 Thread.sleep(1);
+        //             } catch (InterruptedException e) {
+        //                 throw new IOException("Failed to read from fd " + fd);
+        //             }
+        //             continue;
+        //         }
+        //         throw new IOException("Failed to read from fd " + fd);
+        //     }
+        //     else if (readLen < -1) {
+        //         throw new IOException("Failed to read from fd " + fd);
+        //     }
+        //     totalRead += readLen;
+        //     buffer.position(totalRead);
+        //     System.out.println("Total read so far: " + totalRead + " with buffer position " + buffer.position());
+        // }
+        // // return fread(fd, buffer, buffer.remaining());
+        // System.out.println("Returning from read function");
+        // return totalRead;
     }
 
     public ByteBuffer read(int len) throws IOException {
@@ -39,7 +69,7 @@ public class FSocketConn {
         return freadInt(fd);
     }
 
-    private native int fread(int fd, ByteBuffer buf, int len) throws IOException;
+    private native int fread(int fd, ByteBuffer buf, int len, int offset) throws IOException;
 
     private native int freadInt(int fd) throws IOException;
 
@@ -52,7 +82,6 @@ public class FSocketConn {
         }
         // System.out.println("Writing " + buffer.remaining() + " bytes to fd " + fd);
         int written = write(fd, buffer, buffer.remaining());
-        System.out.println("Wrote " + written + " bytes to fd " + fd + " with remaining " + buffer.remaining());
         if (written < 0) {
             buffer.position(0);
             // System.out.println("Buf: " + Charset.defaultCharset().decode(buffer).toString());

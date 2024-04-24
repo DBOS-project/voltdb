@@ -71,14 +71,31 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
                 networkLog.error("Received ready for read for unknown port " + conn.getFd() + " registered ports: " + m_ports.entrySet());
                 throw new IOException("Received ready for read for unknown port " + conn.getFd());
             }
-            // Read an int first
-            int msgLen = conn.readInt();
-            ByteBuffer buffer = conn.read(msgLen);
-            // System.out.println("Got " + buffer.remaining() + " bytes from fd " + conn.getFd() + " with capacity " + buffer.capacity());
-            
-            // FStackPort port = new FStackPort(conn);
             FStackPort port = m_ports.get(conn.getFd());
-            port.handleData(buffer);
+            if (port.getBuffer() == null) {
+                int msgLen = conn.readInt();
+                // System.out.println("Received message of size " + msgLen + " from fd " + conn.getFd());
+                port.createBuffer(msgLen);
+            }
+            ByteBuffer buffer = port.getBuffer();
+            int readLen = conn.read(buffer);
+            if (buffer.remaining() > 0) {
+                // System.out.println("Read " + readLen + " bytes, but still need " + buffer.remaining() + " more");
+                return;
+            } else { // We have read the entire message
+                // System.out.println("Read " + readLen + " bytes. Complete message received");
+                buffer.flip();
+                port.handleData(buffer);
+                port.clearBuffer();
+            }
+            // // Read an int first
+            // int msgLen = conn.readInt();
+            // System.out.println("Got message of length " + msgLen + " from fd " + conn.getFd());
+            // ByteBuffer buffer = conn.read(msgLen);
+            // // System.out.println("Got " + buffer.remaining() + " bytes from fd " + conn.getFd() + " with capacity " + buffer.capacity());
+            
+            // // FStackPort port = new FStackPort(conn);
+            // port.handleData(buffer);
         }
 
         public void handleAccept(FSocketConn conn) throws IOException {

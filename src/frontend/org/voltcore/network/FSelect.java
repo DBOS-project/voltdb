@@ -39,7 +39,7 @@ public class FSelect {
     private native int fOpen();
 
     public void register(int fd, boolean isRead) {
-        System.out.println("Registering fd " + fd + " with epoll_fd " + epoll_fd + " for " + (isRead ? "read" : "write"));
+        // System.out.println("Registering fd " + fd + " with epoll_fd " + epoll_fd + " for " + (isRead ? "read" : "write"));
         if (fd_to_interest_ops.containsKey(fd)) {
             int interestOps = fd_to_interest_ops.get(fd);
             if (isRead) {
@@ -62,7 +62,7 @@ public class FSelect {
     }
 
     public void unregister(int fd, boolean isRead) {
-        System.out.println("Unregistering fd " + fd + " with epoll_fd " + epoll_fd + " for " + (isRead ? "read" : "write"));
+        // System.out.println("Unregistering fd " + fd + " with epoll_fd " + epoll_fd + " for " + (isRead ? "read" : "write"));
         if (fd_to_interest_ops.containsKey(fd)) {
             int interestOps = fd_to_interest_ops.get(fd);
             if (isRead) {

@@ -10,10 +10,10 @@ extern "C" {
 /*
  * Class:     org_voltcore_network_FSocketConn
  * Method:    fread
- * Signature: (ILjava/nio/ByteBuffer;I)I
+ * Signature: (ILjava/nio/ByteBuffer;II)I
  */
 JNIEXPORT jint JNICALL Java_org_voltcore_network_FSocketConn_fread
-  (JNIEnv *, jobject, jint, jobject, jint);
+  (JNIEnv *, jobject, jint, jobject, jint, jint);
 
 /*
  * Class:     org_voltcore_network_FSocketConn

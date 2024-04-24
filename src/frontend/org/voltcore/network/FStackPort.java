@@ -20,6 +20,7 @@ public class FStackPort implements Connection {
     private final InputHandler m_inputHandler;
     private final FStackNIOWriteStream m_writeStream;
     private final FStackNetwork m_network;
+    private ByteBuffer incompleteBuffer = null;
 
     public FStackPort(FSocketConn conn, InputHandler inputHandler, FStackNetwork network) {
         m_conn = conn;
@@ -60,6 +61,19 @@ public class FStackPort implements Connection {
             ByteBuffer buffer = m_writeStream.dequeue();
             m_conn.write(buffer);
         }
+    }
+
+    public ByteBuffer getBuffer() {
+        return incompleteBuffer;
+    }
+
+    public ByteBuffer createBuffer(int len) {
+        incompleteBuffer = ByteBuffer.allocateDirect(len);
+        return incompleteBuffer;
+    }
+
+    public void clearBuffer() {
+        incompleteBuffer = null;
     }
 
     @Override
