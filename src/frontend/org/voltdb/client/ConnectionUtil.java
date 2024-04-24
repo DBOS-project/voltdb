@@ -386,14 +386,14 @@ public class ConnectionUtil {
             // b.put(hashedPassword);
             b.flip();
             System.out.println("Writing authentication message");
-            try {
-                messagingChannel.writeMessage(b);
-            } catch (IOException e) {
-                throw new IOException("Failed to write authentication message to server.", e);
-            }
-            if (b.hasRemaining()) {
-                throw new IOException("Failed to write authentication message to server.");
-            }
+            // try {
+            //     messagingChannel.writeMessage(b);
+            // } catch (IOException e) {
+            //     throw new IOException("Failed to write authentication message to server.", e);
+            // }
+            // if (b.hasRemaining()) {
+            //     throw new IOException("Failed to write authentication message to server.");
+            // }
 
             System.out.println("Reading authentication response");
             ByteBuffer loginResponse;

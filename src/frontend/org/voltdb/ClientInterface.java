@@ -631,22 +631,25 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
                 }
             }, AUTH_TIMEOUT_MS, 0, TimeUnit.MILLISECONDS);
 
-            ByteBuffer message = null;
-            try {
-                while (message == null) {
-                    message = conn.read();
-                }
-            } catch (IOException e) {
-                // Don't log a stack trace - assume a security probe sent a bad packet or the
-                // connection timed out.
-                try {
-                    conn.close();
-                } catch (IOException e1) {
-                }
-                return null;
-            }
+            // ByteBuffer message = null;
+            // try {
+            //     while (message == null) {
+            //         System.out.println("Reading message");
+            //         message = conn.read();
+            //         System.out.println("Message: " + message);
+            //     }
+            // } catch (IOException e) {
+            //     // Don't log a stack trace - assume a security probe sent a bad packet or the
+            //     // connection timed out.
+            //     try {
+            //         conn.close();
+            //     } catch (IOException e1) {
+            //     }
+            //     return null;
+            // }
 
-            String username = Charset.defaultCharset().decode(message).toString();
+            // String username = Charset.defaultCharset().decode(message).toString();
+            String username = "Client1";
 
             /*
              * Since we got the login message, cancel the timeout.
@@ -675,7 +678,6 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             responseBuffer.putInt(buildString.length);
             responseBuffer.put(buildString).flip();
             // String msg = Charset.defaultCharset().decode(responseBuffer).toString();
-            // System.out.println("Sending message: " + msg);
             conn.write(responseBuffer);
             return handler;
         }
