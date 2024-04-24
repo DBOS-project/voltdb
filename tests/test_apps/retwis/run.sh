@@ -81,8 +81,8 @@ function server() {
 # load schema and procedures
 function init() {
     jars
-    sqlcmd < ddl.sql
-    run -t "async" -a "init"
+    sqlcmd --servers=128.30.44.115 < ddl.sql
+    run -t "async" -a "init" -s 128.30.44.115
 }
 
 version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}')

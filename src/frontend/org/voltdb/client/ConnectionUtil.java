@@ -353,7 +353,7 @@ public class ConnectionUtil {
 
             final long retvals[] = new long[4];
             returnArray[1] = retvals;
-            System.out.println("Creating messaging channel");
+            // System.out.println("Creating messaging channel");
             messagingChannel = MessagingChannel.get(aChannel, sslEngine);
 
             /*
@@ -385,7 +385,7 @@ public class ConnectionUtil {
             SerializationHelper.writeVarbinary(usernameBytes, b);
             // b.put(hashedPassword);
             b.flip();
-            System.out.println("Writing authentication message");
+            // System.out.println("Writing authentication message");
             // try {
             //     messagingChannel.writeMessage(b);
             // } catch (IOException e) {
@@ -395,7 +395,7 @@ public class ConnectionUtil {
             //     throw new IOException("Failed to write authentication message to server.");
             // }
 
-            System.out.println("Reading authentication response");
+            // System.out.println("Reading authentication response");
             ByteBuffer loginResponse;
             try {
                 loginResponse = messagingChannel.readMessage();
