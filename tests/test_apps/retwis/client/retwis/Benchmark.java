@@ -5,6 +5,7 @@ import java.text.NumberFormat;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,6 +13,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.lang.IllegalArgumentException;
 
 import org.voltdb.VoltTable;
+import org.voltdb.client.Client;
+import org.voltdb.client.ClientFactory;
 import org.voltdb.client.ClientResponse;
 import org.voltdb.client.ProcedureCallback;
 import org.voltdb.client.exampleutils.ClientConnection;
@@ -21,38 +24,67 @@ import org.voltdb.client.exampleutils.PerfCounterMap;
 import retwis.RetwisSimulation;
 
 public class Benchmark {
-    final String servers;
-    final RetwisSimulation simulator;
-    private ClientConnection m_clientCon;
-    private boolean async;
-    private int numClients;
-    private static int totalSPCalls = 1_000_000;
-    public static final ReentrantLock counterLock = new ReentrantLock();
-    public static long totExecutions = 0;
-    public static long totExecutionNanoseconds = 0;
-    public static long minExecutionNanoseconds = 999999999l;
-    public static long maxExecutionNanoseconds = 0;
-    public static Map<String,Long> typeNumExecution = new HashMap<String, Long>();
-    public static Map<String,Long> typeExecutionTime = new HashMap<String, Long>();
+    private static class BenchArgs {
+        public String type;
+        public int numClients;
+        public int totalSPCalls;
+        public String servers;
 
-    public Benchmark(Map<String, List<String>> args) {
-        this.servers = args.get("s").get(0);
-        System.out.printf("Connecting to %s\n", servers);
-        this.async = args.get("t").get(0).equals("async");
-        this.numClients = Integer.parseInt(args.get("c").get(0));
-        Benchmark.totalSPCalls = Integer.parseInt(args.get("n").get(0));
-        System.out.printf("Running %d clients\n", this.numClients);
-        
-        this.m_clientCon = Benchmark.getClient(this.servers);
-        this.simulator = new RetwisSimulation(this.m_clientCon, this.async);
+        @Override
+        public String toString() {
+            return String.format("Type: %s, NumClients: %d, TotalSPCalls: %d, Servers: %s", type, numClients, totalSPCalls, servers);
+        }
+    }
+    private class RunStats {
+        public String setup;
+        public long elapsedTime;
+        public long totalTxns;
+        public long totalExecutionTime;
+        public long minExecutionTime;
+        public long maxExecutionTime;
     }
 
-    private static ClientConnection getClient(String servers) {
+    final String servers;
+    final RetwisSimulation simulator;
+    private Client client;
+    private final boolean async;
+    private final int numClients;
+    public int totalSPCalls = 1_000_000_00;
+    public static final ReentrantLock counterLock = new ReentrantLock();
+    public long totExecutions = 0;
+    public long totExecutionNanoseconds = 0;
+    public long minExecutionNanoseconds = 999999999l;
+    public long maxExecutionNanoseconds = 0;
+    public Map<String,Long> typeNumExecution = new HashMap<String, Long>();
+    public Map<String,Long> typeExecutionTime = new HashMap<String, Long>();
+
+    public Benchmark(BenchArgs args) {
+        System.out.println();
+        System.out.println(args);
+        this.servers = args.servers;
+        // System.out.printf("Connecting to %s\n", servers);
+        this.async = args.type.equals("async");
+        this.numClients = args.numClients;
+        this.totalSPCalls = args.totalSPCalls;
+        // System.out.printf("Running %d clients\n", this.numClients);
+        // System.out.println("Total Exec ms: " + this.totalSPCalls / 1000_000);
+
+        // System.out.printf("async %b, totalSPCalls %d \n", this.async, totalSPCalls);
+        
+        this.client = Benchmark.getClient(this.servers);
+        // System.out.println("Connected to server. About to create simulator");
+        this.simulator = new RetwisSimulation(this.client, this.async);
+    }
+
+    private static Client getClient(String servers) {
         int sleep = 1000;
         while(true) {
             try {
-                ClientConnection m_clientCon = ClientConnectionPool.get(servers, 21212);
-                return m_clientCon;
+                final Client client = ClientFactory.createClient();
+                client.createConnection(servers, Client.VOLTDB_SERVER_PORT);
+                // ClientConnection m_clientCon = ClientConnectionPool.get(servers, 21212);
+                // System.out.println("Got Client Connection from pool");
+                return client;
             }
             catch (Exception e) {
                 System.err.printf("Connection failed - retrying in %d second(s).\n", sleep/1000);
@@ -68,7 +100,7 @@ public class Benchmark {
         // Insert ~30,000 users, ~850,000 posts, ~120,000 follows
         for (int i = 0; i < 1_000_000; i++) {
             try {
-                this.simulator.doInsertOne(new RetwisCallback(true));
+                this.simulator.doInsertOne(new RetwisCallback(this, true));
             }
             catch (IOException e) {}
         }
@@ -84,7 +116,7 @@ public class Benchmark {
             if (i % 100_000 == 0 && i != 0)
                 System.out.printf("Iteration %d\n", i);
             try {
-                this.simulator.doGetPosts(new RetwisCallback(true));
+                this.simulator.doGetPosts(new RetwisCallback(this, true));
             }
             catch (IOException e) {}
             currentTime = System.currentTimeMillis();
@@ -92,33 +124,66 @@ public class Benchmark {
         }
     }
 
-    public void run() {
+    public static void runAll(Map<String, List<String>> args) {
+        BenchArgs thisArgs = new BenchArgs();
+        List<RunStats> allStats = new ArrayList<>();
+        for (String type: args.get("t")) {
+            thisArgs.type = type;
+            for (String numClients: args.get("c")) {
+                thisArgs.numClients = Integer.parseInt(numClients);
+                for (String totalSPCalls: args.get("n")) {
+                    thisArgs.totalSPCalls = Integer.parseInt(totalSPCalls);
+                    for (String servers: args.get("s")) {
+                        thisArgs.servers = servers;
+                        Benchmark benchmark = new Benchmark(thisArgs);
+                        RunStats stats = benchmark.run();
+                        allStats.add(stats);
+                    }
+                }
+            }
+        }
+
+        System.out.println();
+        System.out.println();
+        System.out.println("============================== BENCHMARK RESULTS ==============================");
+        System.out.printf("%-20s%-15s%-15s%-15s%-15s\n", "Setup", "Txns", "Time (ms)", "Txns/s", "Latency(us)");
+        System.out.println("----------------------------------------------------------------------");
+        for (RunStats runStat: allStats) {
+            System.out.printf("%-20s%-15d%-15.2f%-15.2f%-15.2f\n", 
+                                runStat.setup,
+                                runStat.totalTxns,
+                                (double) runStat.elapsedTime,
+                                (double) runStat.totalTxns * 1000 / (double) runStat.elapsedTime,
+                                (double) runStat.totalExecutionTime / (runStat.totalTxns * 1000));
+        }
+    }
+
+    public RunStats run() {
         this.simulator.set_next_ids(700_000, 20_000);
         // this.setStatDeltaFlag();
 
         long startTime = System.currentTimeMillis();
         ThreadGroup workerClients = new ThreadGroup("clients");
         for (int i = 1; i < this.numClients; i++) {
-            SingleClientRunnable r = new SingleClientRunnable(i, Benchmark.totalSPCalls/numClients, this.servers, this.async);
+            SingleClientRunnable r = new SingleClientRunnable(i, this);
             Thread th = new Thread(workerClients, r);
             th.start();
         }
         // Run one in parent thread
-        SingleClientRunnable r = new SingleClientRunnable(0, Benchmark.totalSPCalls/numClients, this.servers, this.async);
+        SingleClientRunnable r = new SingleClientRunnable(0, this);
         r.run();
 
         while (workerClients.activeCount() > 0) {} // Wait for all threads to join
         long elapsedTime = System.currentTimeMillis() - startTime;
+        RunStats stats = new RunStats();
+        stats.setup = String.format("%s, %d clients", this.async ? "async" : "sync", this.numClients);
+        stats.totalTxns = totExecutions;
+        stats.elapsedTime = elapsedTime;
+        stats.totalExecutionTime = totExecutionNanoseconds;
+        stats.minExecutionTime = minExecutionNanoseconds;
+        stats.maxExecutionTime = maxExecutionNanoseconds;
+        return stats;
         // Map<String, ProcStats> procStats = this.getServerStats();
-
-        System.out.println("============================== BENCHMARK RESULTS ==============================");
-        System.out.printf("Time: %d ms\n", elapsedTime);
-        System.out.printf("Total transactions: %d\n", totExecutions);
-        System.out.printf("Transactions per second: %.2f\n", (float)totExecutions * 1000 / elapsedTime);
-        System.out.printf("Latency(us): %.2f < %.2f < %.2f\n",
-                            (double) minExecutionNanoseconds / 1000,
-                            ((double) totExecutionNanoseconds / ((double) totExecutions * 1000)),
-                            (double) maxExecutionNanoseconds / 1000);
 
         // PerfCounterMap map = ClientConnectionPool.getStatistics(m_clientCon);
         // System.out.println(map);
@@ -140,59 +205,60 @@ public class Benchmark {
     }
 
     private void setStatDeltaFlag() {
-        String query = "SELECT *" +
-            " from statistics(PROCEDUREPROFILE,1);";
-        VoltTable[] results = null;
-        try {
-            results = this.m_clientCon.execute("@QueryStats", query).getResults();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        // String query = "SELECT *" +
+        //     " from statistics(PROCEDUREPROFILE,1);";
+        // VoltTable[] results = null;
+        // try {
+        //     results = this.client.execute("@QueryStats", query).getResults();
+        // } catch (Exception e) {
+        //     e.printStackTrace();
+        // }
     }
 
     private Map<String, ProcStats> getServerStats() {
-        String query = "SELECT *" +
-            " from statistics(PROCEDURE,1);";
-        VoltTable[] results = null;
-        try {
-            results = this.m_clientCon.execute("@QueryStats", query).getResults();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        VoltTable result = results[0];
-        Map<String, List<ProcStats>> procDetails = new HashMap<>();
-        while (result.advanceRow()) {
-            String[] procedure = result.getString("PROCEDURE").split("\\.");
-            String procedureName = procedure[procedure.length - 1];
-            ProcStats stats = new ProcStats();
-            stats.name = procedureName;
-            stats.execTime = (double) result.getLong("AVG_EXECUTION_TIME") / 1000;
-            stats.invocations = (int) result.getLong("INVOCATIONS");
-            stats.resultSize = (double) result.getLong("AVG_RESULT_SIZE") / 1024;
-            if (!procDetails.containsKey(procedureName))
-                procDetails.put(procedureName, new ArrayList<>());
-            procDetails.get(procedureName).add(stats);
-        }
+        return null;
+        // String query = "SELECT *" +
+        //     " from statistics(PROCEDURE,1);";
+        // VoltTable[] results = null;
+        // try {
+        //     results = this.m_clientCon.execute("@QueryStats", query).getResults();
+        // } catch (Exception e) {
+        //     e.printStackTrace();
+        // }
+        // VoltTable result = results[0];
+        // Map<String, List<ProcStats>> procDetails = new HashMap<>();
+        // while (result.advanceRow()) {
+        //     String[] procedure = result.getString("PROCEDURE").split("\\.");
+        //     String procedureName = procedure[procedure.length - 1];
+        //     ProcStats stats = new ProcStats();
+        //     stats.name = procedureName;
+        //     stats.execTime = (double) result.getLong("AVG_EXECUTION_TIME") / 1000;
+        //     stats.invocations = (int) result.getLong("INVOCATIONS");
+        //     stats.resultSize = (double) result.getLong("AVG_RESULT_SIZE") / 1024;
+        //     if (!procDetails.containsKey(procedureName))
+        //         procDetails.put(procedureName, new ArrayList<>());
+        //     procDetails.get(procedureName).add(stats);
+        // }
 
-        Map<String, ProcStats> procSummary = new HashMap<>();
-        for (String proc: procDetails.keySet()) {
-            double totalExecTime = 0;
-            int totalInvocations = 0;
-            double totalResSize = 0;
-            for (ProcStats stat: procDetails.get(proc)) {
-                totalExecTime += stat.execTime * stat.invocations;
-                totalResSize += stat.resultSize * stat.invocations;
-                totalInvocations += stat.invocations;
-            }
-            ProcStats thisStat = new ProcStats();
-            thisStat.name = proc;
-            thisStat.invocations = totalInvocations;
-            thisStat.execTime = totalExecTime / totalInvocations;
-            thisStat.resultSize = totalResSize / totalInvocations;
+        // Map<String, ProcStats> procSummary = new HashMap<>();
+        // for (String proc: procDetails.keySet()) {
+        //     double totalExecTime = 0;
+        //     int totalInvocations = 0;
+        //     double totalResSize = 0;
+        //     for (ProcStats stat: procDetails.get(proc)) {
+        //         totalExecTime += stat.execTime * stat.invocations;
+        //         totalResSize += stat.resultSize * stat.invocations;
+        //         totalInvocations += stat.invocations;
+        //     }
+        //     ProcStats thisStat = new ProcStats();
+        //     thisStat.name = proc;
+        //     thisStat.invocations = totalInvocations;
+        //     thisStat.execTime = totalExecTime / totalInvocations;
+        //     thisStat.resultSize = totalResSize / totalInvocations;
             
-            procSummary.put(proc, thisStat);
-        }
-        return procSummary;
+        //     procSummary.put(proc, thisStat);
+        // }
+        // return procSummary;
     }
 
     class ProcStats {
@@ -203,9 +269,11 @@ public class Benchmark {
     }
 
     class RetwisCallback implements ProcedureCallback {
+        Benchmark benchmark;
         boolean warmup;
         String procedure;
-        public RetwisCallback(boolean warmup) {
+        public RetwisCallback(Benchmark benchmark, boolean warmup) {
+            this.benchmark = benchmark;
             this.warmup = warmup;
         }
 
@@ -221,30 +289,30 @@ public class Benchmark {
             counterLock.lock();
             try {
                 long executionTime =  clientResponse.getClientRoundtripNanos();
-                totExecutionNanoseconds += executionTime;
-                totExecutions++;
+                benchmark.totExecutionNanoseconds += executionTime;
+                benchmark.totExecutions++;
 
-                if (10 * totExecutions % Benchmark.totalSPCalls == 0) // Print 10 times
-                    System.out.printf("Iteration %d\n", totExecutions);
+                if (10 * benchmark.totExecutions % benchmark.totalSPCalls == 0) // Print 10 times
+                    // System.out.printf("Iteration %d\n", benchmark.totExecutions);
+                    System.out.printf("=");
 
-                if (executionTime < minExecutionNanoseconds) {
-                    minExecutionNanoseconds = executionTime;
+                if (executionTime < benchmark.minExecutionNanoseconds) {
+                    benchmark.minExecutionNanoseconds = executionTime;
                 }
 
-                if (executionTime > maxExecutionNanoseconds) {
-                    maxExecutionNanoseconds = executionTime;
+                if (executionTime > benchmark.maxExecutionNanoseconds) {
+                    benchmark.maxExecutionNanoseconds = executionTime;
                 }
                 // System.out.println("Procedure:"+ typeNumExecution);
 
-                typeNumExecution.put(this.procedure, typeNumExecution.getOrDefault(this.procedure, 0l) + 1);
-                typeExecutionTime.put(this.procedure, typeExecutionTime.getOrDefault(this.procedure, 0l) + executionTime);
+                benchmark.typeNumExecution.put(this.procedure, benchmark.typeNumExecution.getOrDefault(this.procedure, 0l) + 1);
+                benchmark.typeExecutionTime.put(this.procedure, benchmark.typeExecutionTime.getOrDefault(this.procedure, 0l) + executionTime);
                 // System.out.println("Nums:"+ typeNumExecution);
             } catch (Exception e) {
                 System.out.println(e);
             }
             finally
             {
-                
                 counterLock.unlock();
             }
         }
@@ -252,21 +320,22 @@ public class Benchmark {
 
     class SingleClientRunnable implements Runnable {
         private int id;
-        private int totalSPCalls;
+        private Benchmark benchmark;
         private RetwisSimulation sim;
-        SingleClientRunnable(int id, int totalSPCalls, String servers, boolean async) {
+        SingleClientRunnable(int id, Benchmark benchmark) {
             this.id = id;
-            this.totalSPCalls = totalSPCalls;
-            ClientConnection client = Benchmark.getClient(servers);
-            this.sim = new RetwisSimulation(client, async);
+            this.benchmark = benchmark;
+            Client client = Benchmark.getClient(benchmark.servers);
+            this.sim = new RetwisSimulation(client, benchmark.async);
             this.sim.set_next_ids(51200, 8192);
         }
 
         public void run() {
-            for (int i = 0; i < this.totalSPCalls; i++) {
+            // System.out.println("Running client " + this.id);
+            for (int i = 0; i < this.benchmark.totalSPCalls / this.benchmark.numClients; i++) {
                 try {
                     //
-                    this.sim.doGetPosts(new RetwisCallback(false));
+                    this.sim.doGetPosts(new RetwisCallback(this.benchmark, false));
                     // this.sim.doOne(new RetwisCallback(false));
                 }
                 catch (IOException e) {}
@@ -312,6 +381,25 @@ public class Benchmark {
 
         return params;
     }
+
+    public static List<BenchArgs> getBenchArgs(Map<String, List<String>> args) {
+        List<BenchArgs> benchArgs = new ArrayList<>();
+        for (String type: args.get("t")) {
+            for (String numClients: args.get("c")) {
+                for (String totalSPCalls: args.get("n")) {
+                    for (String servers: args.get("s")) {
+                        BenchArgs thisArgs = new BenchArgs();
+                        thisArgs.type = type;
+                        thisArgs.numClients = Integer.parseInt(numClients);
+                        thisArgs.totalSPCalls = Integer.parseInt(totalSPCalls);
+                        thisArgs.servers = servers;
+                        benchArgs.add(thisArgs);
+                    }
+                }
+            }
+        }
+        return benchArgs;
+    }
     
     /**
      * Main routine creates a benchmark instance and kicks off the run method.
@@ -323,13 +411,15 @@ public class Benchmark {
     public static void main(String[] args) throws Exception {
         Map<String, List<String>> parsedArgs = parseArgs(args);
         System.out.println("Parsed Args:" + parsedArgs.entrySet());
-        Benchmark benchmark = new Benchmark(parsedArgs);
+        List<BenchArgs> benchArgs = getBenchArgs(parsedArgs);
+        Benchmark benchmark = new Benchmark(benchArgs.get(0));
         String action = parsedArgs.get("a").get(0);
         if (action.equals("init"))
             benchmark.init_data();
         else if (action.equals("warmup"))
             benchmark.warmup_db(Integer.parseInt(parsedArgs.get("d").get(0)));
         else
-            benchmark.run();
+            // benchmark.run();
+            Benchmark.runAll(parsedArgs);
     }
 }
