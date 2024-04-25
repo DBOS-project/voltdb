@@ -2419,7 +2419,8 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
         else if (config.m_vm_isolation == IsolationType.TCP)
             return makeTCPBasedInterVMMessagingProtocol(config.m_isolation_TCP_port, config.m_vm_pv_accel);
         else
-            throw new IllegalArgumentException("Illegal argument " + config.m_vm_isolation + " passed for IsolationType");
+            // throw new IllegalArgumentException("Illegal argument " + config.m_vm_isolation + " passed for IsolationType");
+            return null;
     }
 
     static InterVMMessagingProtocol EngineProcessMakeRingBufferBasedInterVMMessagingProtocol(String inputRingBufferFile,
