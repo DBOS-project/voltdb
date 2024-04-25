@@ -97,13 +97,19 @@ public class Benchmark {
 
     public void init_data() {
         System.out.println("Initializing data in db");
+        int iters = 1_000_000;
+        int unsuccessful = 0;
         // Insert ~30,000 users, ~850,000 posts, ~120,000 follows
-        for (int i = 0; i < 1_000_000; i++) {
+        for (int i = 0; i < iters; i++) {
+            if ((i * 10) % iters == 0 && i != 0)
+                System.out.printf("Iteration %d\n", i);
             try {
                 this.simulator.doInsertOne(new RetwisCallback(this, true));
+            } catch (IOException e) {
+                unsuccessful += 1;
             }
-            catch (IOException e) {}
         }
+        System.out.printf("Unsuccessful: %d\n", unsuccessful);
     }
 
     public void warmup_db(int warmupDuration) {

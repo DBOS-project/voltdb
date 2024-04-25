@@ -82,7 +82,7 @@ function server() {
 function init() {
     jars
     sqlcmd --servers=128.30.44.115 < ddl.sql
-    run -t "async" -a "init" -s 128.30.44.115
+    run -t "sync" -a "init" -s 128.30.44.115 -c 128
 }
 
 version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}')
