@@ -57,10 +57,6 @@ import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltTableRow;
 import org.voltdb.VoltType;
-import org.voltdb.client.ClientResponse;
-import org.voltdb.client.exampleutils.ClientConnection;
-import org.voltdb.ClientResponseImpl;
-
 import com.Constants;
 import org.voltdb.types.TimestampType;
 
@@ -69,7 +65,7 @@ import org.voltdb.types.TimestampType;
  * Customer related queries. See deps.pdf for dependencies between the queries
  * in original paymentByCustomerName.
  */
-public class paymentByCustomerNameC extends VoltProcedure {
+public class paymentByCustomerNameCPart1 extends VoltProcedure {
 
     final int misc_expected_string_len = 32 + 2 + 32 + 32 + 32 + 32 + 2 + 9 + 32 + 2 + 500;
 
@@ -117,7 +113,7 @@ public class paymentByCustomerNameC extends VoltProcedure {
 
     public final SQLStmt getCustomersByLastName = new SQLStmt("SELECT C_ID, C_FIRST, C_MIDDLE, C_LAST, C_STREET_1, C_STREET_2, C_CITY, C_STATE, C_ZIP, C_PHONE, C_SINCE, C_CREDIT, C_CREDIT_LIM, C_DISCOUNT, C_BALANCE, C_YTD_PAYMENT, C_PAYMENT_CNT, C_DATA FROM CUSTOMER WHERE C_LAST = ? AND C_D_ID = ? AND C_W_ID = ? ORDER BY C_FIRST;");// c_last, d_id, w_id
 
-    public VoltTable[] processPayment(ClientConnection client, short w_id, byte d_id, short c_w_id, byte c_d_id, int c_id, double h_amount, VoltTableRow customer, TimestampType timestamp)  throws Exception {
+    public VoltTable[] processPayment(short w_id, byte d_id, short c_w_id, byte c_d_id, int c_id, double h_amount, VoltTableRow customer, TimestampType timestamp) {
 
         //customer info
         final byte[] c_first = customer.getStringAsBytes(C_FIRST_IDX);
@@ -139,13 +135,6 @@ public class paymentByCustomerNameC extends VoltProcedure {
         byte[] c_data;
         if (Arrays.equals(c_credit, Constants.BAD_CREDIT_BYTES)) {
             c_data = customer.getStringAsBytes(C_DATA_IDX);
-        } else {
-            c_data = new byte[0];
-        }
-
-
-        if (Arrays.equals(c_credit, Constants.BAD_CREDIT_BYTES)) {
-            c_data = customer.getStringAsBytes(C_DATA_IDX);
             byte[] newData = (c_id + " " + c_d_id + " " + c_w_id + " " + d_id + " " + w_id  + " " + h_amount + "|").getBytes();
 
             int newLength = newData.length + c_data.length;
@@ -161,16 +150,13 @@ public class paymentByCustomerNameC extends VoltProcedure {
             int remaining = newLength - minLength;
             builder.append(c_data, 0, remaining);
             c_data = builder.array();
-            //voltQueueSQL(updateBCCustomer, c_balance, c_ytd_payment, c_payment_cnt, c_data, c_w_id, c_d_id, c_id);
+            voltQueueSQL(updateBCCustomer, c_balance, c_ytd_payment, c_payment_cnt, c_data, c_w_id, c_d_id, c_id);
         }
         else{
             c_data = new byte[0];
-            //voltQueueSQL(updateGCCustomer, c_balance, c_ytd_payment, c_payment_cnt, c_w_id, c_d_id, c_id);
+            voltQueueSQL(updateGCCustomer, c_balance, c_ytd_payment, c_payment_cnt, c_w_id, c_d_id, c_id);
         }
-        //voltExecuteSQL();
-
-        client.execute("paymentByCustomerNameCPart2", w_id, d_id, c_w_id, c_d_id, c_id, h_amount,
-        c_credit, c_balance, c_ytd_payment, c_payment_cnt, c_data);
+        voltExecuteSQL();
 
         // TPC-C 2.5.3.3: Must display the following fields:
         // W_ID, D_ID, C_ID, C_D_ID, C_W_ID, W_STREET_1, W_STREET_2, W_CITY, W_STATE, W_ZIP,
@@ -188,26 +174,8 @@ public class paymentByCustomerNameC extends VoltProcedure {
         return new VoltTable[]{misc};
     }
 
-    public ClientResponse run(ClientConnection client, short w_id, byte d_id, double h_amount, short c_w_id, byte c_d_id, String c_last, TimestampType timestamp) throws Exception {
-        
-        long start = System.nanoTime();
-        ClientResponse resp = client.execute("paymentByCustomerNameCPart1", c_w_id, c_d_id, c_last);
-
-        final VoltTable customers = resp.getResults()[0];
-        final int namecnt = customers.getRowCount();
-        if (namecnt == 0) {
-            throw new VoltAbortException("paymentByCustomerNameC: no customers with last name: " + c_last +
-                    " in warehouse: "
-                    + c_w_id + " and in district " + c_d_id);
-        }
-
-        final int index = (namecnt-1)/2;
-        final VoltTableRow customer = customers.fetchRow(index);
-        final int c_id = (int)customer.getLong(C_ID_IDX);
-        VoltTable[] res = processPayment(client, w_id, d_id, c_w_id, c_d_id, c_id, h_amount, customer, timestamp);
-        ClientResponseImpl responseImpl = new ClientResponseImpl(ClientResponse.SUCCESS, res, null);
-        responseImpl.setClientRoundtrip(System.nanoTime() - start);
-
-        return responseImpl;
+    public VoltTable[] run(short c_w_id, byte c_d_id, String c_last) throws VoltAbortException {
+        voltQueueSQL(getCustomersByLastName, c_last, c_d_id, c_w_id);
+        return voltExecuteSQL();
     }
 }

@@ -59,6 +59,9 @@ import org.voltdb.VoltTableRow;
 import org.voltdb.VoltType;
 import com.Constants;
 import org.voltdb.types.TimestampType;
+import org.voltdb.client.ClientResponse;
+import org.voltdb.client.exampleutils.ClientConnection;
+import org.voltdb.ClientResponseImpl;
 
 /**
  * Multi-partition version of {@link paymentByCustomerId} split for
@@ -113,7 +116,67 @@ public class paymentByCustomerIdC extends VoltProcedure {
 
     public final SQLStmt updateGCCustomer = new SQLStmt("UPDATE CUSTOMER SET C_BALANCE = ?, C_YTD_PAYMENT = ?, C_PAYMENT_CNT = ? WHERE C_W_ID = ? AND C_D_ID = ? AND C_ID = ?;"); //c_balance, c_ytd_payment, c_payment_cnt, c_w_id, c_d_id, c_id
 
-    public VoltTable[] processPayment(short w_id, byte d_id, short c_w_id, byte c_d_id, int c_id, double h_amount, VoltTableRow customer, TimestampType timestamp) {
+    // public VoltTable[] processPayment(short w_id, byte d_id, short c_w_id, byte c_d_id, int c_id, double h_amount, VoltTableRow customer, TimestampType timestamp) {
+    //     //customer info
+    //     final byte[] c_first = customer.getStringAsBytes(C_FIRST_IDX);
+    //     final byte[] c_middle = customer.getStringAsBytes(C_MIDDLE_IDX);
+    //     final byte[] c_last = customer.getStringAsBytes(C_LAST_IDX);
+    //     final byte[] c_street_1 = customer.getStringAsBytes(C_STREET_1_IDX);
+    //     final byte[] c_street_2 = customer.getStringAsBytes(C_STREET_2_IDX);
+    //     final byte[] c_city = customer.getStringAsBytes(C_CITY_IDX);
+    //     final byte[] c_state = customer.getStringAsBytes(C_STATE_IDX);
+    //     final byte[] c_zip = customer.getStringAsBytes(C_ZIP_IDX);
+    //     final byte[] c_phone = customer.getStringAsBytes(C_PHONE_IDX);
+    //     final TimestampType c_since = customer.getTimestampAsTimestamp(C_SINCE_IDX);
+    //     final byte[] c_credit = customer.getStringAsBytes(C_CREDIT_IDX);
+    //     final double c_credit_lim = customer.getDouble(C_CREDIT_LIM_IDX);
+    //     final double c_discount = customer.getDouble(C_DISCOUNT_IDX);
+    //     final double c_balance = customer.getDouble(C_BALANCE_IDX) - h_amount;
+    //     final double c_ytd_payment = customer.getDouble(C_YTD_PAYMENT_IDX) + h_amount;
+    //     final int c_payment_cnt = (int)customer.getLong(C_PAYMENT_CNT_IDX) + 1;
+    //     byte[] c_data;
+    //     if (Arrays.equals(c_credit, Constants.BAD_CREDIT_BYTES)) {
+    //         c_data = customer.getStringAsBytes(C_DATA_IDX);
+    //         byte[] newData = (c_id + " " + c_d_id + " " + c_w_id + " " + d_id + " " + w_id  + " " + h_amount + "|").getBytes();
+
+    //         int newLength = newData.length + c_data.length;
+    //         if (newLength > Constants.MAX_C_DATA) {
+    //             newLength = Constants.MAX_C_DATA;
+    //         }
+    //         ByteBuilder builder = new ByteBuilder(newLength);
+
+    //         int minLength = newLength;
+    //         if (newData.length < minLength) minLength = newData.length;
+    //         builder.append(newData, 0, minLength);
+
+    //         int remaining = newLength - minLength;
+    //         builder.append(c_data, 0, remaining);
+    //         c_data = builder.array();
+    //         voltQueueSQL(updateBCCustomer, c_balance, c_ytd_payment, c_payment_cnt, c_data, c_w_id, c_d_id, c_id);
+    //     }
+    //     else{
+    //         c_data = new byte[0];
+    //         voltQueueSQL(updateGCCustomer, c_balance, c_ytd_payment, c_payment_cnt, c_w_id, c_d_id, c_id);
+    //     }
+    //     voltExecuteSQL();
+
+    //     // TPC-C 2.5.3.3: Must display the following fields:
+    //     // W_ID, D_ID, C_ID, C_D_ID, C_W_ID, W_STREET_1, W_STREET_2, W_CITY, W_STATE, W_ZIP,
+    //     // D_STREET_1, D_STREET_2, D_CITY, D_STATE, D_ZIP, C_FIRST, C_MIDDLE, C_LAST, C_STREET_1,
+    //     // C_STREET_2, C_CITY, C_STATE, C_ZIP, C_PHONE, C_SINCE, C_CREDIT, C_CREDIT_LIM,
+    //     // C_DISCOUNT, C_BALANCE, the first 200 characters of C_DATA (only if C_CREDIT = "BC"),
+    //     // H_AMOUNT, and H_DATE.
+
+    //     // Return the entire warehouse and district tuples. The client provided:
+    //     // w_id, d_id, c_d_id, c_w_id, h_amount, h_data.
+    //     // Build a table for the rest
+    //     final VoltTable misc = misc_template.clone(1024);
+    //     misc.addRow(c_id, c_first, c_middle, c_last, c_street_1, c_street_2, c_city, c_state, c_zip,
+    //             c_phone, c_since, c_credit, c_credit_lim, c_discount, c_balance, c_data);
+    //     return new VoltTable[]{misc};
+    // }
+    public VoltTable[] processPayment(ClientConnection client, short w_id, byte d_id, short c_w_id, byte c_d_id, int c_id, double h_amount, VoltTableRow customer, TimestampType timestamp)  throws Exception {
+
         //customer info
         final byte[] c_first = customer.getStringAsBytes(C_FIRST_IDX);
         final byte[] c_middle = customer.getStringAsBytes(C_MIDDLE_IDX);
@@ -134,6 +197,13 @@ public class paymentByCustomerIdC extends VoltProcedure {
         byte[] c_data;
         if (Arrays.equals(c_credit, Constants.BAD_CREDIT_BYTES)) {
             c_data = customer.getStringAsBytes(C_DATA_IDX);
+        } else {
+            c_data = new byte[0];
+        }
+
+
+        if (Arrays.equals(c_credit, Constants.BAD_CREDIT_BYTES)) {
+            c_data = customer.getStringAsBytes(C_DATA_IDX);
             byte[] newData = (c_id + " " + c_d_id + " " + c_w_id + " " + d_id + " " + w_id  + " " + h_amount + "|").getBytes();
 
             int newLength = newData.length + c_data.length;
@@ -149,13 +219,16 @@ public class paymentByCustomerIdC extends VoltProcedure {
             int remaining = newLength - minLength;
             builder.append(c_data, 0, remaining);
             c_data = builder.array();
-            voltQueueSQL(updateBCCustomer, c_balance, c_ytd_payment, c_payment_cnt, c_data, c_w_id, c_d_id, c_id);
+            //voltQueueSQL(updateBCCustomer, c_balance, c_ytd_payment, c_payment_cnt, c_data, c_w_id, c_d_id, c_id);
         }
         else{
             c_data = new byte[0];
-            voltQueueSQL(updateGCCustomer, c_balance, c_ytd_payment, c_payment_cnt, c_w_id, c_d_id, c_id);
+            //voltQueueSQL(updateGCCustomer, c_balance, c_ytd_payment, c_payment_cnt, c_w_id, c_d_id, c_id);
         }
-        voltExecuteSQL();
+        //voltExecuteSQL();
+
+        client.execute("paymentByCustomerNameCPart2", w_id, d_id, c_w_id, c_d_id, c_id, h_amount,
+        c_credit, c_balance, c_ytd_payment, c_payment_cnt, c_data);
 
         // TPC-C 2.5.3.3: Must display the following fields:
         // W_ID, D_ID, C_ID, C_D_ID, C_W_ID, W_STREET_1, W_STREET_2, W_CITY, W_STATE, W_ZIP,
@@ -173,10 +246,21 @@ public class paymentByCustomerIdC extends VoltProcedure {
         return new VoltTable[]{misc};
     }
 
-    public VoltTable[] run(short w_id, byte d_id, double h_amount, short c_w_id, byte c_d_id, int c_id, TimestampType timestamp) {
+    public ClientResponse run(ClientConnection client, short w_id, byte d_id, double h_amount, short c_w_id, byte c_d_id, int c_id, TimestampType timestamp) throws Exception {
         // assert (w_id == c_w_id); cross partition should be supported (at least in future)
-        voltQueueSQL(getCustomersByCustomerId, c_id, c_d_id, c_w_id);
-        final VoltTableRow customer = voltExecuteSQL()[0].fetchRow(0);
-        return processPayment(w_id, d_id, c_w_id, c_d_id, c_id, h_amount, customer, timestamp);
+        // voltQueueSQL(getCustomersByCustomerId, c_id, c_d_id, c_w_id);
+        // final VoltTableRow customer = voltExecuteSQL()[0].fetchRow(0);
+        // return processPayment(w_id, d_id, c_w_id, c_d_id, c_id, h_amount, customer, timestamp);
+        long start = System.nanoTime();
+        ClientResponse resp = client.execute("paymentByCustomerIdCPart1", c_id, c_d_id, c_w_id);
+
+        final VoltTable customers = resp.getResults()[0];
+
+        final VoltTableRow customer = customers.fetchRow(0);
+        VoltTable[] res = processPayment(client, w_id, d_id, c_w_id, c_d_id, c_id, h_amount, customer, timestamp);
+        ClientResponseImpl responseImpl = new ClientResponseImpl(ClientResponse.SUCCESS, res, null);
+        responseImpl.setClientRoundtrip(System.nanoTime() - start);
+
+        return responseImpl;
     }
 }

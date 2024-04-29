@@ -199,7 +199,7 @@ public class neworder {
             if (itemresults[i].getRowCount() == 0) {
                 // note that this will happen with 1% of transactions on purpose.
                 // TPCC defines 1% of neworder gives a wrong itemid, causing rollback.
-                return new ClientResponseImpl(ClientResponse.SUCCESS, null, new VoltAbortException(Constants.INVALID_ITEM_MESSAGE).toString());
+                return new ClientResponseImpl(ClientResponse.USER_ABORT, null, new VoltAbortException(Constants.INVALID_ITEM_MESSAGE).toString());
             }
             assert itemresults[i].getRowCount() == 1;
             items[i] = itemresults[i].fetchRow(0);

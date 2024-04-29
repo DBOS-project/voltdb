@@ -32,6 +32,7 @@ import org.voltdb.client.Client;
 import org.voltdb.client.ClientFactory;
 import org.voltdb.client.NoConnectionsException;
 import org.voltdb.client.ProcCallException;
+import org.HdrHistogram_voltpatches.AtomicHistogram;
 import org.voltdb.client.exampleutils.AppHelper;
 import org.voltdb.client.exampleutils.ClientConnection;
 import org.voltdb.client.exampleutils.ClientConnectionPool;
@@ -55,7 +56,18 @@ public class MyTPCC
     private CountDownLatch m_latch;
     private String procNames[];
     private static AtomicLong procCounts[];
-
+    public static long[][] txnLatencyCounter = new long[TPCCSimulation.Transaction.values().length][9];
+    public static AtomicHistogram[] latencyHistograms = new AtomicHistogram[TPCCSimulation.Transaction.values().length];
+    static {
+        for (int i = 0; i < TPCCSimulation.Transaction.values().length; i++) {
+            latencyHistograms[i] = new AtomicHistogram(3600000000L, 5);
+        }
+        for (int i = 0; i < TPCCSimulation.Transaction.values().length; i++) {
+            for (int j = 0; j < 9; j++) {
+                txnLatencyCounter[i][j] = 0;
+            }
+        }
+    }
     public static long minExecutionMilliseconds = 999999999l;
     public static long maxExecutionMilliseconds = -1l;
     public static long totExecutionMilliseconds = 0;
@@ -86,7 +98,7 @@ public class MyTPCC
         System.out.println("main finished");
         System.exit(0);
     }
-    public static AtomicInteger numSPCalls = new AtomicInteger();
+    public static AtomicInteger numSPCalls = new AtomicInteger(0);
     public void run()
     {
         long transactions_per_second = m_helpah.longValue("ratelimit");
@@ -234,6 +246,33 @@ public class MyTPCC
         System.out.printf(" -   Latency 175ms - 200ms = %,d\n", latencyCounter[7]);
         System.out.printf(" -   Latency 200ms+        = %,d\n", latencyCounter[8]);
 
+        // print the latency for each transaction types stored in TPCCSimulation.Transaction
+        for (int i = 0; i < TPCCSimulation.Transaction.values().length; i++)
+        {
+            System.out.printf(" - %s\n", TPCCSimulation.Transaction.values()[i].name());
+            System.out.printf(" -   Latency   0ms -  2ms = %,d\n", txnLatencyCounter[i][0]);
+            System.out.printf(" -   Latency   2ms -  4ms = %,d\n", txnLatencyCounter[i][1]);
+            System.out.printf(" -   Latency   4ms -  8ms = %,d\n", txnLatencyCounter[i][2]);
+            System.out.printf(" -   Latency   8ms - 10ms = %,d\n", txnLatencyCounter[i][3]);
+            System.out.printf(" -   Latency  10ms - 12ms = %,d\n", txnLatencyCounter[i][4]);
+            System.out.printf(" -   Latency  12ms - 14ms = %,d\n", txnLatencyCounter[i][5]);
+            System.out.printf(" -   Latency  14ms - 16ms = %,d\n", txnLatencyCounter[i][6]);
+            System.out.printf(" -   Latency  16ms - 18ms = %,d\n", txnLatencyCounter[i][7]);
+            System.out.printf(" -   Latency  18ms+        = %,d\n", txnLatencyCounter[i][8]);
+        }
+
+        for (int i = 0; i < TPCCSimulation.Transaction.values().length; i++)
+        {
+            counterLock.lock();
+            AtomicHistogram histogram = latencyHistograms[i];
+            // print p50, p70, p99 and p999 from the histogram
+            System.out.printf("%s - Latency Histogram min %f, max %f, mean %f, stddev %f, p50 %f, p70 %f, p99 %f, p999 %f\n", TPCCSimulation.Transaction.values()[i].name(),
+            histogram.getMinValue() / 1000.0, histogram.getMaxValue()/ 1000.0, histogram.getMean()/ 1000.0, histogram.getStdDeviation()/ 1000.0, 
+            histogram.getValueAtPercentile(50)/ 1000.0, histogram.getValueAtPercentile(70)/ 1000.0, 
+            histogram.getValueAtPercentile(99)/ 1000.0, histogram.getValueAtPercentile(99.9)/ 1000.0);
+            counterLock.unlock();
+        }
+
         // 3. Performance statistics
         System.out.println(
           "\n\n-------------------------------------------------------------------------------------\n"
@@ -379,6 +418,14 @@ public class MyTPCC
                         latencyBucket = 8;
                     }
                     latencyCounter[latencyBucket]++;
+                    
+                    latencyHistograms[TPCCSimulation.Transaction.DELIVERY.ordinal()].recordValue(clientResponse.getClientRoundtripNanos());
+                    latencyBucket = (int) (executionTime / 2l);
+                    if (latencyBucket > 8)
+                    {
+                        latencyBucket = 8;
+                    }
+                    txnLatencyCounter[TPCCSimulation.Transaction.DELIVERY.ordinal()][latencyBucket]++;
                 }
             }
             finally
@@ -458,6 +505,15 @@ public class MyTPCC
                         latencyBucket = 8;
                     }
                     latencyCounter[latencyBucket]++;
+
+                    latencyHistograms[TPCCSimulation.Transaction.NEW_ORDER.ordinal()].recordValue(clientResponse.getClientRoundtripNanos());
+
+                    latencyBucket = (int) (executionTime / 2l);
+                    if (latencyBucket > 8)
+                    {
+                        latencyBucket = 8;
+                    }
+                    txnLatencyCounter[TPCCSimulation.Transaction.NEW_ORDER.ordinal()][latencyBucket]++;
                 }
             }
             finally
@@ -561,6 +617,14 @@ public class MyTPCC
                             latencyBucket = 8;
                         }
                         latencyCounter[latencyBucket]++;
+
+                        latencyHistograms[m_transactionType.ordinal()].recordValue(clientResponse.getClientRoundtripNanos());
+                        latencyBucket = (int) (executionTime / 2l);
+                        if (latencyBucket > 8)
+                        {
+                            latencyBucket = 8;
+                        }
+                        txnLatencyCounter[m_transactionType.ordinal()][latencyBucket]++;
                     }
                 }
                 finally
@@ -729,6 +793,14 @@ public class MyTPCC
                         latencyBucket = 8;
                     }
                     latencyCounter[latencyBucket]++;
+
+                    latencyHistograms[TPCCSimulation.Transaction.STOCK_LEVEL.ordinal()].recordValue(clientResponse.getClientRoundtripNanos());
+                    latencyBucket = (int) (executionTime / 2l);
+                    if (latencyBucket > 8)
+                    {
+                        latencyBucket = 8;
+                    }
+                    txnLatencyCounter[TPCCSimulation.Transaction.STOCK_LEVEL.ordinal()][latencyBucket]++;
                 }
             }
             finally
@@ -796,6 +868,14 @@ public class MyTPCC
                             latencyBucket = 8;
                         }
                         latencyCounter[latencyBucket]++;
+
+                        latencyHistograms[TPCCSimulation.Transaction.RESET_WAREHOUSE.ordinal()].recordValue(clientResponse.getClientRoundtripNanos());
+                        latencyBucket = (int) (executionTime / 2l);
+                        if (latencyBucket > 8)
+                        {
+                            latencyBucket = 8;
+                        }
+                        txnLatencyCounter[TPCCSimulation.Transaction.RESET_WAREHOUSE.ordinal()][latencyBucket]++;
                     }
                 }
                 finally

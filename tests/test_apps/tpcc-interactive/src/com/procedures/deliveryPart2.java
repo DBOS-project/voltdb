@@ -53,50 +53,53 @@ package com.procedures;
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
-import org.voltdb.client.ClientResponse;
-import org.voltdb.client.ClientResponse;
-import org.voltdb.client.exampleutils.ClientConnection;
+import org.voltdb.VoltTableRow;
+import org.voltdb.VoltType;
 import com.Constants;
 import org.voltdb.types.TimestampType;
-import org.voltdb.ClientResponseImpl;
 
-//Notes on Stored Procedure:
-//return VoltTable[] has 1 element:
-//1) stock_count, represented as a 1x1 table representing a Long.
+public class deliveryPart2 extends VoltProcedure {
+    private final VoltTable result_template = new VoltTable(
+        new VoltTable.ColumnInfo("d_id", VoltType.TINYINT),
+        new VoltTable.ColumnInfo("o_id", VoltType.INTEGER)
+    );
 
-public class slev extends VoltProcedure {
+    //BLOCK: Replaces use of cursor with a limited select.
+    public final SQLStmt getNewOrder =
+        new SQLStmt("SELECT NO_O_ID FROM NEW_ORDER WHERE NO_D_ID = ? AND NO_W_ID = ? AND NO_O_ID > -1 LIMIT 1;");
 
-    public final SQLStmt GetOId = new SQLStmt("SELECT D_NEXT_O_ID FROM DISTRICT WHERE D_W_ID = ? AND D_ID = ?;");
+    public final SQLStmt deleteNewOrder =
+        new SQLStmt("DELETE FROM NEW_ORDER WHERE NO_D_ID = ? AND NO_W_ID = ? AND NO_O_ID = ?;"); // d_id, w_id, no_o_id
+    //END OF BLOCK
 
-    public final SQLStmt GetStockCount = new SQLStmt(
-        "SELECT COUNT(DISTINCT(OL_I_ID)) FROM ORDER_LINE, STOCK " +
-        "WHERE OL_W_ID = ? AND " +
-        "OL_D_ID = ? AND " +
-        "OL_O_ID < ? AND " +
-        "OL_O_ID >= ? AND " +
-        "S_W_ID = ? AND " +
-        "S_I_ID = OL_I_ID AND " +
-        "S_QUANTITY < ?;");
+    public final SQLStmt getCId =
+        new SQLStmt("SELECT O_C_ID FROM ORDERS WHERE O_ID = ? AND O_D_ID = ? AND O_W_ID = ?;"); //no_o_id, d_id, w_id
+    //into c_id
 
-    public ClientResponse run(ClientConnection client, short w_id, byte d_id, int threshold) throws Exception {
-        long start = System.nanoTime();
-        ClientResponse resp = client.execute("slevPart1", w_id, d_id);
-        
-        final VoltTable result = resp.getResults()[0];
+    public final SQLStmt updateOrders =
+        new SQLStmt("UPDATE ORDERS SET O_CARRIER_ID = ? WHERE O_ID = ? AND O_D_ID = ? AND O_W_ID = ?;"); //o_carrier_id, no_o_id, d_id, w_id
 
-//      // handle the case where the first part fails (un-elegantly)
-//      long o_id;
-//      if (result.getRowCount() > 0)
-//          o_id = result.asScalarLong();
-//      else
-//          o_id = 0;
-        final long o_id = result.asScalarLong(); //if invalid (i.e. no matching o_id), we expect a fail here.
+    public final SQLStmt updateOrderLine =
+        new SQLStmt("UPDATE ORDER_LINE SET OL_DELIVERY_D = ? WHERE OL_O_ID = ? AND OL_D_ID = ? AND OL_W_ID = ?;"); //timestamp, no_o_id, d_id, w_id
 
-        // voltQueueSQL(GetStockCount, w_id, d_id, o_id, o_id - 20, w_id, threshold);
-        //return assumes that o_id is a temporary variable, and that stock_count is a necessarily returned variable.
-        resp = client.execute("slevPart2", w_id, d_id, o_id, threshold);
-        ClientResponseImpl responseImpl = new ClientResponseImpl(ClientResponse.SUCCESS,  resp.getResults(), null);
-        responseImpl.setClientRoundtrip(System.nanoTime() - start);
-        return responseImpl;
+    //is ol_amount a column? assuming so (and that this sum() is being supported)
+    public final SQLStmt sumOLAmount =
+        new SQLStmt("SELECT SUM(OL_AMOUNT) FROM ORDER_LINE WHERE OL_O_ID = ? AND OL_D_ID = ? AND OL_W_ID = ?;");//no_o_id, d_id, w_id
+    //into ol_total
+
+    public final SQLStmt updateCustomer =
+        new SQLStmt("UPDATE CUSTOMER SET C_BALANCE = C_BALANCE + ? WHERE C_ID = ? AND C_D_ID = ? AND C_W_ID = ?;"); //ol_total, c_id, d_id, w_id
+
+    public VoltTable[] run(short w_id, long[] no_o_ids) throws VoltAbortException {
+        for (long d_id  = 1; d_id <= Constants.DISTRICTS_PER_WAREHOUSE; ++d_id) {
+            if (no_o_ids[(int) d_id - 1] == -1) {
+                continue;
+            }
+
+            final long no_o_id = no_o_ids[(int) d_id - 1];
+            voltQueueSQL(getCId, no_o_id, d_id, w_id);
+            voltQueueSQL(sumOLAmount, no_o_id, d_id, w_id);
+        }
+        return voltExecuteSQL();
     }
 }

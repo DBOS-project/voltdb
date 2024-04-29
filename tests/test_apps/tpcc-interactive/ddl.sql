@@ -187,7 +187,11 @@ file -inlinebatch END_OF_2ND_BATCH
 
 create procedure partition on table warehouse column w_id from class com.procedures.LoadWarehouse;
 create procedure partition on table warehouse column w_id from class com.procedures.ostatByCustomerId;
-create procedure partition on table warehouse column w_id from class com.procedures.delivery;
+-- create procedure partition on table warehouse column w_id from class com.procedures.delivery;
+create procedure partition on table warehouse column w_id from class com.procedures.deliveryPart1;
+create procedure partition on table warehouse column w_id from class com.procedures.deliveryPart2;
+create procedure partition on table warehouse column w_id from class com.procedures.deliveryPart3;
+create procedure partition on table warehouse column w_id from class com.procedures.deliveryPart4;
 -- create procedure partition on table warehouse column w_id from class com.procedures.paymentByCustomerNameW;
 create procedure partition on table warehouse column w_id from class com.procedures.paymentByCustomerNameWPart1;
 -- create procedure partition on table warehouse column w_id from class com.procedures.paymentByCustomerIdW;
@@ -199,11 +203,16 @@ create procedure partition on table warehouse column w_id from class com.procedu
 create procedure partition on table warehouse column w_id from class com.procedures.neworderPart2;
 create procedure partition on table warehouse column w_id from class com.procedures.neworderPart3;
 create procedure partition on table warehouse column w_id from class com.procedures.neworderPart4;
-create procedure partition on table warehouse column w_id from class com.procedures.slev;
+-- create procedure partition on table warehouse column w_id from class com.procedures.slev;
+create procedure partition on table warehouse column w_id from class com.procedures.slevPart1;
+create procedure partition on table warehouse column w_id from class com.procedures.slevPart2;
 create procedure partition on table warehouse column w_id from class com.procedures.ResetWarehouse;
 create procedure partition on table warehouse column w_id from class com.procedures.ostatByCustomerName;
-create procedure partition on table customer column c_w_id parameter 3 from class com.procedures.paymentByCustomerNameC;
-create procedure partition on table customer column c_w_id parameter 3 from class com.procedures.paymentByCustomerIdC;
+-- create procedure partition on table customer column c_w_id parameter 3 from class com.procedures.paymentByCustomerNameC;
+create procedure partition on table customer column c_w_id parameter 0 from class com.procedures.paymentByCustomerNameCPart1;
+create procedure partition on table customer column c_w_id parameter 2 from class com.procedures.paymentByCustomerNameCPart2;
+-- create procedure partition on table customer column c_w_id parameter 3 from class com.procedures.paymentByCustomerIdC;
+create procedure partition on table customer column c_w_id parameter 2 from class com.procedures.paymentByCustomerIdCPart1;
 
 
 -- Multi-partition procedures

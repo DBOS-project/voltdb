@@ -55,8 +55,12 @@ import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltTableRow;
 import org.voltdb.VoltType;
+import org.voltdb.client.ClientResponse;
+import org.voltdb.client.exampleutils.ClientConnection;
 import com.Constants;
 import org.voltdb.types.TimestampType;
+import org.voltdb.ClientResponseImpl;
+
 
 public class delivery extends VoltProcedure {
     private final VoltTable result_template = new VoltTable(
@@ -90,13 +94,20 @@ public class delivery extends VoltProcedure {
     public final SQLStmt updateCustomer =
         new SQLStmt("UPDATE CUSTOMER SET C_BALANCE = C_BALANCE + ? WHERE C_ID = ? AND C_D_ID = ? AND C_W_ID = ?;"); //ol_total, c_id, d_id, w_id
 
-    public VoltTable run(short w_id, int o_carrier_id, TimestampType timestamp) throws VoltAbortException {
-        for (long d_id  = 1; d_id <= Constants.DISTRICTS_PER_WAREHOUSE; ++d_id) {
-            voltQueueSQL(getNewOrder, d_id, w_id);
-        }
-        final VoltTable[] neworderresults = voltExecuteSQL();
+    public ClientResponse run(ClientConnection client, short w_id, int o_carrier_id, TimestampType timestamp) throws Exception {
+
+        long start = System.nanoTime();
+        ClientResponse resp = client.execute("deliveryPart1", w_id);
+        // for (long d_id  = 1; d_id <= Constants.DISTRICTS_PER_WAREHOUSE; ++d_id) {
+        //     voltQueueSQL(getNewOrder, d_id, w_id);
+        // }
+        //final VoltTable[] neworderresults = voltExecuteSQL();
+        final VoltTable[] neworderresults = resp.getResults();
         assert neworderresults.length == Constants.DISTRICTS_PER_WAREHOUSE;
-        final Long[] no_o_ids = new Long[Constants.DISTRICTS_PER_WAREHOUSE];
+        long[] no_o_ids = new long[Constants.DISTRICTS_PER_WAREHOUSE];
+        for (int i = 0; i < Constants.DISTRICTS_PER_WAREHOUSE; ++i) {
+            no_o_ids[i] = -1;
+        }
         int valid_neworders = 0;
         int[] result_offsets = new int[Constants.DISTRICTS_PER_WAREHOUSE];
         for (long d_id  = 1; d_id <= Constants.DISTRICTS_PER_WAREHOUSE; ++d_id) {
@@ -113,12 +124,16 @@ public class delivery extends VoltProcedure {
             ++valid_neworders;
             final Long no_o_id = newOrder.asScalarLong();
             no_o_ids[(int) d_id - 1] = no_o_id;
-            voltQueueSQL(getCId, no_o_id, d_id, w_id);
-            voltQueueSQL(sumOLAmount, no_o_id, d_id, w_id);
+            // voltQueueSQL(getCId, no_o_id, d_id, w_id);
+            // voltQueueSQL(sumOLAmount, no_o_id, d_id, w_id);
         }
-        final VoltTable[] otherresults = voltExecuteSQL();
+        //final VoltTable[] otherresults = voltExecuteSQL();
+        final VoltTable[] otherresults = client.execute("deliveryPart2", w_id, no_o_ids).getResults();
         assert otherresults.length == valid_neworders * 2;
 
+        for (int i = 0; i < Constants.DISTRICTS_PER_WAREHOUSE; ++i) {
+            no_o_ids[i] = -1;
+        }
         for (long d_id  = 1; d_id <= Constants.DISTRICTS_PER_WAREHOUSE; ++d_id) {
             final VoltTable newOrder = neworderresults[(int) d_id - 1];
 
@@ -130,17 +145,22 @@ public class delivery extends VoltProcedure {
 
             final Long no_o_id = newOrder.asScalarLong();
             no_o_ids[(int) d_id - 1] = no_o_id;
-            voltQueueSQL(deleteNewOrder, d_id, w_id, no_o_id);
-            voltQueueSQL(updateOrders, o_carrier_id, no_o_id, d_id, w_id);
-            voltQueueSQL(updateOrderLine, timestamp, no_o_id, d_id, w_id);
+            // voltQueueSQL(deleteNewOrder, d_id, w_id, no_o_id);
+            // voltQueueSQL(updateOrders, o_carrier_id, no_o_id, d_id, w_id);
+            // voltQueueSQL(updateOrderLine, timestamp, no_o_id, d_id, w_id);
         }
-        voltExecuteSQL();
+        // voltExecuteSQL();
+        client.execute("deliveryPart3", w_id, no_o_ids, o_carrier_id, timestamp).getResults();
 
         // these must be logged in the "result file" according to TPC-C 2.7.2.2 (page 39)
         // We remove the queued time, completed time, w_id, and o_carrier_id: the client can figure
         // them out
         final VoltTable result = result_template.clone(1024);
+        double[] ol_totals = new double[Constants.DISTRICTS_PER_WAREHOUSE];
+        long[] c_ids = new long[Constants.DISTRICTS_PER_WAREHOUSE];
         for (long d_id  = 1; d_id <= Constants.DISTRICTS_PER_WAREHOUSE; ++d_id) {
+            ol_totals[(int) d_id - 1] = 0.0;
+            c_ids[(int) d_id - 1] = -1;
             int resultoffset = result_offsets[(int) d_id - 1];
 
             if (resultoffset < 0) {
@@ -161,13 +181,18 @@ public class delivery extends VoltProcedure {
             }
             assert ol_total > 0.0;
 
-            voltQueueSQL(updateCustomer, ol_total, c_id, d_id, w_id);
+            ol_totals[(int) d_id - 1] = ol_total;
+            c_ids[(int) d_id - 1] = c_id;
+            //voltQueueSQL(updateCustomer, ol_total, c_id, d_id, w_id);
 
             final Long no_o_id = no_o_ids[(int) d_id - 1];
             result.addRow(d_id, no_o_id);
         }
-        voltExecuteSQL();
+        //voltExecuteSQL();
 
-        return result;
+        client.execute("deliveryPart4", w_id, ol_totals, c_ids).getResults();
+        ClientResponseImpl responseImpl = new ClientResponseImpl(ClientResponse.SUCCESS, new VoltTable[] {result}, null);
+        responseImpl.setClientRoundtrip(System.nanoTime() - start);
+        return responseImpl;
     }
 }
