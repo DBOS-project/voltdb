@@ -95,6 +95,7 @@ function run() {
     print_time "Running benchmark with params- $@"
     java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH\
         -Dlog4j.configuration=file://$LOG4J\
+        -Djava.library.path=/home/zxjcarrot/Workspace/networking/voltdb/src/frontend/org/voltcore/network\
         retwis.Benchmark $@
 }
 

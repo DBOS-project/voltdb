@@ -34,6 +34,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.voltcore.logging.VoltLogger;
 import org.voltcore.messaging.TransactionInfoBaseMessage;
+import org.voltcore.network.TimeTracker2;
 import org.voltcore.utils.CoreUtils;
 import org.voltcore.utils.DBBPool;
 import org.voltcore.utils.EstTime;
@@ -976,7 +977,8 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
             while (m_shouldContinue) {
                 if (m_runningState.isRunning()) {
                     // Normal operation blocks the site thread on the sitetasker queue.
-                    ExecutionEngine.VoltDBWorkRecv();
+                    // ExecutionEngine.VoltDBWorkRecv();
+                    TimeTracker2.VoltDBWorkRecv();
                     if (stagedTasks.isEmpty()) {
                         stagedTasks.offer(m_pendingSiteTasks.take());
                     }
@@ -987,9 +989,9 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
                         m_currentTxnId = ((TransactionTask)task).getTxnId();
                         m_lastTxnTime = EstTime.currentTimeMillis();
                         Iv2Trace.logSiteTaskerQueueTake(task, false, false);
-                        ExecutionEngine.VoltDBWorkStart();
+                        TimeTracker2.VoltDBWorkStart();
                         task.run(getSiteProcedureConnection());
-                        ExecutionEngine.VoltDBWorkEnd();
+                        TimeTracker2.VoltDBWorkEnd();
                         //System.out.println(task + " " + task.getClass().getName());
                     } else {
                         Iv2Trace.logSiteTaskerQueueTake(task, false, false);

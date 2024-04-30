@@ -206,8 +206,10 @@ public class VoltPort implements Connection
         if ( maxBytes == 0 || m_isShuttingDown)
             return 0;
 
+        TimeTracker2.VoltDBLibcRead();
         // read from network, copy data into read buffers, which from thread local memory pool
         final int read = m_readStream.read(m_channel, maxBytes, m_pool);
+        TimeTracker2.VoltDBLibcReadReturn();
 
         if (read == -1) {
             handleReadStreamEOF();

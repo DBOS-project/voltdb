@@ -121,7 +121,7 @@ class JavaRunner(object):
         java_opts = utility.merge_java_options(environment.java_opts, java_opts_override)
         java_args.extend(java_opts)
         java_args.append('-Dlog4j.configuration=file://%s' % self.find_log4j_config())
-        java_args.append('-Djava.library.path=default')
+        java_args.append('-Djava.library.path=/home/zxjcarrot/Workspace/networking/voltdb/src/frontend/org/voltcore/network')
         java_args.append('-XX:+PreserveFramePointer')
         java_args.extend(('-classpath', classpath))
         java_args.append(java_class)
