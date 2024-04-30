@@ -343,7 +343,7 @@ public class VoltNIOWriteStream extends NIOWriteStreamBase implements WriteStrea
                 } else {
                     buffer = m_currentWriteBuffer.b();
                 }
-
+                
                 rc = channel.write(buffer);
 
                 //Discard the buffer back to a pool if no data remains

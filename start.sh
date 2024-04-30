@@ -1,5 +1,5 @@
 #!/bin/bash
-source ../.profile
+source /home/zxjcarrot/Workspace/networking/.profile
 echo "Start.sh with $1 sites per host"
 
 deployment_xml="<?xml version=\"1.0\"?>\

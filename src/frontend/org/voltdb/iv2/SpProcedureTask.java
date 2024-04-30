@@ -21,6 +21,7 @@ import java.io.IOException;
 import org.apache.commons.lang3.StringUtils;
 import org.voltcore.messaging.Mailbox;
 import org.voltcore.network.TimeTracker;
+import org.voltcore.network.TimeTracker2;
 import org.voltcore.utils.CoreUtils;
 import org.voltcore.utils.LatencyWatchdog;
 import org.voltdb.ClientResponseImpl;
@@ -158,7 +159,7 @@ public class SpProcedureTask extends ProcedureTask
         // thus delaying the transmission of the response behind other tasks, e.g
         // other invocations. Trying to deliver the response immediately to the network
         // does not improve latencies. See ENG-21040.
-        ExecutionEngine.VoltDBWorkSend();
+        TimeTracker2.VoltDBWorkSend();
         m_initiator.deliver(response);
         // System.out.println("SpProcedureTask.run() delivered response: " + response);
         // TimeTracker.add(TimeTracker.TrackingEvent.FinishHandleSPRequest, System.nanoTime());

@@ -137,4 +137,4 @@ jvmOPTS+=("-Xmx512m" "-Dlog4j.configuration=file://${LOG4J_CONFIG_PATH}")
 jvmOPTS+=("-classpath" "${CLASSPATH}" "org.voltdb.utils.SQLCommand")
 
 # run it
-exec $JAVA "${jvmOPTS[@]}" "${programOPTS[@]}"
+exec $JAVA -Djava.library.path=/home/zxjcarrot/Workspace/networking/voltdb/src/frontend/org/voltcore/network "${jvmOPTS[@]}" "${programOPTS[@]}"
