@@ -152,7 +152,8 @@ public class HostMessenger implements SocketJoiner.JoinHandler, InterfaceToMesse
         public int deadHostTimeout = Constants.DEFAULT_HEARTBEAT_TIMEOUT_SECONDS * 1000;
         public long backwardsTimeForgivenessWindow = 1000 * 60 * 60 * 24 * 7;
         public VoltMessageFactory factory = new VoltMessageFactory();
-        public int networkThreads =  Math.max(2, CoreUtils.availableProcessors() / 4);
+        // public int networkThreads =  Math.max(2, CoreUtils.availableProcessors() / 4);
+        public int networkThreads =  1;
         public Queue<String> coreBindIds;
         public JoinAcceptor acceptor = null;
         public String group = AbstractTopology.PLACEMENT_GROUP_DEFAULT;
@@ -233,7 +234,7 @@ public class HostMessenger implements SocketJoiner.JoinHandler, InterfaceToMesse
                     this.networkThreads = networkThreadConfig;
                     networkLog.info("Overridden network thread count: " + this.networkThreads);
                 }
-
+                System.out.println("this.networkThreads " + this.networkThreads);
             } catch (Exception e) {
                 networkLog.error("Error setting network thread count", e);
             }
