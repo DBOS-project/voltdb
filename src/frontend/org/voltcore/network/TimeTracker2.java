@@ -19,6 +19,4 @@ public class TimeTracker2 {
     public static native int VoltDBLocalCommEnd();
     public static native int VoltDBWorkSend();
     public static native int VoltDBWorkEnd();
-    public static native int VoltDBPAPIReset();
-    public static native int VoltDBPAPIReadCounter();
 }

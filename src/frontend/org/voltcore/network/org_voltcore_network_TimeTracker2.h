@@ -103,22 +103,6 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBWorkSend
 JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBWorkEnd
   (JNIEnv *, jclass);
 
-/*
- * Class:     org_voltcore_network_TimeTracker2
- * Method:    VoltDBPAPIReset
- * Signature: ()I
- */
-JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBPAPIReset
-  (JNIEnv *, jclass);
-
-/*
- * Class:     org_voltcore_network_TimeTracker2
- * Method:    VoltDBPAPIReadCounter
- * Signature: ()I
- */
-JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBPAPIReadCounter
-  (JNIEnv *, jclass);
-
 #ifdef __cplusplus
 }
 #endif

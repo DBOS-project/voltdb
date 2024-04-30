@@ -3,21 +3,13 @@
 
 #include "org_voltcore_network_TimeTracker2.h"
 
-JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBPAPIReset(JNIEnv *env, jclass obj) {
-    return reset_papi();
-}
-
-JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBPAPIReadCounter(JNIEnv *env, jclass obj) {
-    return read_papi_counter();
-}
-
 JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBEnableTracing(JNIEnv *env, jclass obj, jboolean enable) {
     enable_tracing(enable);
     return 0;
 }
 
 JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBDumpTraces(JNIEnv *env, jclass obj, jbyteArray traceFilePath) {
-    jbyte* trace_file_path_chars = env->GetByteArrayElements(traceFilePath, NULL);
+    jbyte* trace_file_path_chars = (*env)->GetByteArrayElements(env, traceFilePath, NULL);
     char *trace_file_path = (char *)trace_file_path_chars;
     // std::string trace_file_path(reinterpret_cast<char*>(trace_file_path_chars), env->GetArrayLength(traceFilePath));
     return dump_traces(trace_file_path);
