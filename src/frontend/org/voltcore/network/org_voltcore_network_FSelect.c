@@ -14,6 +14,7 @@
 #include "ff_config.h"
 #include "ff_api.h"
 #include "ff_epoll.h"
+#include "time_tracker.h"
 
 #include "org_voltcore_network_FSelect.h"
 
@@ -162,6 +163,7 @@ void loop(void *arg) {
 	// printf("Got %d events\n", nevents);
 
 	for (i = 0; i < nevents; ++i) {
+		record_tracepoint(17);
 		// printf("Got event on fd %d\n", events[i].data.fd);
 		/* Handle new connect */
 		if (events[i].data.fd == sockfd) {
@@ -201,6 +203,7 @@ void loop(void *arg) {
 				printf("unknown event: %8.8X\n", events[i].events);
 			}
 		}
+		record_tracepoint(16);
 	}
 }
 

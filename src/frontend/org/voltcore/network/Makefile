@@ -30,8 +30,8 @@ LIBS+= $(shell $(PKGCONF) --static --libs libdpdk)
 LIBS+= -Wl,--no-whole-archive -lrt -lm -ldl -lcrypto -pthread -lnuma
 
 echomake:
-	$(CC) -c $(CFLAGS) $(CFLAGS_JNI) $(EPOLL_FILE).c -o $(EPOLL_FILE).o $(INCLUDE) -I$(INC_DIR)
-	$(CC) -shared $(CFLAGS) -g -o libnative_epoll.so $(EPOLL_FILE).o -lc $(LIBS) ${FF_PATH}/lib/libfstack.so
+	$(CC) -c $(CFLAGS) $(CFLAGS_JNI) $(EPOLL_FILE).c -o $(EPOLL_FILE).o $(INCLUDE) -I$(TRACKER_PATH) -I$(INC_DIR)
+	$(CC) -shared $(CFLAGS) -g -o libnative_epoll.so $(EPOLL_FILE).o $(TRACKER_PATH)/libtimetracker.so -lc $(LIBS) ${FF_PATH}/lib/libfstack.so
 
 	$(CC) -c $(CFLAGS) $(CFLAGS_JNI) $(SOCKET_FILE).c -o $(SOCKET_FILE).o $(INCLUDE) -I$(INC_DIR)
 	$(CC) -shared $(CFLAGS) -g -o libnative_socket.so $(SOCKET_FILE).o -lc $(LIBS) ${FF_PATH}/lib/libfstack.so
