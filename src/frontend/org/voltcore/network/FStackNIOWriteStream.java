@@ -55,6 +55,7 @@ public class FStackNIOWriteStream extends NIOWriteStreamBase implements WriteStr
 
     @Override
     public void enqueue(final ByteBuffer buffer) {
+        TimeTracker2.VoltDBResponseQueue();
         m_queuedWrites.add(buffer);
         m_conn.enableWriteSelection();
     }

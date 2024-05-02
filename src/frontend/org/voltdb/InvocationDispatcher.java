@@ -49,6 +49,7 @@ import org.voltcore.messaging.ForeignHost;
 import org.voltcore.messaging.HostMessenger;
 import org.voltcore.messaging.Mailbox;
 import org.voltcore.network.Connection;
+import org.voltcore.network.TimeTracker2;
 import org.voltcore.utils.CoreUtils;
 import org.voltcore.utils.EstTime;
 import org.voltcore.zk.ZKUtil;
@@ -532,7 +533,6 @@ public final class InvocationDispatcher {
                 String err = "Unable to execute " + task.getProcName() + " with parameters " + task.getParams();
                 return gracefulFailureResponse(err, task.clientHandle);
             }
-
             CreateTransactionResult result = createTransaction(handler.connectionId(), task, catProc.getReadonly(),
                     catProc.getSinglepartition(), catProc.getEverysite(), partitions, task.getSerializedSize(),
                     nowNanos);
@@ -1426,6 +1426,7 @@ public final class InvocationDispatcher {
         }
 
         Iv2Trace.logCreateTransaction(workRequest);
+        TimeTracker2.VoltDBWorkQueue();
         m_mailbox.send(initiatorHSId, workRequest);
         return CreateTransactionResult.SUCCESS;
     }
