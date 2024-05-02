@@ -36,13 +36,9 @@ volatile int opIsModify[MAX_CONN]; // 1-1 correspondance with writeQueuedFds
 volatile int queuedFdsCount = 0;
 pthread_mutex_t lock;
 
-char buf[BUF_SIZE];
-jobject byteBuffer;
-
 int epfd;
 // int sockfd;
 
-JNIEnv* jniEnv;
 jclass javaServerClass;
 jobject javaServerObj;
 jmethodID processMethodId;
@@ -65,17 +61,11 @@ JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fInit
 
 JNIEXPORT jint JNICALL Java_org_voltcore_network_FSelect_fOpen
   (JNIEnv * env, jobject thisObject) {
-    jniEnv = env;
-    printf("start_server: About to get the static method from %s\n", env);
     javaServerClass = (*env)->FindClass(env, "org/voltcore/network/FSelect");
-    printf("start_server: About to get the static method of %s\n", javaServerClass);
-    // processMethodId = (*env)->GetStaticMethodID(javaServerClass, "hello", "()V");
     processMethodId = (*env)->GetMethodID(env, javaServerClass, "indicateReadyForRead", "(I)V");
     acceptMethodId = (*env)->GetMethodID(env, javaServerClass, "handleAccept", "(I)V");
     writeMethodId = (*env)->GetMethodID(env, javaServerClass, "handleReadyForWrite", "(I)V");
     deleteMethodId = (*env)->GetMethodID(env, javaServerClass, "deleteInterest", "(I)V");
-    // processMethodId = (*env)->GetMethodID(env, javaServerClass, "processMsg", "(ILjava/nio/ByteBuffer;I)V");
-    printf("start_server: Got the static method id: %s\n", processMethodId);
 
     if ((epfd = ff_epoll_create(10)) < 0) {
 		perror("epoll_create failed");
@@ -83,14 +73,7 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_FSelect_fOpen
 	}
 
     printf("Setup epoll and sockets; about to run loop\n");
-    byteBuffer = (*env)->NewDirectByteBuffer(env, (void *)buf, BUF_SIZE);
     return epfd;
-  }
-
-JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_indicateReadyForWrite
-  (JNIEnv *env, jobject thisObject) {
-	// write_ready = 1;
-	printf("Write ready set to true\n");
   }
 
 void add_to_epoll(int fd, int interestOps, int isModify) {
@@ -115,17 +98,6 @@ JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fRegister
 	opIsModify[queuedFdsCount] = isModify;
 	queuedFdsCount++;
 	pthread_mutex_unlock(&lock);
-	// if (interestOps & 1) {
-	// 	add_to_epoll(fd, EPOLLIN, isModify);
-	// 	isModify = 1;
-	// 	printf("Registered fd %d with epoll fd %d\n", fd, epoll_fd);
-	// }
-	// if (interestOps & 2) { // Assuming other threads only ever do write
-	// 	queuedFds[queuedFdsCount++] = fd;
-	// 	queuedOpType[queuedFdsCount] = ;
-	// 	writeQueuedFds[writeQueuedFdsCount++] = fd;
-	// 	opIsModify[writeQueuedFdsCount] = isModify;
-	// }
   }
 
 void loop(void *arg) {
@@ -134,19 +106,6 @@ void loop(void *arg) {
 	jobject thisObject = callArg-> thisObject;
 	int sockfd = callArg->sockfd;
 
-	// if (write_ready) {
-	// 	printf("Write ready; calling java method to drain.\n");
-	// 	// might need mutex lock for the race condition of one thread setting write_ready
-	// 	// to true and another thread trying to flush the write buffers
-	// 	// But there is anyther lock in the Java side, need to think more if race arises
-	// 	(*env)->CallVoidMethod(env, thisObject, writeMethodId);
-	// 	if ((*env)->ExceptionCheck(env)) {
-	// 		printf("Exception in write method\n");
-	// 	} else {
-	// 		printf("Write method called. No exception\n");
-	// 	}
-	// 	write_ready = 0;
-	// }
 	pthread_mutex_lock(&lock);
 	if (queuedFdsCount > 0) {
 		int i;
@@ -175,14 +134,6 @@ void loop(void *arg) {
 
 				(*env)->CallVoidMethod(env, thisObject, acceptMethodId, nclientfd);
 				break; // Somehow catch exception from Java side
-				/* Add to event list */
-				// ev.data.fd = nclientfd;
-				// ev.events  = EPOLLIN;
-				// if (ff_epoll_ctl(epfd, EPOLL_CTL_ADD, nclientfd, &ev) != 0) {
-				// 	printf("epoll_ctl failed:%d, %s\n", errno,
-				// 		strerror(errno));
-				// 	break;
-				// }
 			}
 		} else { 
 			if (events[i].events & EPOLLERR ) {
@@ -203,7 +154,6 @@ void loop(void *arg) {
 				printf("unknown event: %8.8X\n", events[i].events);
 			}
 		}
-		record_tracepoint(16);
 	}
 }
 
@@ -215,20 +165,4 @@ JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_fSelect
 	args.thisObject = thisObject;
 	args.sockfd = sockfd;
     ff_run(loop, &args);
-  }
-
-JNIEXPORT void JNICALL Java_org_voltcore_network_FSelect_write
-  (JNIEnv * env, jobject thisObject, jint fd, jobject buf, jint readlen) {
-    int sentlen = 0;
-	int written;
-	char *data = (char *)(*env)->GetDirectBufferAddress(env, buf);
-  	while (sentlen < readlen) {
-	    written = ff_write(fd, data + sentlen, readlen - sentlen);
-	    if (written < 0) {
-            perror("FSelect: write failed");
-	        break;
-	    }
-	    sentlen += written;
-	}
-	return 0;
   }

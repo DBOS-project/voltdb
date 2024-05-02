@@ -94,8 +94,6 @@ public class FSelect {
 
     public native void fSelect(int sockfd);
 
-    public native void indicateReadyForWrite();
-
     public void indicateReadyForRead(int fd) throws IOException {
         read_callback.handleReadyForRead(new FSocketConn(fd));
     }
@@ -117,6 +115,4 @@ public class FSelect {
             throw e;
         }
     }
-
-    public native void write(int sockfd, ByteBuffer buf, int len);
 }

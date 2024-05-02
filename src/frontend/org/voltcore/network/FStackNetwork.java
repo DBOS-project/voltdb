@@ -186,7 +186,7 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
         // write_Lock.lock();
         System.out.println("Got lock; indicating write ready for fd " + fd + " in thread with name " + Thread.currentThread().getName());
         writeQueuedFDs.add(fd);
-        m_selector.indicateReadyForWrite();
+        // m_selector.indicateReadyForWrite();
         // write_Lock.unlock();
     }
 

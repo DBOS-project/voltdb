@@ -16,7 +16,7 @@ public class TestFSelect {
 
     public class TestReadHandler implements ReadHandler {
         public void handleData(int fd, java.nio.ByteBuffer buffer, int len) {
-            fselect.write(fd, buffer, len);
+            // fselect.write(fd, buffer, len);
         }
         public void handleReadyForRead(FSocketConn conn) throws IOException {
             if (incompleteBuffer == null) {
