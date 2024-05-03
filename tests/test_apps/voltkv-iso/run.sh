@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+PATH=$PATH://home/zxjcarrot/Workspace/networking-xj/voltdb/bin/
+
+# find voltdb binaries
+if [ -e ../../bin/voltdb ]; then
+    # assume this is the examples folder for a kit
+    VOLTDB_BIN="$(dirname $(dirname $(pwd)))/bin"
+elif [ -n "$(which voltdb 2> /dev/null)" ]; then
+    # assume we're using voltdb from the path
+    VOLTDB_BIN=$(dirname "$(which voltdb)")
+else
+    echo "Unable to find VoltDB installation."
+    echo "Please add VoltDB's bin directory to your path."
+    exit -1
+fi
+
+QUITAFTERLOAD="${QUITAFTERLOAD:=false}"
+PRELOAD="${PRELOAD:=true}"
+POOLSIZE="${POOLSIZE:=10000000}"
+RATELIMIT="${RATELIMIT:=10000000}"
+
+echo "QUITAFTERLOAD=$QUITAFTERLOAD"
+echo "PRELOAD=$PRELOAD"
+# call script to set up paths, including
+# java classpaths and binary paths
+source $VOLTDB_BIN/voltenv
+
+# leader host for startup purposes only
+# (once running, all nodes are the same -- no leaders)
+STARTUPLEADERHOST="localhost"
+# list of cluster nodes separated by commas in host:[port] format
+#SERVERS="localhost"
+SERVERS="128.30.31.14"
+# remove binaries, logs, runtime artifacts, etc... but keep the client jar
+function clean() {
+    rm -rf client/voltkv/*.class voltdbroot log
+}
+
+# remove everything from "clean" as well as the jarfile
+function cleanall() {
+    clean
+    rm -rf voltkv-client.jar
+}
+
+# compile the source code for the client into a jarfile
+function jars() {
+    # compile java source
+    javac -classpath $CLIENTCLASSPATH client/voltkv/*.java
+    javac -classpath $APPCLASSPATH procedures/voltkv/*.java
+    # build client jar
+    jar cf voltkv-client.jar -C client voltkv
+    jar cf procedures.jar -C procedures voltkv
+    # remove compiled .class files
+    rm -rf client/voltkv/*.class
+    rm -rf procedures/voltkv/*/class
+}
+
+# compile the client jarfile if it doesn't exist
+function jars-ifneeded() {
+    if [ ! -e voltkv-client.jar ]; then
+        jars;
+    fi
+}
+
+# Init to directory voltdbroot
+function voltinit-ifneeded() {
+    voltdb init --force
+}
+
+# run the voltdb server locally
+function server() {
+    voltinit-ifneeded
+    voltdb start -H $STARTUPLEADERHOST
+}
+
+# load schema and procedures
+function init() {
+    jars-ifneeded
+    sqlcmd --servers=$SERVERS < ddl.sql
+}
+
+# run the client that drives the example
+function client() {
+    async-benchmark
+}
+
+# Asynchronous benchmark sample
+# Use this target for argument help
+function async-benchmark-help() {
+    jars-ifneeded
+    java -classpath voltkv-client.jar:$CLIENTCLASSPATH voltkv.AsyncBenchmark --help
+}
+
+# latencyreport: default is OFF
+# ratelimit: must be a reasonable value if lantencyreport is ON
+# Disable the comments (and add a preceding slash) to get latency report
+function async-benchmark() {
+    jars-ifneeded
+    java -classpath voltkv-client.jar:$CLIENTCLASSPATH voltkv.AsyncBenchmark \
+        --displayinterval=5 \
+        --duration=120 \
+        --servers=$SERVERS \
+        --poolsize=$POOLSIZE \
+        --preload=$PRELOAD \
+        --quitafterload=$QUITAFTERLOAD \
+        --getputratio=1.0 \
+        --keysize=32 \
+        --minvaluesize=$PAYLOAD_SIZE \
+        --maxvaluesize=$PAYLOAD_SIZE \
+        --entropy=127 \
+        --usecompression=false 
+#        --multisingleratio=0.0
+#        --latencyreport=true \
+#        --ratelimit=                   \
+}
+
+# Multi-threaded synchronous benchmark sample
+# Use this target for argument help
+function sync-benchmark-help() {
+    jars-ifneeded
+    java -classpath voltkv-client.jar:$CLIENTCLASSPATH voltkv.SyncBenchmark --help
+}
+
+function sync-benchmark() {
+    jars-ifneeded
+    java -classpath voltkv-client.jar:$CLIENTCLASSPATH voltkv.SyncBenchmark \
+        --displayinterval=5 \
+        --duration=120 \
+        --servers=$SERVERS \
+        --poolsize=$POOLSIZE \
+        --preload=$PRELOAD \
+        --quitafterload=$QUITAFTERLOAD \
+        --getputratio=1.0 \
+        --keysize=8 \
+        --minvaluesize=$PAYLOAD_SIZE \
+        --maxvaluesize=$PAYLOAD_SIZE \
+        --usecompression=false \
+        --ratelimit=$RATELIMIT \
+        --threads=512
+#        --multisingleratio=0.0
+}
+
+# JDBC benchmark sample
+# Use this target for argument help
+function jdbc-benchmark-help() {
+    jars-ifneeded
+    java -classpath voltkv-client.jar:$CLIENTCLASSPATH voltkv.JDBCBenchmark --help
+}
+
+function jdbc-benchmark() {
+    jars-ifneeded
+    java -classpath voltkv-client.jar:$CLIENTCLASSPATH voltkv.JDBCBenchmark \
+        --displayinterval=5 \
+        --duration=120 \
+        --servers=$SERVERS \
+        --poolsize=100000 \
+        --preload=$PRELOAD \
+        --quitafterload=$QUITAFTERLOAD \
+        --getputratio=1.0 \
+        --keysize=32 \
+        --minvaluesize=5120 \
+        --maxvaluesize=5120 \
+        --usecompression=false \
+        --threads=40
+}
+
+function help() {
+    echo "Usage: ./run.sh {clean|cleanall|jars|server|init|client|async-benchmark|aysnc-benchmark-help|...}"
+    echo "       {...|sync-benchmark|sync-benchmark-help|jdbc-benchmark|jdbc-benchmark-help}"
+}
+
+# Run the targets pass on the command line
+# If no first arg, run server
+if [ $# -eq 0 ]; then server; exit; fi
+for arg in "$@"
+do
+    echo "${0}: Performing $arg..."
+    $arg
+done
+

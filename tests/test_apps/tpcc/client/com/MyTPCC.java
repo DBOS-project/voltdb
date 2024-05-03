@@ -58,6 +58,7 @@ public class MyTPCC
     private static AtomicLong procCounts[];
     public static long[][] txnLatencyCounter = new long[TPCCSimulation.Transaction.values().length][9];
     public static AtomicHistogram[] latencyHistograms = new AtomicHistogram[TPCCSimulation.Transaction.values().length];
+    public static AtomicHistogram latencyHistogram = new AtomicHistogram(3600000000L, 5);
     static {
         for (int i = 0; i < TPCCSimulation.Transaction.values().length; i++) {
             latencyHistograms[i] = new AtomicHistogram(3600000000L, 5);
@@ -77,10 +78,12 @@ public class MyTPCC
     public static boolean checkLatency = false;
     public static final ReentrantLock counterLock = new ReentrantLock();
     public static boolean async = false;
+    public static RateLimiter rateLimiter = null;
+
 
     public static void main(String args[])
     {
-        int threads = 256;
+        int threads = 64;
         ExecutorService service = Executors.newFixedThreadPool(threads);
         MyTPCC[] tpcc_threads = new MyTPCC[threads];
         CountDownLatch latch = new CountDownLatch(1);
@@ -99,10 +102,13 @@ public class MyTPCC
         System.exit(0);
     }
     public static AtomicInteger numSPCalls = new AtomicInteger(0);
+    public static AtomicLong transactions_this_second = new AtomicLong(0);
+    public static AtomicLong last_millisecond = new AtomicLong(System.currentTimeMillis());
+    public static AtomicLong this_millisecond = new AtomicLong(System.currentTimeMillis());
     public void run()
     {
         long transactions_per_second = m_helpah.longValue("ratelimit");
-        long transactions_per_milli = transactions_per_second / 1000l;
+        long transactions_per_milli = transactions_per_second / 20l;
         long client_feedback_interval_secs = m_helpah.longValue("displayinterval");
         long testDurationSecs = m_helpah.longValue("duration");
         long lag_latency_seconds = 0;
@@ -110,10 +116,17 @@ public class MyTPCC
         long thisOutstanding = 0;
         long lastOutstanding = 0;
         final String statsFile = m_helpah.stringValue("statsfile");
-
-        long transactions_this_second = 0;
-        long last_millisecond = System.currentTimeMillis();
-        long this_millisecond = System.currentTimeMillis();
+        synchronized (RateLimiter.class)
+        {
+            if (rateLimiter == null) {
+                rateLimiter = new RateLimiter(transactions_per_second);
+            }
+        }
+        last_millisecond.set(System.currentTimeMillis());
+        this_millisecond.set(System.currentTimeMillis());
+        // long transactions_this_second = 0;
+        // long last_millisecond = System.currentTimeMillis();
+        // long this_millisecond = System.currentTimeMillis();
 
         setTransactionDisplayNames();
 
@@ -125,6 +138,7 @@ public class MyTPCC
 
         while (endTime > currentTime)
         {
+            rateLimiter.acquire();
             numSPCalls.getAndIncrement();
 
             try
@@ -134,17 +148,17 @@ public class MyTPCC
             catch (IOException e)
             {}
 
-            transactions_this_second++;
-            if (transactions_this_second >= transactions_per_milli)
-            {
-                this_millisecond = System.currentTimeMillis();
-                while (this_millisecond <= last_millisecond)
-                {
-                    this_millisecond = System.currentTimeMillis();
-                }
-                last_millisecond = this_millisecond;
-                transactions_this_second = 0;
-            }
+            // transactions_this_second.getAndIncrement();
+            // if (transactions_this_second.get() >= transactions_per_milli)
+            // {
+            //     this_millisecond.set(System.currentTimeMillis());
+            //     while (this_millisecond.get() <= last_millisecond.get())
+            //     {
+            //         this_millisecond.set(System.currentTimeMillis());
+            //     }
+            //     last_millisecond.set(this_millisecond.get());
+            //     transactions_this_second.set(0);
+            // }
 
             currentTime = System.currentTimeMillis();
 
@@ -261,17 +275,23 @@ public class MyTPCC
             System.out.printf(" -   Latency  18ms+        = %,d\n", txnLatencyCounter[i][8]);
         }
 
+        counterLock.lock();
         for (int i = 0; i < TPCCSimulation.Transaction.values().length; i++)
         {
-            counterLock.lock();
+            
             AtomicHistogram histogram = latencyHistograms[i];
             // print p50, p70, p99 and p999 from the histogram
-            System.out.printf("%s - Latency Histogram min %f, max %f, mean %f, stddev %f, p50 %f, p70 %f, p99 %f, p999 %f\n", TPCCSimulation.Transaction.values()[i].name(),
-            histogram.getMinValue() / 1000.0, histogram.getMaxValue()/ 1000.0, histogram.getMean()/ 1000.0, histogram.getStdDeviation()/ 1000.0, 
-            histogram.getValueAtPercentile(50)/ 1000.0, histogram.getValueAtPercentile(70)/ 1000.0, 
-            histogram.getValueAtPercentile(99)/ 1000.0, histogram.getValueAtPercentile(99.9)/ 1000.0);
-            counterLock.unlock();
+            System.out.printf("%s - Latency Histogram min %f , max %f , mean %f , stddev %f , p50 %f , p70 %f , p90 %f , p99 %f , p999 %f\n", TPCCSimulation.Transaction.values()[i].name(),
+            histogram.getMinValue() / 1000000.0, histogram.getMaxValue()/ 1000000.0, histogram.getMean()/ 1000000.0, histogram.getStdDeviation()/ 1000000.0, 
+            histogram.getValueAtPercentile(50)/ 1000000.0, histogram.getValueAtPercentile(70)/ 1000000.0, histogram.getValueAtPercentile(90)/ 1000000.0,
+            histogram.getValueAtPercentile(99)/ 1000000.0, histogram.getValueAtPercentile(99.9)/ 1000000.0);
+            
         }
+        System.out.printf("Overall - Latency Histogram min %f , max %f , mean %f , stddev %f , p50 %f , p70 %f , p90 %f , p99 %f , p999 %f\n",
+        latencyHistogram.getMinValue() / 1000000.0, latencyHistogram.getMaxValue()/ 1000000.0, latencyHistogram.getMean()/ 1000000.0, latencyHistogram.getStdDeviation()/ 1000000.0, 
+        latencyHistogram.getValueAtPercentile(50)/ 1000000.0, latencyHistogram.getValueAtPercentile(70)/ 1000000.0, latencyHistogram.getValueAtPercentile(90)/ 1000000.0,
+        latencyHistogram.getValueAtPercentile(99)/ 1000000.0, latencyHistogram.getValueAtPercentile(99.9)/ 1000000.0);
+        counterLock.unlock();
 
         // 3. Performance statistics
         System.out.println(
@@ -314,6 +334,7 @@ public class MyTPCC
         double skewfactor = m_helpah.doubleValue("skewfactor");
 
         String servers = m_helpah.stringValue("servers");
+        System.out.println("ratelimit   = " + m_helpah.longValue("ratelimit"));
         System.out.printf("Connecting to servers: %s\n", servers);
         int sleep = 1000;
         while(true)
@@ -420,6 +441,7 @@ public class MyTPCC
                     latencyCounter[latencyBucket]++;
                     
                     latencyHistograms[TPCCSimulation.Transaction.DELIVERY.ordinal()].recordValue(clientResponse.getClientRoundtripNanos());
+                    latencyHistogram.recordValue(clientResponse.getClientRoundtripNanos());
                     latencyBucket = (int) (executionTime / 2l);
                     if (latencyBucket > 8)
                     {
@@ -507,7 +529,7 @@ public class MyTPCC
                     latencyCounter[latencyBucket]++;
 
                     latencyHistograms[TPCCSimulation.Transaction.NEW_ORDER.ordinal()].recordValue(clientResponse.getClientRoundtripNanos());
-
+                    latencyHistogram.recordValue(clientResponse.getClientRoundtripNanos());
                     latencyBucket = (int) (executionTime / 2l);
                     if (latencyBucket > 8)
                     {
@@ -619,6 +641,7 @@ public class MyTPCC
                         latencyCounter[latencyBucket]++;
 
                         latencyHistograms[m_transactionType.ordinal()].recordValue(clientResponse.getClientRoundtripNanos());
+                        latencyHistogram.recordValue(clientResponse.getClientRoundtripNanos());
                         latencyBucket = (int) (executionTime / 2l);
                         if (latencyBucket > 8)
                         {
@@ -795,6 +818,7 @@ public class MyTPCC
                     latencyCounter[latencyBucket]++;
 
                     latencyHistograms[TPCCSimulation.Transaction.STOCK_LEVEL.ordinal()].recordValue(clientResponse.getClientRoundtripNanos());
+                    latencyHistogram.recordValue(clientResponse.getClientRoundtripNanos());
                     latencyBucket = (int) (executionTime / 2l);
                     if (latencyBucket > 8)
                     {
@@ -870,6 +894,7 @@ public class MyTPCC
                         latencyCounter[latencyBucket]++;
 
                         latencyHistograms[TPCCSimulation.Transaction.RESET_WAREHOUSE.ordinal()].recordValue(clientResponse.getClientRoundtripNanos());
+                        latencyHistogram.recordValue(clientResponse.getClientRoundtripNanos());
                         latencyBucket = (int) (executionTime / 2l);
                         if (latencyBucket > 8)
                         {

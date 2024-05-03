@@ -19,6 +19,8 @@ fi
 # java classpaths and binary paths
 source $VOLTDB_BIN/voltenv
 
+RATELIMIT="${RATELIMIT:=10000000}"
+
 # leader host for startup purposes only
 # (once running, all nodes are the same -- no leaders)
 STARTUPLEADERHOST="128.30.31.14"
@@ -68,7 +70,8 @@ function client() {
         --servers=$SERVERS \
         --duration=180 \
         --warehouses=256 \
-        --scalefactor=22
+        --scalefactor=22 \
+        --ratelimit=$RATELIMIT
 }
 
 function help() {

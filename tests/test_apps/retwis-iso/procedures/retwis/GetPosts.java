@@ -6,7 +6,7 @@ import org.voltdb.VoltVMProcedure;
 import org.voltdb.VoltProcedure.VoltAbortException;
 import org.voltdb.VoltTable;
 
-public class GetPosts extends VoltProcedure {
+public class GetPosts extends VoltVMProcedure {
     public final SQLStmt getPosts =
         new SQLStmt("SELECT post " + 
                     "FROM RetwisPosts " + 

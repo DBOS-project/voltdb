@@ -40,6 +40,7 @@ import java.util.TimerTask;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import org.HdrHistogram_voltpatches.AtomicHistogram;
 
 import org.voltdb.CLIConfig;
 import org.voltdb.VoltTable;
@@ -51,9 +52,14 @@ import org.voltdb.client.ClientStats;
 import org.voltdb.client.ClientStatsContext;
 import org.voltdb.client.ClientStatusListenerExt;
 import org.voltdb.client.NullCallback;
+import org.voltdb.client.exampleutils.ClientConnection;
+import org.voltdb.client.exampleutils.ClientConnectionPool;
+import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.atomic.AtomicLong;
+import voltkv.RateLimiter;
 
 public class SyncBenchmark {
-
+    static RateLimiter rateLimiter;
     // handy, rather than typing this out several times
     static final String HORIZONTAL_RULE =
             "----------" + "----------" + "----------" + "----------" +
@@ -80,6 +86,10 @@ public class SyncBenchmark {
     final ClientStatsContext fullStatsContext;
 
     // kv benchmark state
+    final AtomicHistogram latencyHitstogram = new AtomicHistogram(3600000000l, 1);
+    final AtomicHistogram totalLatencyHitstogram = new AtomicHistogram(3600000000l, 1);
+    final AtomicLong ops = new AtomicLong(0);
+    final AtomicLong totalOps = new AtomicLong(0);
     final AtomicLong successfulGets = new AtomicLong(0);
     final AtomicLong missedGets = new AtomicLong(0);
     final AtomicLong failedGets = new AtomicLong(0);
@@ -115,6 +125,9 @@ public class SyncBenchmark {
         @Option(desc = "Whether to preload a specified number of keys and values.")
         boolean preload = true;
 
+        @Option(desc = "Exit after loading.")
+        boolean quitafterload = false;
+
         @Option(desc = "Fraction of ops that are gets (vs puts).")
         double getputratio = 0.90;
 
@@ -122,10 +135,10 @@ public class SyncBenchmark {
         int keysize = 32;
 
         @Option(desc = "Minimum value size in bytes.")
-        int minvaluesize = 1024;
+        int minvaluesize = 128;
 
         @Option(desc = "Maximum value size in bytes.")
-        int maxvaluesize = 1024;
+        int maxvaluesize = 128;
 
         @Option(desc = "Number of values considered for each value byte.")
         int entropy = 127;
@@ -141,6 +154,10 @@ public class SyncBenchmark {
 
         @Option(desc = "Enable SSL, Optionally provide configuration file.")
         String sslfile = "";
+
+        @Option(desc = "Number of requests per second.")
+        long ratelimit = Long.MAX_VALUE;
+
 
         @Override
         public void validate() {
@@ -184,7 +201,7 @@ public class SyncBenchmark {
      */
     public SyncBenchmark(KVConfig config) {
         this.config = config;
-
+        this.rateLimiter = new RateLimiter(config.ratelimit);
         ClientConfig clientConfig = new ClientConfig("", "", new StatusListener());
         if (config.sslfile.trim().length() > 0) {
             clientConfig.setTrustStoreConfigFromPropertyFile(config.sslfile);
@@ -202,6 +219,29 @@ public class SyncBenchmark {
         System.out.println(" Command Line Configuration");
         System.out.println(HORIZONTAL_RULE);
         System.out.println(config.getConfigDumpString());
+    }
+
+    /**
+     * Connect to a single server with retry. Limited exponential backoff.
+     * No timeout. This will run until the process is killed if it's not
+     * able to connect.
+     *
+     * @param server hostname:port or just hostname (hostname can be ip).
+     */
+    void connectToOneServerWithRetry(String server) {
+        int sleep = 1000;
+        while (true) {
+            try {
+                client.createConnection(server);
+                break;
+            }
+            catch (Exception e) {
+                System.err.printf("Connection failed - retrying in %d second(s).\n", sleep / 1000);
+                try { Thread.sleep(sleep); } catch (Exception interruted) {}
+                if (sleep < 8000) sleep += sleep;
+            }
+        }
+        System.out.printf("Connected to VoltDB node at: %s.\n", server);
     }
 
     /**
@@ -241,20 +281,20 @@ public class SyncBenchmark {
 
         String[] serverArray = servers.split(",");
         final CountDownLatch connections = new CountDownLatch(serverArray.length);
-        Client client = this.client;
+        Client localClient = this.client;
         // use a new thread to connect to each server
         for (final String server : serverArray) {
             new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    connectToOneServerWithRetry(client, server);
+                    connectToOneServerWithRetry(localClient, server);
                     connections.countDown();
                 }
             }).start();
         }
         // block until all have connected
         connections.await();
-        return client;
+        return localClient;
     }
 
 
@@ -262,7 +302,7 @@ public class SyncBenchmark {
     Client createClient(String servers) throws InterruptedException {
         System.out.println("Connecting to VoltDB...");
 
-        Client client = ClientFactory.createClient(new ClientConfig("", "", new StatusListener()));
+        Client localClient = ClientFactory.createClient(new ClientConfig("", "", new StatusListener()));
         String[] serverArray = servers.split(",");
         final CountDownLatch connections = new CountDownLatch(serverArray.length);
 
@@ -271,18 +311,33 @@ public class SyncBenchmark {
             new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    connectToOneServerWithRetry(client, server);
+                    connectToOneServerWithRetry(localClient, server);
                     connections.countDown();
                 }
             }).start();
         }
         // block until all have connected
         connections.await();
-        return client;
+        return localClient;
     }
 
 
-    
+    static ClientConnection getClient(String servers, int id) {
+        int sleep = 1000;
+        while(true) {
+            try {
+                ClientConnection m_clientCon = ClientConnectionPool.get(servers, 21212, "", "", false, id + 50);
+                return m_clientCon;
+            }
+            catch (Exception e) {
+                System.err.printf("Connection failed - retrying in %d second(s).\n", sleep/1000);
+                try {Thread.sleep(sleep);} catch(Exception tie){}
+                if (sleep < 8000)
+                    sleep += sleep;
+            }
+        }
+    }
+
     /**
      * Create a Timer task to display performance data on the Vote procedure
      * It calls printStatistics() every displayInterval seconds
@@ -307,11 +362,15 @@ public class SyncBenchmark {
         long time = Math.round((stats.getEndTimestamp() - benchmarkStartTS) / 1000.0);
 
         System.out.printf("%02d:%02d:%02d ", time / 3600, (time / 60) % 60, time % 60);
-        System.out.printf("Throughput %d/s, ", stats.getTxnThroughput());
-        System.out.printf("Aborts/Failures %d/%d, ",
+        System.out.printf("Throughput %d/s, ", ops.get() / config.displayinterval);
+        ops.set(0);
+        //System.out.printf("Throughput %d/s, ", stats.getTxnThroughput());
+        System.out.printf("Aborts/Failures %d/%d\n ",
                 stats.getInvocationAborts(), stats.getInvocationErrors());
-        System.out.printf("Avg/95%% Latency %.2f/%.2fms\n", stats.getAverageLatency(),
-                stats.kPercentileLatencyAsDouble(0.95));
+        // System.out.printf("Avg/95%% Latency %.2f/%.2fms\n", latencyHitstogram.getMean() / 1000,
+        //     latencyHitstogram.getValueAtPercentile(95) / 1000);
+        // System.out.printf("Avg/95%% Latency %.2f/%.2fms\n", stats.getAverageLatency(),
+        //         stats.kPercentileLatencyAsDouble(0.95));
     }
 
     /**
@@ -365,17 +424,32 @@ public class SyncBenchmark {
         System.out.println(" Client Workload Statistics");
         System.out.println(HORIZONTAL_RULE);
 
-        System.out.printf("Average throughput:            %,9d txns/sec\n", stats.getTxnThroughput());
-        System.out.printf("Average latency:               %,9.2f ms\n", stats.getAverageLatency());
-        System.out.printf("10th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.1));
-        System.out.printf("25th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.25));
-        System.out.printf("50th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.5));
-        System.out.printf("75th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.75));
-        System.out.printf("90th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.9));
-        System.out.printf("95th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.95));
-        System.out.printf("99th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.99));
-        System.out.printf("99.5th percentile latency:     %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.995));
-        System.out.printf("99.9th percentile latency:     %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.999));
+        System.out.printf("Average throughput:            %d txns/sec\n", totalOps.get() / config.duration);
+
+       // System.out.printf("Average throughput:            %d txns/sec\n", stats.getTxnThroughput());
+        // System.out.printf("Average latency:               %,9.2f ms\n", stats.getAverageLatency());
+        // System.out.printf("10th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.1));
+        // System.out.printf("25th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.25));
+        // System.out.printf("50th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.5));
+        // System.out.printf("75th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.75));
+        // System.out.printf("90th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.9));
+        // System.out.printf("95th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.95));
+        // System.out.printf("99th percentile latency:       %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.99));
+        // System.out.printf("99.5th percentile latency:     %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.995));
+        // System.out.printf("99.9th percentile latency:     %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.999));
+
+        System.out.printf("Average latency:               %,9.2f ms\n", latencyHitstogram.getMean() / 1000000.0);
+        System.out.printf("10th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(10) / 1000000.0);
+        System.out.printf("25th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(25) / 1000000.0);
+        System.out.printf("50th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(50) / 1000000.0);
+        System.out.printf("75th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(75) / 1000000.0);
+        System.out.printf("90th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(90) / 1000000.0);
+        System.out.printf("95th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(95) / 1000000.0);
+        System.out.printf("99th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(99) / 1000000.0);
+        System.out.printf("99.5th percentile latency:     %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(99.5) / 1000000.0);
+        System.out.printf("99.9th percentile latency:     %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(99.9) / 1000000.0);
+        System.out.printf("Min latency:     %,9.2f ms\n", latencyHitstogram.getMinValue() / 1000000.0);
+        System.out.printf("Max latency:     %,9.2f ms\n", latencyHitstogram.getMaxValue() / 1000000.0);
 
         System.out.print("\n" + HORIZONTAL_RULE);
         System.out.println(" System Server Statistics");
@@ -398,16 +472,19 @@ public class SyncBenchmark {
      *
      */
     class KVThread implements Runnable {
-
+        private int id;
+        KVThread(int id) {
+            this.id = id;
+        }
         @Override
         public void run() {
-            Client client = createClient(config.servers);
+            ClientConnection client = getClient(config.servers, id);
             while (warmupComplete.get() == false) {
                 // Decide whether to perform a GET or PUT operation
                 if (rand.nextDouble() < config.getputratio) {
                     // Get a key/value pair using inbuilt select procedure, synchronously
                     try {
-                        client.callProcedure("STORE.select", processor.generateRandomKeyForRetrieval());
+                        client.execute("VoltKVQuery", processor.generateRandomKeyForRetrieval());
                     }
                     catch (Exception e) {}
                 }
@@ -415,7 +492,7 @@ public class SyncBenchmark {
                     // Put a key/value pair using inbuilt upsert procedure, synchronously
                     final PayloadProcessor.Pair pair = processor.generateForStore();
                     try {
-                        client.callProcedure("STORE.upsert", pair.Key, pair.getStoreValue());
+                        client.execute("STORE.upsert", pair.Key, pair.getStoreValue());
                     }
                     catch (Exception e) {}
                 }
@@ -423,12 +500,16 @@ public class SyncBenchmark {
 
             while (benchmarkComplete.get() == false) {
                 // Decide whether to perform a GET or PUT operation
+                rateLimiter.acquire();
+                long start = System.nanoTime();
                 if (rand.nextDouble() < config.getputratio) {
                     // Get a key/value pair using inbuilt select procedure, synchronously
                     try {
-                        ClientResponse response = client.callProcedure("VoltKVQuery",
+                        
+                        ClientResponse response = client.execute("VoltKVQuery",
                                 processor.generateRandomKeyForRetrieval());
-
+                        ops.incrementAndGet();
+                        totalOps.incrementAndGet();
                         final VoltTable pairData = response.getResults()[0];
                         // Cache miss (Key does not exist)
                         if (pairData.getRowCount() == 0)
@@ -443,6 +524,7 @@ public class SyncBenchmark {
                         }
                     }
                     catch (Exception e) {
+                        e.printStackTrace();
                         failedGets.incrementAndGet();
                     }
                 }
@@ -450,8 +532,10 @@ public class SyncBenchmark {
                     // Put a key/value pair using inbuilt upsert procedure, synchronously
                     final PayloadProcessor.Pair pair = processor.generateForStore();
                     try {
-                        client.callProcedure("STORE.upsert", pair.Key, pair.getStoreValue());
+                        client.execute("STORE.upsert", pair.Key, pair.getStoreValue());
                         successfulPuts.incrementAndGet();
+                        ops.incrementAndGet();
+                        totalOps.incrementAndGet();
                     }
                     catch (Exception e) {
                         failedPuts.incrementAndGet();
@@ -459,6 +543,10 @@ public class SyncBenchmark {
                     networkPutData.addAndGet(pair.getStoreValueLength());
                     rawPutData.addAndGet(pair.getRawValueLength());
                 }
+
+                long end = System.nanoTime();
+                latencyHitstogram.recordValue(end - start);
+                // totalLatencyHitstogram.recordValue(end - start);
             }
         }
     }
@@ -477,6 +565,7 @@ public class SyncBenchmark {
         // connect to one or more servers, loop until success
         connect(config.servers);
 
+        System.out.println(" Starting Benchmark");
         // preload keys if requested
         System.out.println();
         if (config.preload) {
@@ -489,6 +578,10 @@ public class SyncBenchmark {
             }
             client.drain();
             System.out.println("Preloading complete.\n");
+            if (config.quitafterload) {
+                System.out.println("Exitting after preload\n");
+                System.exit(0);
+            }
         }
 
         System.out.print(HORIZONTAL_RULE);
@@ -498,7 +591,7 @@ public class SyncBenchmark {
         // create/start the requested number of threads
         Thread[] kvThreads = new Thread[config.threads];
         for (int i = 0; i < config.threads; ++i) {
-            kvThreads[i] = new Thread(new KVThread());
+            kvThreads[i] = new Thread(new KVThread(i));
             kvThreads[i].start();
         }
 
@@ -553,6 +646,10 @@ public class SyncBenchmark {
     public static void main(String[] args) throws Exception {
         // create a configuration from the arguments
         KVConfig config = new KVConfig();
+        //print args
+        for (String arg : args) {
+            System.out.println(arg);
+        }
         config.parse(SyncBenchmark.class.getName(), args);
 
         SyncBenchmark benchmark = new SyncBenchmark(config);
