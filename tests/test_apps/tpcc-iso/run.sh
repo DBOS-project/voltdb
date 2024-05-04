@@ -20,6 +20,7 @@ fi
 source $VOLTDB_BIN/voltenv
 
 RATELIMIT="${RATELIMIT:=10000000}"
+WARMUPDURATION="${WARMUPDURATION:=80}"
 
 # leader host for startup purposes only
 # (once running, all nodes are the same -- no leaders)
@@ -69,6 +70,7 @@ function client() {
     java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH com.MyTPCC \
         --servers=$SERVERS \
         --duration=180 \
+        --warmupduration=$WARMUPDURATION \
         --warehouses=256 \
         --scalefactor=22 \
         --ratelimit=$RATELIMIT

@@ -99,6 +99,7 @@ public class MyLoader
     public MyLoader(String args[], ClientConnection voltClient)
     {
         m_helpah = new AppHelper(MyTPCC.class.getCanonicalName());
+        m_helpah.add("warmupduration", "run_warmup_duration_in_seconds", "Benchmark warmup duration in seconds.", 80);
         m_helpah.add("duration", "run_duration_in_seconds", "Benchmark duration, in seconds.", 180);
         m_helpah.add("warehouses", "number_of_warehouses", "Number of warehouses", 256);
         m_helpah.add("scalefactor", "scale_factor", "Reduces per-warehouse data by warehouses/scalefactor", 22.0);

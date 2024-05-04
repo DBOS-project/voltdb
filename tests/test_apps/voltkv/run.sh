@@ -18,6 +18,7 @@ QUITAFTERLOAD="${QUITAFTERLOAD:=false}"
 PRELOAD="${PRELOAD:=true}"
 POOLSIZE="${POOLSIZE:=10000000}"
 RATELIMIT="${RATELIMIT:=10000000}"
+WARMUPDURATION="${WARMUPDURATION:=80}"
 
 echo "QUITAFTERLOAD=$QUITAFTERLOAD"
 echo "PRELOAD=$PRELOAD"
@@ -136,6 +137,7 @@ function sync-benchmark() {
         --maxvaluesize=$PAYLOAD_SIZE \
         --usecompression=false \
         --ratelimit=$RATELIMIT \
+        --warmup=$WARMUPDURATION \
         --threads=512
 #        --multisingleratio=0.0
 }

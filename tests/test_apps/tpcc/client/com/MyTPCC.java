@@ -122,6 +122,23 @@ public class MyTPCC
                 rateLimiter = new RateLimiter(transactions_per_second);
             }
         }
+
+        long warmupDurationSecs = m_helpah.longValue("warmupduration");
+        long startWarmupTime = System.currentTimeMillis();
+        long endWarmupTime = startWarmupTime + (1000l * warmupDurationSecs);
+        long currentWarmupTime = startWarmupTime;
+        while(endWarmupTime > currentWarmupTime)
+        {
+            try
+            {
+                tpccSim.doOne();
+            }
+            catch (IOException e)
+            {}
+            currentWarmupTime = System.currentTimeMillis();
+        }
+        System.out.println("Warmup complete, took " + (currentWarmupTime - startWarmupTime) + " ms");
+
         last_millisecond.set(System.currentTimeMillis());
         this_millisecond.set(System.currentTimeMillis());
         // long transactions_this_second = 0;
@@ -316,6 +333,7 @@ public class MyTPCC
         m_latch = latch;
         m_client_id = client_id;
         m_helpah = new AppHelper(MyTPCC.class.getCanonicalName());
+        m_helpah.add("warmupduration", "run_warmup_duration_in_seconds", "Benchmark warmup duration in seconds.", 80);
         m_helpah.add("duration", "run_duration_in_seconds", "Benchmark duration, in seconds.", 180);
         m_helpah.add("warehouses", "number_of_warehouses", "Number of warehouses", 256);
         m_helpah.add("scalefactor", "scale_factor", "Reduces per-warehouse data by warehouses/scalefactor", 22.0);
