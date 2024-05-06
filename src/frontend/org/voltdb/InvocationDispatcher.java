@@ -49,6 +49,7 @@ import org.voltcore.messaging.ForeignHost;
 import org.voltcore.messaging.HostMessenger;
 import org.voltcore.messaging.Mailbox;
 import org.voltcore.network.Connection;
+import org.voltcore.network.TimeTracker2;
 import org.voltcore.utils.CoreUtils;
 import org.voltcore.utils.EstTime;
 import org.voltcore.zk.ZKUtil;
@@ -1426,6 +1427,7 @@ public final class InvocationDispatcher {
         }
 
         Iv2Trace.logCreateTransaction(workRequest);
+        TimeTracker2.VoltDBWorkQueue();
         m_mailbox.send(initiatorHSId, workRequest);
         return CreateTransactionResult.SUCCESS;
     }

@@ -57,6 +57,14 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBLibcReadRetu
 
 /*
  * Class:     org_voltcore_network_TimeTracker2
+ * Method:    VoltDBWorkQueue
+ * Signature: ()I
+ */
+JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBWorkQueue
+  (JNIEnv *, jclass);
+
+/*
+ * Class:     org_voltcore_network_TimeTracker2
  * Method:    VoltDBWorkRecv
  * Signature: ()I
  */
@@ -93,6 +101,14 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBLocalCommEnd
  * Signature: ()I
  */
 JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBWorkSend
+  (JNIEnv *, jclass);
+
+/*
+ * Class:     org_voltcore_network_TimeTracker2
+ * Method:    VoltDBResponseQueue
+ * Signature: ()I
+ */
+JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBResponseQueue
   (JNIEnv *, jclass);
 
 /*

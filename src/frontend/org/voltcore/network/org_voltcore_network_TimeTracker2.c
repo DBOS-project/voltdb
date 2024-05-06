@@ -1,6 +1,6 @@
 #include <stdbool.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 #include "time_tracker.h"
 
 #include "org_voltcore_network_TimeTracker2.h"
@@ -44,6 +44,11 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBLibcReadRetu
     return 0;
 }
 
+JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBWorkQueue(JNIEnv *env, jclass obj) {
+    record_tracepoint(18);
+    return 0;
+}
+
 JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBWorkRecv(JNIEnv *env, jclass obj) {
     record_tracepoint(0);
     return 0;
@@ -66,6 +71,11 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBLocalCommEnd
 
 JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBWorkSend(JNIEnv *env, jclass obj) {
     record_tracepoint(2);
+    return 0;
+}
+
+JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBResponseQueue(JNIEnv *env, jclass obj) {
+    record_tracepoint(19);
     return 0;
 }
 

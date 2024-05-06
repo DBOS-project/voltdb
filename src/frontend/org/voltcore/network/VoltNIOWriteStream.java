@@ -182,6 +182,7 @@ public class VoltNIOWriteStream extends NIOWriteStreamBase implements WriteStrea
     @Override
     public void enqueue(final DeferredSerialization ds) {
         synchronized (this) {
+            TimeTracker2.VoltDBResponseQueue();
             if (m_isShutdown) {
                 ds.cancel();
                 return;
@@ -199,6 +200,7 @@ public class VoltNIOWriteStream extends NIOWriteStreamBase implements WriteStrea
      */
     @Override
     public void fastEnqueue(final DeferredSerialization ds) {
+        TimeTracker2.VoltDBResponseQueue();
         m_connection.queueTask(new Runnable() {
             @Override
             public void run() {
@@ -226,6 +228,7 @@ public class VoltNIOWriteStream extends NIOWriteStreamBase implements WriteStrea
      */
     @Override
     public void enqueue(final ByteBuffer b[]) {
+        TimeTracker2.VoltDBResponseQueue();
         assert(b != null);
         for (ByteBuffer buf : b) {
             assert(!buf.isDirect());//Don't queue direct buffers, they leak memory without a container
