@@ -53,10 +53,9 @@ package com.procedures;
 
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
-import org.voltdb.VoltVMProcedure;
 import org.voltdb.VoltTable;
 
-public class ResetWarehouse extends VoltVMProcedure {
+public class ResetWarehouse extends VoltProcedure {
     // w_id, last valid o_id
     public final SQLStmt cleanOrders =
         new SQLStmt("DELETE FROM ORDERS WHERE O_W_ID = ? AND O_ID > ?;");

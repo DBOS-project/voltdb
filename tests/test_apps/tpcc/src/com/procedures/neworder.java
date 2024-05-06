@@ -50,21 +50,18 @@
 
 package com.procedures;
 
-import com.Constants;
 import org.voltdb.SQLStmt;
-import org.voltdb.VoltProcedure.VoltAbortException;
 import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltTableRow;
 import org.voltdb.VoltType;
-import org.voltdb.VoltVMProcedure;
+import com.Constants;
 import org.voltdb.types.TimestampType;
 
 //Notes on Stored Procedure:
 //Need to add error handling to catch invalid items, and still return needed values.
 
-// public class neworder extends VoltProcedure {
-public class neworder extends VoltVMProcedure {
+public class neworder extends VoltProcedure {
     private final VoltTable item_data_template = new VoltTable(
             new VoltTable.ColumnInfo("i_name", VoltType.STRING),
             new VoltTable.ColumnInfo("s_quantity", VoltType.INTEGER),

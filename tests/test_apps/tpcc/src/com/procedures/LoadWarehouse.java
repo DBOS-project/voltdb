@@ -57,7 +57,6 @@ import org.voltdb.VoltTable;
 /**
  * Loads initial data into TPCC tables.
  */
-// only use DBVM since it is just loading data
 public class LoadWarehouse extends VoltProcedure {
 
     public static final SQLStmt writeStmt = new SQLStmt("INSERT INTO WAREHOUSE VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);");

@@ -52,7 +52,6 @@ package com.procedures;
 
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
-import org.voltdb.VoltVMProcedure;
 import org.voltdb.VoltTable;
 import org.voltdb.types.TimestampType;
 
@@ -62,7 +61,7 @@ import org.voltdb.types.TimestampType;
  * Warehouse/District related queries. See deps.pdf for dependencies between the queries
  * in original paymentByCustomerId.
  */
-public class paymentByCustomerIdW extends VoltVMProcedure {
+public class paymentByCustomerIdW extends VoltProcedure {
 
     public final SQLStmt getWarehouse = new SQLStmt("SELECT W_NAME, W_STREET_1, W_STREET_2, W_CITY, W_STATE, W_ZIP FROM WAREHOUSE WHERE W_ID = ?;"); //w_id
     private final int W_NAME_IDX = 0;
