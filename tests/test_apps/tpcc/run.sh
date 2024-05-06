@@ -19,12 +19,15 @@ fi
 # java classpaths and binary paths
 source $VOLTDB_BIN/voltenv
 
+RATELIMIT="${RATELIMIT:=10000000}"
+WARMUPDURATION="${WARMUPDURATION:=80}"
+
 # leader host for startup purposes only
 # (once running, all nodes are the same -- no leaders)
-STARTUPLEADERHOST="localhost"
+STARTUPLEADERHOST="128.30.44.115"
 # list of cluster nodes separated by commas in host:[port] format
-#SERVERS="localhost"
-SERVERS="172.16.0.2"
+SERVERS=${SERVERS:="128.30.44.115"}
+CLIENTS=${CLIENTS:=1}
 
 # remove build artifacts
 function clean() {
@@ -65,11 +68,16 @@ function init() {
 # run the client that drives the example
 function client() {
     jars-ifneeded
-    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH com.MyTPCC \
+    java -classpath $APPNAME-client.jar:$APPNAME-procs.jar:$APPCLASSPATH \
+        -Djava.library.path=/home/zxjcarrot/Workspace/networking/voltdb/src/frontend/org/voltcore/network \
+        com.MyTPCC \
         --servers=$SERVERS \
         --duration=180 \
+        --warmupduration=$WARMUPDURATION \
         --warehouses=256 \
-        --scalefactor=22
+        --scalefactor=22 \
+        --ratelimit=$RATELIMIT
+        --clients=$CLIENTS
 }
 
 function help() {
