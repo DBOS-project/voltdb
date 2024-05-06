@@ -140,6 +140,9 @@
 		<relative-module-src project-related="jar://$PROJECT_DIR$/../../lib/aeron-all-1.39.0-sources.jar!/"/>
 		<relative-module-cls project-related="jar://$PROJECT_DIR$/../../lib/aeron-all-1.39.0.jar!/"/>
 	</lib>
+	<lib name="juds-0.95.jar" scope="COMPILE">
+		<relative-module-cls project-related="jar://$PROJECT_DIR$/../../lib/juds-0.95.jar!/"/>
+	</lib>
 	<lib name="fst-2.52.jar" scope="COMPILE">
 		<relative-module-cls project-related="jar://$PROJECT_DIR$/../../lib/fst-2.52.jar!/"/>
 	</lib>

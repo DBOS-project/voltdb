@@ -31,6 +31,7 @@ import java.util.Random;
 import org.voltcore.logging.VoltLogger;
 import org.voltdb.jni.ExecutionEngine;
 import org.voltdb.utils.InMemoryJarfile;
+import org.voltdb.utils.RingBufferChannel;
 import org.voltdb.utils.SerializationHelper;
 import java.util.Arrays;
 
@@ -384,10 +385,10 @@ public class VoltDBProcedureProcess {
         }
     }
 
-    public static void run(int vmId, InterVMMessagingProtocol protocol) {
-        Thread.currentThread().setName(String.format("SP VM - %d", vmId));
+    public static void run(int vmId, boolean sleepOnEmpty, InterVMMessagingProtocol protocol) {
+        Thread.currentThread().setName(String.format("Proc SP - %d", vmId));
         org.voltdb.NativeLibraryLoader.loadVoltDB();
-        System.out.printf("VM %d pid %d pv_accel=%b started to sync with VoltDB\n", vmId, VMPid, protocol.PVAccelerationenabled());
+        System.out.printf("VM %d pid %d pv_accel=%b started to sync with VoltDB, sleepOnEmpty %b\n", vmId, VMPid, protocol.PVAccelerationenabled(), sleepOnEmpty);
         // Uncomment this and make it work so that it works only for ring buffer
         // if (protocol.PVAccelerationenabled()) {
         //     coreIdBound = 0;
@@ -408,6 +409,10 @@ public class VoltDBProcedureProcess {
         long queueLengthCnt = 0;
         long lastRecordingTime = System.nanoTime();
         long lastPrintTime = System.nanoTime();
+
+        if (sleepOnEmpty && protocol.getChannel() instanceof RingBufferChannel) {
+            ((RingBufferChannel)protocol.getChannel()).setSleepOnEmpty(true);
+        }
         while (true) {
             while (protocol.hasMessage()) {
                 InterVMMessage msg = null;

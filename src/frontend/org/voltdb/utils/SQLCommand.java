@@ -1331,6 +1331,8 @@ public class SQLCommand {
                         .put(2, Arrays.asList("varchar", "varchar")).build());
         Procedures.put("@Note",
                 ImmutableMap.<Integer, List<String>>builder().put( 1, Arrays.asList("varchar")).build());
+        Procedures.put("@ProfileSwitch",
+                 ImmutableMap.<Integer, List<String>>builder().put( 1, Arrays.asList("int")).build());
     }
 
     private static Client getClient(ClientConfig config, String[] servers, int port) throws Exception {

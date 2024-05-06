@@ -429,37 +429,47 @@ public class ProcedureRunner {
         }
         if (queuedInSPVM == false) {
             // System.out.printf("Queueing %s in vm\n", m_procedureClassName);
+            ExecutionEngine.VoltDBLocalCommStart();
             TimeTracker.add(TimeTracker.TrackingEvent.SndSPRequestToSPVM, System.nanoTime());
             ((Site) m_site).getInterVMMessagingProtocol().writeProcedureCallRequestMessage(fstConfLocal.asByteArray(new VMProcedureCall(m_procedureClassName, paramList)), true);
+            ExecutionEngine.VoltDBLocalCommEnd();
         }
         InterVMMessage oldMessage = null;
         while (true) {
-            while (((Site) m_site).getInterVMMessagingProtocol().hasMessage() == false) {
-                if (((Site) m_site).tryQueueOneSPTaskInVM(false) == false) {
-                    break;
-                }
-            }
+            // while (((Site) m_site).getInterVMMessagingProtocol().hasMessage() == false) {
+            //     if (((Site) m_site).tryQueueOneSPTaskInVM(false) == false) {
+            //         break;
+            //     }
+            // }
+            ExecutionEngine.VoltDBLocalCommStart();
             // System.err.println("Either a new message or put all tasks in vm");
             InterVMMessage msg = ((Site) m_site).getInterVMMessagingProtocol().getNextMessage(oldMessage, null);
             // System.out.printf("Recv message of type %d \n", msg.type);
             if (msg.type == InterVMMessage.kProcedureCallRespReturnVoid) {
+                ExecutionEngine.VoltDBLocalCommEnd();
                 return null;
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnObject) {
-                return fstConfLocal.asObject(msg.data.array());
+                Object obj = fstConfLocal.asObject(msg.data.array());
+                ExecutionEngine.VoltDBLocalCommEnd();
+                return obj;
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnError) {
                 // TODO: is this the way to be rethrowing the error? as a  generic error?
                 // or is there a way to replicate the error here
                 // return fstConfLocal.asObject(msg.data.array());
+                ExecutionEngine.VoltDBLocalCommEnd();
                 throw new VoltAbortException("Item number is not valid");
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTables) {
                 TimeTracker.add(TimeTracker.TrackingEvent.RcvSPResponseFromSPVM, System.nanoTime());
                 VMReadbuffer = null; // clear the reference to the read buffer as it might be owned by tables below
-                return (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
+                Object obj = (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
+                ExecutionEngine.VoltDBLocalCommEnd();
+                return obj;
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTable) {
                 TimeTracker.add(TimeTracker.TrackingEvent.RcvSPResponseFromSPVM, System.nanoTime());
                 VMReadbuffer = null; // clear the reference to the read buffer as it might be owned by tables below
                 VoltTable[] tables = (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
                 assert tables.length == 1;
+                ExecutionEngine.VoltDBLocalCommEnd();
                 return tables[0];
             } else if (msg.type == InterVMMessage.kProcedureCallSQLQueryReq) {
                 TimeTracker.add(TimeTracker.TrackingEvent.RcvSQLRequest, System.nanoTime());
@@ -475,12 +485,15 @@ public class ProcedureRunner {
                     String sqlStmtVarName = sqlStmtVarNames.get(i);
                     voltQueueSQL(m_stmtMap.get(sqlStmtVarName), null, sqlParams.get(i));
                 }
+                ExecutionEngine.VoltDBLocalCommEnd();
                 VoltTable[] result = voltExecuteSQL(isFinalSQL);
                 if (ignoreResults == false) {
+                    ExecutionEngine.VoltDBLocalCommStart();
                     // respond to query given, and give the results back
                     // System.out.println("Writing back results to protocol");  
                     TimeTracker.add(TimeTracker.TrackingEvent.SndSQLResponse, System.nanoTime());
                     ((Site) m_site).getInterVMMessagingProtocol().writeExecuteQueryRequestResponse(result, true);  
+                    ExecutionEngine.VoltDBLocalCommEnd();
                 }
                 //System.out.printf("Executed %d queries, result has %d tables\n", sqlStmtVarNames.size(), result.length);
             }
@@ -1021,6 +1034,7 @@ public class ProcedureRunner {
     }
 
     public VoltTable[] voltExecuteSQL(boolean isFinalSQL) {
+        ExecutionEngine.VoltDBSQLStart();
         try {
             if (m_seenFinalBatch) {
                 throw new RuntimeException("Procedure " + m_procedureName +
@@ -1087,6 +1101,7 @@ public class ProcedureRunner {
             }
         } finally {
             m_batch.clear();
+            ExecutionEngine.VoltDBSQLEnd();
         }
     }
 

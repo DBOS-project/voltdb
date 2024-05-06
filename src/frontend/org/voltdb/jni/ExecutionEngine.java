@@ -1015,10 +1015,22 @@ public abstract class ExecutionEngine implements FastDeserializer.Deserializatio
      */
     protected native byte[] nextDependencyTest(int dependencyId);
 
+    public static native int VoltDBEnableTracing(boolean enable);
+    public static native int VoltDBDumpTraces(byte[] traceFile);
+    public static native int VoltDBLibcWrite();
+    public static native int VoltDBLibcWriteReturn();
+    public static native int VoltDBLibcRead();
+    public static native int VoltDBLibcReadReturn();
     public static native int VoltDBWorkRecv();
     public static native int VoltDBWorkStart();
+    public static native int VoltDBSQLStart();
+    public static native int VoltDBSQLEnd();
+    public static native int VoltDBLocalCommStart();
+    public static native int VoltDBLocalCommEnd();
     public static native int VoltDBWorkSend();
     public static native int VoltDBWorkEnd();
+    public static native int VoltDBPAPIReset();
+    public static native int VoltDBPAPIReadCounter();
 
     public static native int DBOSPVOpen(byte hypervisorDevicePath[]);
 

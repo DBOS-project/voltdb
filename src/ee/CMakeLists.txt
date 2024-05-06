@@ -359,7 +359,8 @@ FOREACH (obj voltdbobjs voltdbjniobjs voltdbipcobjs voltdbshmobjs voltdbshmvmobj
      PUBLIC
      ${CMAKE_SOURCE_DIR}/third_party/cpp
      ${${PROJECT_NAME}_SOURCE_DIR}
-     ${VOLTDB_3PTY_INSTALL_PREFIX}/include)
+     ${VOLTDB_3PTY_INSTALL_PREFIX}/include
+     /home/zxjcarrot/Workspace/networking-xj/papi/src/install/include)
 ENDFOREACH()
 TARGET_INCLUDE_DIRECTORIES(third_party_objs
   PUBLIC
@@ -384,6 +385,7 @@ VOLTDB_ADD_LIBRARY(${VOLTDB_LIBNAME}
 STRING(TOLOWER ${VOLTDB_BUILD_TYPE} obj_subdir)
 TARGET_LINK_LIBRARIES(${VOLTDB_LIBNAME}
   -L${VOLTDB_3PTY_INSTALL_PREFIX}/lib
+  -lpapi
   -lpcre2-8 -ls2geo -lcrypto
   ${VOLTDB_LINK_FLAGS})
 

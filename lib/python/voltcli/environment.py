@@ -124,6 +124,8 @@ java_opts.append('-XX:+UseCondCardMark')
 java_opts.append('-Dsun.rmi.dgc.server.gcInterval=9223372036854775807')
 java_opts.append('-Dsun.rmi.dgc.client.gcInterval=9223372036854775807')
 java_opts.append('-XX:+ExplicitGCInvokesConcurrent')
+java_opts.append('-XX:ReservedCodeCacheSize=1024m')
+# java_opts.append('-XX:+PrintCompilation')
 
 if java_version=="17":
     if java_gc_opts is None:

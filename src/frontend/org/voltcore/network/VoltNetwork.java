@@ -87,6 +87,7 @@ import org.voltcore.logging.VoltLogger;
 import org.voltcore.network.VoltNetworkPool.IOStatsIntf;
 import org.voltcore.utils.LatencyWatchdog;
 import org.voltcore.utils.Pair;
+import org.voltcore.network.Connection;
 
 import com.google_voltpatches.common.util.concurrent.SettableFuture;
 
@@ -108,6 +109,25 @@ class VoltNetwork implements Runnable, IOStatsIntf
     private final String m_coreBindId;
     final String networkThreadName;
 
+    
+    private Runnable BeforeRead = null;
+    private Runnable AfterRead = null;
+    private Runnable BeforeWrite = null;
+    private Runnable AfterWrite = null;
+    // setters for the before and after read/write callbacks
+    public void setBeforeRead(Runnable r) {
+        BeforeRead = r;
+    }
+    public void setAfterRead(Runnable r) {
+        AfterRead = r;
+    }
+    public void setBeforeWrite(Runnable r) {
+        BeforeWrite = r;
+    }
+    public void setAfterWrite(Runnable r) {
+        AfterWrite = r;
+    }
+
     private final NinjaKeySet m_ninjaSelectedKeys;
 
     /**
@@ -123,6 +143,18 @@ class VoltNetwork implements Runnable, IOStatsIntf
      * and runOnce should be called periodically
      **/
     VoltNetwork(int networkId, String coreBindId, String networkName) {
+        this(networkId, coreBindId, networkName, null, null, null, null);
+    }
+    /**
+     * Initialize a m_selector and become ready to perform real work
+     * If the network is not going to provide any threads provideOwnThread should be false
+     * and runOnce should be called periodically
+     **/
+    VoltNetwork(int networkId, String coreBindId, String networkName, Runnable beforeRead, Runnable afterRead, Runnable beforeWrite, Runnable afterWrite) {
+        BeforeRead = beforeRead;
+        AfterRead = afterRead;
+        BeforeWrite = beforeWrite;
+        AfterWrite = afterWrite;
         m_thread = new Thread(this, "Volt " + networkName + " Network - " + networkId);
         networkThreadName = new String("Volt " + networkName + " Network - " + networkId);
         m_thread.setDaemon(true);
@@ -192,7 +224,10 @@ class VoltNetwork implements Runnable, IOStatsIntf
                                 cipherService,
                                 sslEngine);
                 port.registering();
-
+                port.setBeforeRead(BeforeRead);
+                port.setAfterRead(AfterRead);
+                port.setBeforeWrite(BeforeWrite);
+                port.setAfterWrite(AfterWrite);
                 /*
                  * This means we are used by a client. No need to wait then, trigger
                  * the reverse DNS lookup now.

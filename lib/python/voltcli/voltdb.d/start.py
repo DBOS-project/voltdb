@@ -36,7 +36,9 @@ server_list_help = ('{hostname-or-ip[,...]}, '
         VOLT.PathOption('-l', '--license', 'license', 'specify a license file to replace the existing staged copy of the license'),
         VOLT.BooleanOption('-P', '--procedureprocess', 'procedureprocess', 'run as procedure process possibly in a vm'),
         VOLT.StringOption('-V', '--vmisolation', 'vmisolation', 'enable vm isolation'),
+        VOLT.BooleanOption('-Y', '--isolationdomainsocket', 'isolationdomainsocket', 'enable domain socket'),
         VOLT.BooleanOption('-R', '--vmpvaccel', 'vmpvaccel', 'enable vm pv acceleration'),
+        VOLT.BooleanOption('-S', '--vmisolationsleep', 'vmisolationsleep', 'sleep for some time in procedure process per loop'),
         VOLT.PathOption('-Q', '--vmshminputfile', 'vmshminputfile', 'shared memory file path for input'),
         VOLT.PathOption('-W', '--vmshmoutputfile', 'vmshmoutputfile', 'shared memory file path for output'),
         VOLT.PathOption('-T', '--vmisolationtcpport', 'vmisolationtcpport', 'TCP port for this host'),
@@ -69,9 +71,14 @@ def start(runner):
     if runner.opts.vmisolation:
         runner.args.extend(['vmisolation', runner.opts.vmisolation])
         print("vmisolation enabled to ", runner.opts.vmisolation)
+    if runner.opts.isolationdomainsocket:
+        runner.args.extend(['isolationdomainsocket', runner.opts.isolationdomainsocket])
+        print("isolationdomainsocket enabled to ", runner.opts.isolationdomainsocket)
     if runner.opts.vmpvaccel:
         runner.args.extend(['vmpvaccel'])
         print("vmpvaccel enabled")
+    if runner.opts.vmisolationsleep:
+        runner.args.extend(['vmisolationsleep'])
     if runner.opts.vmshminputfile:
         runner.args.extend(['vmshminputfile', runner.opts.vmshminputfile])
         print("vmshminputfile ", runner.opts.vmshminputfile)

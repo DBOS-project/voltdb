@@ -52,11 +52,25 @@ public class VoltNetworkPool {
     public final String m_poolName;
 
     public VoltNetworkPool() {
-        this(1, 1, null, "");
+        this(1, 1, null, "", null, null, null, null);
     }
+    
+    private Runnable BeforeRead = null;
+    private Runnable AfterRead = null;
+    private Runnable BeforeWrite = null;
+    private Runnable AfterWrite = null;
 
     public VoltNetworkPool(int numThreads, int startThreadId, Queue<String> coreBindIds, String poolName) {
+        this(numThreads, startThreadId, coreBindIds, poolName, null, null, null, null);
+    }
+
+    public VoltNetworkPool(int numThreads, int startThreadId, Queue<String> coreBindIds, String poolName, Runnable beforeRead, Runnable afterRead, Runnable beforeWrite, Runnable afterWrite) {
         m_poolName = poolName;
+        BeforeRead = beforeRead;
+        AfterRead = afterRead;
+        BeforeWrite = beforeWrite;
+        AfterWrite = afterWrite;
+
         if (numThreads < 1) {
             throw new IllegalArgumentException("Must specify a positive number of threads");
         }
@@ -64,14 +78,14 @@ public class VoltNetworkPool {
             m_networks = new VoltNetwork[numThreads];
             for (int ii = 0; ii < numThreads; ii++) {
                 // Adding startThreadId avoids unnecessary polling for non-Server VoltNetworkPools
-                m_networks[ii] = new VoltNetwork(ii+startThreadId, null, poolName);
+                m_networks[ii] = new VoltNetwork(ii+startThreadId, null, poolName, BeforeRead, AfterRead, BeforeWrite, AfterWrite);
             }
         } else {
             final int coreBindIdsSize = coreBindIds.size();
             m_networks = new VoltNetwork[coreBindIdsSize];
             for (int ii = 0; ii < coreBindIdsSize; ii++) {
                 // Adding startThreadId avoids unnecessary polling for non-Server VoltNetworkPools
-                m_networks[ii] = new VoltNetwork(ii+startThreadId, coreBindIds.poll(), poolName);
+                m_networks[ii] = new VoltNetwork(ii+startThreadId, coreBindIds.poll(), poolName, BeforeRead, AfterRead, BeforeWrite, AfterWrite);
             }
         }
     }

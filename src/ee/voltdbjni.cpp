@@ -52,6 +52,8 @@
  * @{
 */
 
+#include <iostream>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <signal.h>
@@ -78,6 +80,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include<sys/ioctl.h>
+
+#include <papi.h>
 
 #define DBOS_PV_WAIT _IOW('a','a',int32_t*)
 #define DBOS_PV_WAIT_TIMER _IOW('a','g',uint64_t*) // unique 2nd param https://docs.kernel.org/userspace-api/ioctl/ioctl-number.html
@@ -363,23 +367,277 @@ SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_nativeDestr
 
 
 
+struct trace_point_record_t {
+    unsigned long long timestamp;
+    int processor_id;
+    int symbol_id;
+    int thread_id;
+    const char * thread_name;
+};
+
+thread_local pid_t thread_id = -1;
+thread_local int   processor_id = -1;
+thread_local char * thread_name = NULL;
+thread_local unsigned long long rec_buf_cur_pos = 0;
+thread_local unsigned long long rec_buf_start_pos = 0;
+thread_local trace_point_record_t * rec_buf_data = NULL;
+thread_local bool papi_inited = false;
+thread_local int PAPI_eventset = PAPI_NULL;
+thread_local long long PAPI_reset_count = 0;
+thread_local long long PAPI_values[2];
+static constexpr int kTraceRecordBufferAllocSize = 1024;
+std::atomic<unsigned long long> records_alloc_pos{0};
+bool tracing_enabled = false;
+bool papi_initialized = false;
+
+trace_point_record_t * records[50000000];
+
+const char* symbol_id_to_name[] = {"voltdb:txnrecv", "voltdb:txnstart", "voltdb:txnsend", "voltdb:txnend", 
+                                   "voltdb:txncommstart", "voltdb:txncommend", 
+                                   "probe_libc:__GI___libc_write", "probe_libc:__GI___libc_write__return",
+                                   "probe_libc:__GI___libc_read", "probe_libc:__GI___libc_read__return",
+                                   "voltdb:txnsqlstart", "voltdb:txnsqlend", };
+
+void claim_record_buf() {
+    rec_buf_start_pos = records_alloc_pos.fetch_add(kTraceRecordBufferAllocSize);
+    if (rec_buf_start_pos > 50000000) {
+        VOLT_ERROR("Exceeded max trace record buffer size");
+        return;
+    }
+    rec_buf_cur_pos = rec_buf_start_pos;
+    rec_buf_data = new trace_point_record_t[kTraceRecordBufferAllocSize];
+    memset(rec_buf_data, 0 , kTraceRecordBufferAllocSize * sizeof(trace_point_record_t));
+}
+
+static void init_tracing() {
+    if (processor_id == -1) {
+        VOLT_ERROR("init_tracing");
+        thread_id = syscall(SYS_gettid);
+        VOLT_ERROR("init_tracing thread_id");
+        processor_id = sched_getcpu();
+        VOLT_ERROR("init_tracing processor_id");
+        thread_name = (char *) malloc(256);
+        pthread_getname_np(pthread_self(), thread_name, 256);
+        VOLT_ERROR("init_tracing pthread_getname_np");
+        printf("Thread id: %d, processor id: %d, thread name: %s\n", thread_id, processor_id, thread_name);
+    }
+
+    if (rec_buf_data == NULL || rec_buf_cur_pos - rec_buf_start_pos >= kTraceRecordBufferAllocSize) {
+        claim_record_buf();
+    }
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBPAPIReset(JNIEnv *env, jclass obj) {
+    if (papi_inited == false) {
+        return 0;
+    }
+    int retval=PAPI_reset(PAPI_eventset);
+    if (retval!=PAPI_OK) {
+        fprintf(stderr,"Error resetting:  %s\n",
+                            PAPI_strerror(retval));
+    }
+    PAPI_reset_count++;
+    return 0;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBPAPIReadCounter(JNIEnv *env, jclass obj) {
+    if (papi_inited == false) {
+        return 0;
+    }
+    long long counts[2];
+    int retval=PAPI_read(PAPI_eventset,counts);
+    if (retval!=PAPI_OK) {
+        fprintf(stderr,"Error reading:  %s\n",
+                            PAPI_strerror(retval));
+    }
+    PAPI_values[0] += counts[0];
+    PAPI_values[1] += counts[1];
+    return 0;
+}
+
+void record_tracepoint(int symbol_id) {
+    if (tracing_enabled == true) {
+        if (papi_inited == false) {
+            int retval;
+
+            retval=PAPI_create_eventset(&PAPI_eventset);
+            if (retval!=PAPI_OK) {
+            fprintf(stderr,"Error creating PAPI_eventset! %s\n",
+                    PAPI_strerror(retval));
+            }
+
+            retval=PAPI_add_named_event(PAPI_eventset,"PAPI_TOT_INS");
+            if (retval!=PAPI_OK) {
+                fprintf(stderr,"Error adding PAPI_TOT_INS: %s\n",
+                    PAPI_strerror(retval));
+            }
+
+            retval=PAPI_add_named_event(PAPI_eventset,"PAPI_TOT_CYC");
+            if (retval!=PAPI_OK) {
+                fprintf(stderr,"Error adding PAPI_TOT_CYC: %s\n",
+                    PAPI_strerror(retval));
+            }
+
+            PAPI_reset(PAPI_eventset);
+            retval=PAPI_start(PAPI_eventset);
+            if (retval!=PAPI_OK) {
+                fprintf(stderr,"Error starting PAPI_TOT_INS: %s\n",
+                    PAPI_strerror(retval));
+            }
+            fprintf(stderr, "PAPI TOT_INS started on processor %d\n", processor_id);
+            papi_inited = true;
+        }
+    }
+    if (tracing_enabled == false) {
+        if (papi_inited == true) {
+            long long counts[2];
+            int retval=PAPI_stop(PAPI_eventset,counts);
+            if (retval!=PAPI_OK) {
+                fprintf(stderr,"Error stopping:  %s\n",
+                                    PAPI_strerror(retval));
+            }
+            else {
+                fprintf(stderr, "PAPI Measured %lld instructions, %lld cycles on processor %d, thread name %s\n", counts[0], counts[1], processor_id, thread_name);
+                fprintf(stderr, "PAPI resets %lld, PAPI_TOT_INS %lld, avg %lld instructions, PAPI_TOT_CYC %lld, avg %lld cycles,  on processor %d, thread name %s\n", PAPI_reset_count, PAPI_values[0], PAPI_values[0]/(PAPI_reset_count + 1), PAPI_values[1], PAPI_values[1]/(PAPI_reset_count + 1), processor_id, thread_name);
+            }
+
+            papi_inited = false;
+        }
+        return;
+    }
+    init_tracing();
+    unsigned long long rec_idx = rec_buf_cur_pos++;
+    assert(rec_buf_cur_pos > rec_buf_start_pos);
+    assert(rec_buf_cur_pos <= rec_buf_start_pos + kTraceRecordBufferAllocSize);
+    struct timespec ts;
+    int ret = clock_gettime(CLOCK_MONOTONIC, &ts);
+    // printf("clock_gettime ret: %d, rec_idx - rec_buf_start_pos %lld\n", ret, rec_idx - rec_buf_start_pos);
+    (void)ret;
+    rec_buf_data[rec_idx - rec_buf_start_pos].timestamp = ts.tv_sec * 1000000000 + ts.tv_nsec;
+    rec_buf_data[rec_idx - rec_buf_start_pos].processor_id = processor_id;
+    rec_buf_data[rec_idx - rec_buf_start_pos].symbol_id = symbol_id;
+    rec_buf_data[rec_idx - rec_buf_start_pos].thread_id = thread_id;
+    rec_buf_data[rec_idx - rec_buf_start_pos].thread_name = thread_name;
+    records[rec_idx] = &rec_buf_data[rec_idx - rec_buf_start_pos];
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBEnableTracing(JNIEnv *env, jclass obj, jboolean enable) {
+    uint64_t vm_id = 0;
+
+    if (enable == true && papi_initialized == false) {
+        papi_initialized = true;
+        int retval;
+        retval=PAPI_library_init(PAPI_VER_CURRENT);
+        if (retval!=PAPI_VER_CURRENT) {
+                fprintf(stderr,"Error initializing PAPI! %s\n",
+                        PAPI_strerror(retval));
+                return 0;
+        }
+
+        if ((retval = PAPI_thread_init(pthread_self)) != PAPI_OK) {
+            fprintf(stderr,"Error initializing PAPI thread! %s\n",
+                        PAPI_strerror(retval));
+            return 0;
+        }
+        fprintf(stderr, "PAPI initialized\n");
+        
+    }
+    tracing_enabled = enable;
+
+    return vm_id;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBDumpTraces(JNIEnv *env, jclass obj, jbyteArray traceFilePath) {
+    jbyte* trace_file_path_chars = env->GetByteArrayElements(traceFilePath, NULL);
+    std::string trace_file_path(reinterpret_cast<char*>(trace_file_path_chars), env->GetArrayLength(traceFilePath));
+    
+    
+    std::ofstream fout(trace_file_path);
+    for (int i = 0; i < records_alloc_pos; i++) {
+        trace_point_record_t *rec = records[i];
+        if (!rec) {
+            continue;
+        }
+        fout << rec->thread_name << " " << rec->thread_id << " [" << rec->processor_id << "] " 
+             << std::fixed << std::setprecision(9) 
+             << std::setfill('0') << ((double)rec->timestamp / (1000000000.0f)) << ": " << symbol_id_to_name[rec->symbol_id] 
+             << ": (7f3ae6a332f0)" << std::endl;
+    }
+    fout.flush();
+    fout.close();
+    return 0;
+}
+
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBLibcWrite(JNIEnv *env, jclass obj) {
+    uint64_t vm_id = 0;
+    record_tracepoint(6);
+    return vm_id;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBLibcWriteReturn(JNIEnv *env, jclass obj) {
+    uint64_t vm_id = 0;
+    record_tracepoint(7);
+    return vm_id;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBLibcRead(JNIEnv *env, jclass obj) {
+    uint64_t vm_id = 0;
+    record_tracepoint(8);
+    return vm_id;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBLibcReadReturn(JNIEnv *env, jclass obj) {
+    uint64_t vm_id = 0;
+    record_tracepoint(9);
+    return vm_id;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBSQLStart(JNIEnv *env, jclass obj) {
+    uint64_t vm_id = 0;
+    record_tracepoint(10);
+    return vm_id;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBSQLEnd(JNIEnv *env, jclass obj) {
+    uint64_t vm_id = 0;
+    record_tracepoint(11);
+    return vm_id;
+}
+
 SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBWorkRecv(JNIEnv *env, jclass obj) {
     uint64_t vm_id = 0;
+    record_tracepoint(0);
     return vm_id;
 }
 
 SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBWorkStart(JNIEnv *env, jclass obj) {
     uint64_t vm_id = 0;
+    record_tracepoint(1);
+    return vm_id;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBLocalCommStart(JNIEnv *env, jclass obj) {
+    uint64_t vm_id = 0;
+    record_tracepoint(4);
+    return vm_id;
+}
+
+SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBLocalCommEnd(JNIEnv *env, jclass obj) {
+    uint64_t vm_id = 0;
+    record_tracepoint(5);
     return vm_id;
 }
 
 SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBWorkSend(JNIEnv *env, jclass obj) {
     uint64_t vm_id = 0;
+    record_tracepoint(2);
     return vm_id;
 }
 
 SHAREDLIB_JNIEXPORT jint JNICALL Java_org_voltdb_jni_ExecutionEngine_VoltDBWorkEnd(JNIEnv *env, jclass obj) {
     uint64_t vm_id = 0;
+    record_tracepoint(3);
     return vm_id;
 }
 

@@ -27,13 +27,18 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 
 import org.voltcore.logging.VoltLogger;
+//import org.voltdb.jni.ExecutionEngine;
+// import org.voltdb.jni.ExecutionEngine;
 
 /** Encapsulates a socket registration for a VoltNetwork */
 public class VoltPort implements Connection
 {
     /** The network this port participates in */
     protected final VoltNetwork m_network;
-
+    private Runnable BeforeRead = null;
+    private Runnable AfterRead = null;
+    private Runnable BeforeWrite = null;
+    private Runnable AfterWrite = null;
     protected static final VoltLogger networkLog = new VoltLogger("NETWORK");
 
     public static final int MAX_MESSAGE_LENGTH = 52428800;
@@ -103,6 +108,22 @@ public class VoltPort implements Connection
         m_toString = super.toString() + ":" + m_remoteHostAndAddressAndPort;
     }
 
+
+    // setter and getter for BeforeRead and AfterRead
+    public void setBeforeRead(Runnable r) {
+        BeforeRead = r;
+    }
+    public void setAfterRead(Runnable r) {
+        AfterRead = r;
+    }
+    public void setBeforeWrite(Runnable r) {
+        BeforeWrite = r;
+    }
+    public void setAfterWrite(Runnable r) {
+        AfterWrite = r;
+    }
+
+
     /**
      * Do a reverse DNS lookup of the remote end. Done in a separate thread unless synchronous is specified.
      * If asynchronous lookup is requested the task may be dropped and resolution may never occur
@@ -145,6 +166,8 @@ public class VoltPort implements Connection
                 m_handler.onBackPressure(),
                 m_handler.writestreamMonitor());
         m_interestOps = key.interestOps();
+        m_writeStream.setBeforeWrite(BeforeWrite);
+        m_writeStream.setAfterWrite(AfterWrite);
     }
 
     /**
@@ -205,10 +228,18 @@ public class VoltPort implements Connection
     protected int fillReadStream(int maxBytes) throws IOException {
         if ( maxBytes == 0 || m_isShuttingDown)
             return 0;
-
+        if (BeforeRead != null) {
+            BeforeRead.run();
+        }
+        //ExecutionEngine.VoltDBPAPIReset();
+        //ExecutionEngine.VoltDBLibcRead();
         // read from network, copy data into read buffers, which from thread local memory pool
         final int read = m_readStream.read(m_channel, maxBytes, m_pool);
-
+        //ExecutionEngine.VoltDBLibcReadReturn();
+        //ExecutionEngine.VoltDBPAPIReadCounter();
+        if (AfterRead != null) {
+            AfterRead.run();
+        }
         if (read == -1) {
             handleReadStreamEOF();
         }

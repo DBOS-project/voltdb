@@ -958,7 +958,7 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         //     VMPid = ExecutionEngine.DBOSPVGetVMId(hypervisorFd);
         //     exchangeVMInfo(VMPid, coreIdBound);
         // }
-        System.out.printf("Site %d with VM PID %d pv_accel=%b started to sync with SP VM\n", m_siteId, VMPid, getInterVMMessagingProtocol().PVAccelerationenabled());
+        System.out.printf("Site %d with VM PID %d pv_accel=%b started to sync with SP VM, time %f\n", m_siteId, VMPid, getInterVMMessagingProtocol().PVAccelerationenabled(), System.nanoTime() / 1000000.0);
 
         getInterVMMessagingProtocol().pingpongTest();
         System.out.printf("Site %d synced with VM\n", m_siteId);

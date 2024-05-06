@@ -25,6 +25,9 @@ import java.util.ArrayDeque;
 import org.voltcore.logging.VoltLogger;
 import org.voltcore.utils.DeferredSerialization;
 import org.voltcore.utils.EstTime;
+import org.voltcore.network.Connection;
+
+//import org.voltdb.jni.ExecutionEngine;
 
 /**
 *
@@ -79,6 +82,18 @@ public class VoltNIOWriteStream extends NIOWriteStreamBase implements WriteStrea
         this(port, null, null, null);
     }
 
+
+
+    private Runnable BeforeWrite = null;
+    private Runnable AfterWrite = null;
+    // setter for BeforeWrite and AfterWrite
+    public void setBeforeWrite(Runnable beforeWrite) {
+        BeforeWrite = beforeWrite;
+    }
+    public void setAfterWrite(Runnable afterWrite) {
+        AfterWrite = afterWrite;
+    }
+    
     VoltNIOWriteStream (
             Connection port,
             Runnable offBackPressureCallback,
@@ -344,7 +359,13 @@ public class VoltNIOWriteStream extends NIOWriteStreamBase implements WriteStrea
                     buffer = m_currentWriteBuffer.b();
                 }
 
+                if (BeforeWrite != null) {
+                    BeforeWrite.run();
+                }
                 rc = channel.write(buffer);
+                if (AfterWrite != null) {
+                    AfterWrite.run();
+                }
 
                 //Discard the buffer back to a pool if no data remains
                 if (buffer.hasRemaining()) {

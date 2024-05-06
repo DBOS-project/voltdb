@@ -3,12 +3,16 @@ package org.voltdb.utils;
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import org.voltcore.utils.DBBPool.BBContainer;
 import org.voltdb.jni.ExecutionEngine;
 
 public class RingBufferChannel implements Channel {
     public static long kRingBufferCapacity = 1024 * 1024;
+    private OutputStream outgoingRingBufferNotifier;
+    private InputStream incomingRingBufferNotifier;
     private RingByteBuffer outgoingRingBuffer;
     private RingByteBuffer incomingRingBuffer;
     public int this_core_id = 0;
@@ -20,14 +24,31 @@ public class RingBufferChannel implements Channel {
     private long notify_time = 0;
     private long wait_count = 0;
     private long wait_time = 0;
+    private byte[] readBufferArray = new byte[128];
+    private boolean sleepOnEmpty = false;
     BBContainer readBufferOrigin = org.voltcore.utils.DBBPool.allocateDirect(1024 * 1024 * 4);
     ByteBuffer readBuffer;
+
+    // setter for sleepOnEmpty
+    public void setSleepOnEmpty(boolean sleepOnEmpty) {
+        this.sleepOnEmpty = sleepOnEmpty;
+    }
 
     public RingBufferChannel(String outgoingRingBufferFile, long outgoingRingBufferFileOffset,
             long outgoingRingBufferFileSize,
             String incomingRingBufferFile, long incomingRingBufferFileOffset,
             long incomingRingBufferFileSize, boolean initializePositions) {
-
+        this(outgoingRingBufferFile, outgoingRingBufferFileOffset, outgoingRingBufferFileSize,
+                incomingRingBufferFile, incomingRingBufferFileOffset, incomingRingBufferFileSize,
+                initializePositions, null, null);
+    }
+    public RingBufferChannel(String outgoingRingBufferFile, long outgoingRingBufferFileOffset,
+            long outgoingRingBufferFileSize,
+            String incomingRingBufferFile, long incomingRingBufferFileOffset,
+            long incomingRingBufferFileSize, boolean initializePositions,
+            OutputStream outgoingRingBufferNotifier, InputStream incomingRingBufferNotifier) {
+        this.outgoingRingBufferNotifier = outgoingRingBufferNotifier;
+        this.incomingRingBufferNotifier = incomingRingBufferNotifier;
         readBuffer = readBufferOrigin.b();
         readBuffer.clear();
         readBuffer.limit(0);
@@ -119,6 +140,21 @@ public class RingBufferChannel implements Channel {
             } else {
                 //Thread.yield();
             }
+
+            if (incomingRingBufferNotifier != null) {
+                try {
+                    incomingRingBufferNotifier.read(readBufferArray);   
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+            if (sleepOnEmpty) {
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
         }
         if (hypervisorPVSupport && wait_count % 100000 == 0 &&
         wait_count != 0) {
@@ -153,6 +189,15 @@ public class RingBufferChannel implements Channel {
         }
         // if (notified == false && hypervisorPVSupport &&
         //     outgoingRingBuffer.getHalted() == 1 && notify) {
+        if (notified == false && notify && outgoingRingBufferNotifier != null) {
+            try {
+                outgoingRingBufferNotifier.write(1);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            
+            notified = true;
+        }
         if (notified == false && hypervisorPVSupport && notify) { // notify the user that operation is complete
             long t1 = System.nanoTime();
             //if (incomingRingBuffer.readableBytes() > 0) {

@@ -28,6 +28,8 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
 import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -75,6 +77,9 @@ import org.voltdb.utils.PlatformProperties;
 import org.voltdb.utils.VoltTrace;
 import org.voltdb.utils.CustomPrintStream;
 
+import com.etsy.net.JUDS;
+import com.etsy.net.UnixDomainSocketClient;
+import com.etsy.net.UnixDomainSocketServer;
 import com.google_voltpatches.common.base.Splitter;
 import com.google_voltpatches.common.collect.ImmutableList;
 import com.google_voltpatches.common.collect.ImmutableMap;
@@ -156,6 +161,8 @@ public class VoltDB {
         public IsolationType m_vm_isolation = IsolationType.NO_ISOLATION;
 
         public boolean m_vm_pv_accel = false;
+        
+        public boolean m_isolation_sleep = false;
 
         public String m_isolation_ringbuf_input_file = null;
 
@@ -168,6 +175,8 @@ public class VoltDB {
         public int m_isolation_vm_id = -1;
 
         public int m_ipcPort = DEFAULT_IPC_PORT;
+
+        public boolean m_isolation_domain_socket = false;
 
         /**
          * select normal JNI backend.
@@ -551,6 +560,9 @@ public class VoltDB {
                     case "vmpvaccel":
                         m_vm_pv_accel = true;
                         break;
+                    case "vmisolationsleep":
+                        m_isolation_sleep = true;
+                        break;
                     case "paused":
                         m_isPaused = true;
                         break;
@@ -597,6 +609,10 @@ public class VoltDB {
                             m_vm_isolation = IsolationType.SHARED_MEMORY;
                         else if (val.equals("TCP"))
                             m_vm_isolation = IsolationType.TCP;
+                        break;
+                    case "isolationdomainsocket":
+                        System.out.println("m_isolation_domain_socket set to true");
+                        m_isolation_domain_socket = true;
                         break;
                     case "adminport":
                         hap = MiscUtils.getHostAndPortFromInterfaceSpec(val, m_adminInterface, DEFAULT_ADMIN_PORT);
@@ -819,6 +835,7 @@ public class VoltDB {
                 return;
             }
 
+            System.out.println("1111 " + m_voltdbRoot.getPath());
             /*
              * !!! F R O M T H I S P O I N T O N Y O U M A Y U S E hostLog T O L O G
              */
@@ -1628,7 +1645,7 @@ public class VoltDB {
             return VMProcessMakeRingBufferBasedInterVMMessagingProtocol(
                                         config.m_isolation_ringbuf_input_file,
                                         config.m_isolation_ringbuf_output_file, config.m_isolation_vm_id,
-                                        config.m_vm_pv_accel);
+                                        config.m_vm_pv_accel, config.m_isolation_domain_socket);
         else if (config.m_vm_isolation == IsolationType.TCP)
             return makeTCPBasedInterVMMessagingProtocol(config.m_isolation_TCP_port, config.m_isolation_TCP_host, config.m_vm_pv_accel);
         else
@@ -1636,7 +1653,7 @@ public class VoltDB {
     }
 
     static InterVMMessagingProtocol VMProcessMakeRingBufferBasedInterVMMessagingProtocol(String inputRingBufferFile,
-            String outputRingBufferFile, int channelId, boolean enablePVAccelereation) {
+            String outputRingBufferFile, int channelId, boolean enablePVAccelereation, boolean domainSocket) {
         long kRingBufferCapacity = 1 * 1024 * 1024;
         System.out.println(
                 "VMProcess Making ring buffer on file" + inputRingBufferFile + " at offset "
@@ -1644,9 +1661,60 @@ public class VoltDB {
         System.out.println(
                 "VMProcess Making ring buffer on file" + outputRingBufferFile + " at offset "
                         + (channelId * kRingBufferCapacity));
-        RingBufferChannel channel = new RingBufferChannel(outputRingBufferFile, channelId * kRingBufferCapacity,
+        RingBufferChannel channel = null;
+        
+        UnixDomainSocketClient socket;
+        if (domainSocket) {
+            String spProcSocketFileName = "voltdb_sp_proc_socket_" + channelId;
+            String dbSocketFileName = "voltdb_db_socket_" + channelId;
+            try {
+                Files.deleteIfExists(Paths.get(spProcSocketFileName));    
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            
+
+            while (!Files.exists(Paths.get(dbSocketFileName))) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                System.out.println("Waiting for " + dbSocketFileName);
+            }
+
+            UnixDomainSocketClient dbSocket = null;
+            while (true) {
+                try {
+                    dbSocket = new UnixDomainSocketClient(dbSocketFileName,
+				    JUDS.SOCK_STREAM);
+                    break;
+                } catch (Exception e) {
+                    // TODO: handle exception
+                    e.printStackTrace();
+                }
+                try {
+                    Thread.sleep(100);
+                } catch (Exception e) {
+                    // TODO: handle exception
+                    e.printStackTrace();
+                }
+            }
+            System.out.println("connected to db socket " + dbSocketFileName);
+            try {
+                UnixDomainSocketServer spProcSocket = new UnixDomainSocketServer(spProcSocketFileName,
+                    JUDS.SOCK_STREAM);
+                channel = new RingBufferChannel(outputRingBufferFile, channelId * kRingBufferCapacity,
+                kRingBufferCapacity,
+                inputRingBufferFile, channelId * kRingBufferCapacity, kRingBufferCapacity, false, dbSocket.getOutputStream(), spProcSocket.getInputStream());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } else {
+            channel = new RingBufferChannel(outputRingBufferFile, channelId * kRingBufferCapacity,
                 kRingBufferCapacity,
                 inputRingBufferFile, channelId * kRingBufferCapacity, kRingBufferCapacity, false);
+        }
         return new InterVMMessagingProtocol(channel, enablePVAccelereation);
     }
 
@@ -1676,7 +1744,7 @@ public class VoltDB {
             } else if (config.m_run_as_procedure_process) {
                 assert config.m_vm_isolation != IsolationType.NO_ISOLATION;
                 VoltDBProcedureProcess
-                        .run(config.m_isolation_vm_id, makeInterVMMessagingProtocol(config));
+                        .run(config.m_isolation_vm_id, config.m_isolation_sleep, makeInterVMMessagingProtocol(config));
             } else if (config.m_startAction == StartAction.GET) {
                 cli(config);
             } else {

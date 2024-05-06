@@ -104,6 +104,7 @@ public class SpProcedureTask extends ProcedureTask
     @Override
     public void run(SiteProcedureConnection siteConnection)
     {
+        ExecutionEngine.VoltDBPAPIReset();
         LatencyWatchdog.pet();
 
         waitOnDurabilityBackpressureFuture();
@@ -159,6 +160,7 @@ public class SpProcedureTask extends ProcedureTask
         // other invocations. Trying to deliver the response immediately to the network
         // does not improve latencies. See ENG-21040.
         ExecutionEngine.VoltDBWorkSend();
+        ExecutionEngine.VoltDBPAPIReadCounter();
         m_initiator.deliver(response);
         // System.out.println("SpProcedureTask.run() delivered response: " + response);
         // TimeTracker.add(TimeTracker.TrackingEvent.FinishHandleSPRequest, System.nanoTime());

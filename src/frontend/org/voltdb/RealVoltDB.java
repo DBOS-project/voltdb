@@ -44,6 +44,8 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.Duration;
@@ -229,6 +231,10 @@ import org.voltdb.utils.TCPChannel;
 import org.voltdb.utils.TopologyZKUtils;
 import org.voltdb.utils.VoltSampler;
 
+import com.etsy.net.JUDS;
+import com.etsy.net.UnixDomainSocket;
+import com.etsy.net.UnixDomainSocketClient;
+import com.etsy.net.UnixDomainSocketServer;
 import com.google_voltpatches.common.base.Charsets;
 import com.google_voltpatches.common.base.Joiner;
 import com.google_voltpatches.common.base.Supplier;
@@ -1691,7 +1697,7 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
                             m_commandLog,
                             m_config.m_executionCoreBindings.poll(),
                             isLowestSiteId(iv2init),
-                            makeInterVMMessagingProtocol(m_config));
+                            makeInterVMMessagingProtocol(m_config, vmId));
                     vmId++;
                 }
 
@@ -2409,12 +2415,12 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
         return topology;
     }
 
-    static InterVMMessagingProtocol makeInterVMMessagingProtocol(Configuration config) {
+    static InterVMMessagingProtocol makeInterVMMessagingProtocol(Configuration config, int vmId) {
         if (config.m_vm_isolation == IsolationType.SHARED_MEMORY)
             return EngineProcessMakeRingBufferBasedInterVMMessagingProtocol(
                                         config.m_isolation_ringbuf_input_file,
-                                        config.m_isolation_ringbuf_output_file, config.m_isolation_vm_id,
-                                        config.m_vm_pv_accel);
+                                        config.m_isolation_ringbuf_output_file, vmId,
+                                        config.m_vm_pv_accel, config.m_isolation_domain_socket);
         else if (config.m_vm_isolation == IsolationType.TCP)
             return makeTCPBasedInterVMMessagingProtocol(config.m_isolation_TCP_port, config.m_vm_pv_accel);
         else
@@ -2422,7 +2428,8 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
     }
 
     static InterVMMessagingProtocol EngineProcessMakeRingBufferBasedInterVMMessagingProtocol(String inputRingBufferFile,
-            String outputRingBufferFile, int channelId, boolean enablePVAccelereation) {
+            String outputRingBufferFile, int channelId, boolean enablePVAccelereation, boolean domainSocket) {
+        
         long kRingBufferCapacity = 1 * 1024 * 1024;
         System.out.println(
                 "EngineProcess Making ring buffer on file " + inputRingBufferFile + " at offset "
@@ -2431,10 +2438,39 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
                 "EngineProcess Making ring buffer on file " + outputRingBufferFile + " at offset "
                         + (channelId * kRingBufferCapacity));
 
-        RingBufferChannel channel = new RingBufferChannel(outputRingBufferFile, channelId * kRingBufferCapacity,
+        RingBufferChannel channel = null;
+
+        UnixDomainSocketClient socket;
+        if (domainSocket) {
+            String dbSocketFileName = "voltdb_db_socket_" + channelId;
+            String spProcSocketFileName = "voltdb_sp_proc_socket_" + channelId;
+            try {
+                Files.deleteIfExists(Paths.get(dbSocketFileName));
+                UnixDomainSocketServer dbSocket = new UnixDomainSocketServer(dbSocketFileName,
+                    JUDS.SOCK_STREAM);
+                while (!Files.exists(Paths.get(spProcSocketFileName))) {
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    System.out.println("Waiting for " + spProcSocketFileName);
+                }
+                UnixDomainSocketClient spProcSocket = new UnixDomainSocketClient(spProcSocketFileName,
+                    JUDS.SOCK_STREAM);
+                channel = new RingBufferChannel(outputRingBufferFile, channelId * kRingBufferCapacity,
+                    kRingBufferCapacity,
+                    inputRingBufferFile, channelId * kRingBufferCapacity, kRingBufferCapacity, true, spProcSocket.getOutputStream(), dbSocket.getInputStream());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } else {
+            channel = new RingBufferChannel(outputRingBufferFile, channelId * kRingBufferCapacity,
                 kRingBufferCapacity,
                 inputRingBufferFile, channelId * kRingBufferCapacity, kRingBufferCapacity, true);
+        }
         System.out.println("EngineProcess made channel " + channelId);
+
         return new InterVMMessagingProtocol(channel, enablePVAccelereation);
     }
 

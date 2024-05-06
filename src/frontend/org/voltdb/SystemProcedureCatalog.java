@@ -724,6 +724,9 @@ public class SystemProcedureCatalog {
                 Builder.createSp("org.voltdb.sysprocs.TopicDirectInsertSP", -1, VoltType.INVALID)
                         .commercial().build());
 
+        builder.put("@ProfileSwitch",
+                Builder.createNp("org.voltdb.sysprocs.ProfileSwitch", 0, VoltType.INTEGER).allowedInReplica().build());
+
         builder.put("@Note",
                 Builder.createNp("org.voltdb.sysprocs.LogNote", VoltType.STRING).allowedInReplica().build());
         builder.put("@LogNoteOnHost",

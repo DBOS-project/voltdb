@@ -241,7 +241,7 @@ public class VoltLog4jLogger implements CoreVoltLogger {
                 throw new IllegalArgumentException("failed to create directory " + logDH);
             }
             if (!logDH.isDirectory() || !logDH.canRead() || !logDH.canWrite() || !logDH.canExecute()) {
-                throw new IllegalArgumentException("Cannot access " + logDH);
+                throw new IllegalArgumentException("Cannot access " + logDH.getAbsolutePath());
             }
             if (dailyMax) {
                 DailyMaxRollingFileAppender dfa = new DailyMaxRollingFileAppender(fileAppendr.getLayout(), napFH.getPath(), fileAppendrDatePattern);

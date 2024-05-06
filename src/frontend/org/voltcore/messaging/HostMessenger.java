@@ -81,6 +81,7 @@ import org.voltcore.utils.ssl.MessagingChannel;
 import org.voltcore.zk.CoreZK;
 import org.voltcore.zk.ZKUtil;
 import org.voltdb.AbstractTopology;
+import org.voltdb.jni.ExecutionEngine;
 import org.voltdb.probe.MeshProber;
 
 import com.google_voltpatches.common.base.Preconditions;
@@ -234,6 +235,7 @@ public class HostMessenger implements SocketJoiner.JoinHandler, InterfaceToMesse
                     networkLog.info("Overridden network thread count: " + this.networkThreads);
                 }
 
+                System.out.println("Network thread count: " + this.networkThreads);
             } catch (Exception e) {
                 networkLog.error("Error setting network thread count", e);
             }
@@ -433,7 +435,31 @@ public class HostMessenger implements SocketJoiner.JoinHandler, InterfaceToMesse
                 "zkInterface '%s' should not contain port", config.zkInterface);
         m_config = config;
         m_hostWatcher = hostWatcher;
-        m_network = new VoltNetworkPool(m_config.networkThreads, 0, m_config.coreBindIds, "Server");
+        m_network = new VoltNetworkPool(m_config.networkThreads, 0, m_config.coreBindIds, "Server", new Runnable() {
+            @Override
+            public void run() {
+                ExecutionEngine.VoltDBLibcRead();
+                //ExecutionEngine.VoltDBPAPIReset();
+            }
+        }, new Runnable() {
+            @Override
+            public void run() {
+                ExecutionEngine.VoltDBLibcReadReturn();
+                //ExecutionEngine.VoltDBPAPIReadCounter();
+            }
+        }, new Runnable() {
+            @Override
+            public void run() {
+                ExecutionEngine.VoltDBLibcWrite();
+                ExecutionEngine.VoltDBPAPIReset();
+            }
+        }, new Runnable() {
+            @Override
+            public void run() {
+                ExecutionEngine.VoltDBLibcWriteReturn();
+                ExecutionEngine.VoltDBPAPIReadCounter();
+            }
+        }); 
         m_acceptor = config.acceptor;
         //This ref is updated after the mesh decision is made.
         m_paused.set(m_config.startPause);
