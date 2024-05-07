@@ -279,7 +279,7 @@ public class MyTPCC
         System.out.printf(" - Ran for %,.2f seconds\n", elapsedTimeSec);
         System.out.printf(" - Performed %d Stored Procedure calls\n", numSPCalls.get());
         System.out.printf(" - At %,.2f calls per second\n", numSPCalls.get() / elapsedTimeSec);
-        System.out.printf(" - Average Latency = %.2f ms\n", ((double) totExecutionMilliseconds / (double) totExecutionsLatency));
+        System.out.printf(" - Average Latency = %.2f us\n", ((double) totExecutionMilliseconds * 1000 / (double) totExecutionsLatency));
         System.out.printf(" -   Latency   0ms -  25ms = %,d\n", latencyCounter[0]);
         System.out.printf(" -   Latency  25ms -  50ms = %,d\n", latencyCounter[1]);
         System.out.printf(" -   Latency  50ms -  75ms = %,d\n", latencyCounter[2]);
@@ -356,6 +356,7 @@ public class MyTPCC
         m_helpah.add("displayinterval", "display_interval_in_seconds", "Interval for performance feedback, in seconds.", 10);
         m_helpah.add("servers", "comma_separated_server_list", "List of VoltDB servers to connect to.", "localhost");
         m_helpah.add("async", "async", "async", "false");
+        m_helpah.add("clients", "clients", "clients", 1);
         m_helpah.setArguments(args);
 
         async = m_helpah.booleanValue("async");

@@ -72,11 +72,11 @@ function client() {
         -Djava.library.path=/home/zxjcarrot/Workspace/networking/voltdb/src/frontend/org/voltcore/network \
         com.MyTPCC \
         --servers=$SERVERS \
-        --duration=180 \
+        --duration=90 \
         --warmupduration=$WARMUPDURATION \
         --warehouses=256 \
         --scalefactor=22 \
-        --ratelimit=$RATELIMIT
+        --ratelimit=$RATELIMIT \
         --clients=$CLIENTS
 }
 
