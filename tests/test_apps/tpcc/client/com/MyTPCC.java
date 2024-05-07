@@ -83,7 +83,20 @@ public class MyTPCC
 
     public static void main(String args[])
     {
-        int threads = 64;
+        AppHelper m_helpah = new AppHelper(MyTPCC.class.getCanonicalName());
+        m_helpah.add("warmupduration", "run_warmup_duration_in_seconds", "Benchmark warmup duration in seconds.", 80);
+        m_helpah.add("duration", "run_duration_in_seconds", "Benchmark duration, in seconds.", 180);
+        m_helpah.add("warehouses", "number_of_warehouses", "Number of warehouses", 256);
+        m_helpah.add("scalefactor", "scale_factor", "Reduces per-warehouse data by warehouses/scalefactor", 22.0);
+        m_helpah.add("skewfactor", "skew_factor", "Skew factor", 0.0);
+        m_helpah.add("loadthreads", "number_of_load_threads", "Number of load threads", 4);
+        m_helpah.add("ratelimit", "rate_limit", "Rate limit to start from (tps)", 200000);
+        m_helpah.add("displayinterval", "display_interval_in_seconds", "Interval for performance feedback, in seconds.", 10);
+        m_helpah.add("servers", "comma_separated_server_list", "List of VoltDB servers to connect to.", "localhost");
+        m_helpah.add("async", "async", "async", "false");
+        m_helpah.add("clients", "clients", "clients", 1);
+        m_helpah.setArguments(args);
+        int threads = m_helpah.intValue("clients");
         ExecutorService service = Executors.newFixedThreadPool(threads);
         MyTPCC[] tpcc_threads = new MyTPCC[threads];
         CountDownLatch latch = new CountDownLatch(1);
@@ -266,7 +279,7 @@ public class MyTPCC
         System.out.printf(" - Ran for %,.2f seconds\n", elapsedTimeSec);
         System.out.printf(" - Performed %d Stored Procedure calls\n", numSPCalls.get());
         System.out.printf(" - At %,.2f calls per second\n", numSPCalls.get() / elapsedTimeSec);
-        System.out.printf(" - Average Latency = %.2f ms\n", ((double) totExecutionMilliseconds / (double) totExecutionsLatency));
+        System.out.printf(" - Average Latency = %.2f us\n", ((double) totExecutionMilliseconds * 1000 / (double) totExecutionsLatency));
         System.out.printf(" -   Latency   0ms -  25ms = %,d\n", latencyCounter[0]);
         System.out.printf(" -   Latency  25ms -  50ms = %,d\n", latencyCounter[1]);
         System.out.printf(" -   Latency  50ms -  75ms = %,d\n", latencyCounter[2]);
@@ -343,6 +356,7 @@ public class MyTPCC
         m_helpah.add("displayinterval", "display_interval_in_seconds", "Interval for performance feedback, in seconds.", 10);
         m_helpah.add("servers", "comma_separated_server_list", "List of VoltDB servers to connect to.", "localhost");
         m_helpah.add("async", "async", "async", "false");
+        m_helpah.add("clients", "clients", "clients", 1);
         m_helpah.setArguments(args);
 
         async = m_helpah.booleanValue("async");

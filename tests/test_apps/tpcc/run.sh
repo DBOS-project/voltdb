@@ -27,6 +27,7 @@ WARMUPDURATION="${WARMUPDURATION:=80}"
 STARTUPLEADERHOST="128.30.31.14"
 # list of cluster nodes separated by commas in host:[port] format
 SERVERS="${SERVERS:=localhost}"
+CLIENTS=${CLIENTS:=1}
 
 # remove build artifacts
 function clean() {
@@ -71,11 +72,12 @@ function client() {
         -Djava.library.path=/home/zxjcarrot/Workspace/networking/voltdb/src/frontend/org/voltcore/network\
         com.MyTPCC \
         --servers=$SERVERS \
-        --duration=180 \
+        --duration=90 \
         --warmupduration=$WARMUPDURATION \
         --warehouses=256 \
         --scalefactor=22 \
-        --ratelimit=$RATELIMIT
+        --ratelimit=$RATELIMIT \
+        --clients=$CLIENTS
 }
 
 function help() {
