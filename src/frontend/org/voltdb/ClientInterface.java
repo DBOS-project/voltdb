@@ -1712,9 +1712,9 @@ public class ClientInterface implements SnapshotDaemon.DaemonInitiator {
             authLog.info(errorMessage);
             return errorResponse(ccxn, task.clientHandle, ClientResponse.UNEXPECTED_FAILURE, errorMessage, null, false);
         }
-        if (task.getProcName().equals("GetPosts")) {
-            TimeTracker.add(TimeTracker.TrackingEvent.StartHandleSPRequest, System.nanoTime());
-        }
+        // if (task.getProcName().equals("GetPosts")) {
+        //     TimeTracker.add(TimeTracker.TrackingEvent.StartHandleSPRequest, System.nanoTime());
+        // }
         final ClientResponseImpl errResp = m_dispatcher.dispatch(task, handler, ccxn, user, null, false);
 
         if (errResp != null) {

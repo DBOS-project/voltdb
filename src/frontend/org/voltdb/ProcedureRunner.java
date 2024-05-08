@@ -429,7 +429,7 @@ public class ProcedureRunner {
         }
         if (queuedInSPVM == false) {
             // System.out.printf("Queueing %s in vm\n", m_procedureClassName);
-            TimeTracker.add(TimeTracker.TrackingEvent.SndSPRequestToSPVM, System.nanoTime());
+            // TimeTracker.add(TimeTracker.TrackingEvent.SndSPRequestToSPVM, System.nanoTime());
             ((Site) m_site).getInterVMMessagingProtocol().writeProcedureCallRequestMessage(fstConfLocal.asByteArray(new VMProcedureCall(m_procedureClassName, paramList)), true);
         }
         InterVMMessage oldMessage = null;
@@ -452,17 +452,17 @@ public class ProcedureRunner {
                 // return fstConfLocal.asObject(msg.data.array());
                 throw new VoltAbortException("Item number is not valid");
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTables) {
-                TimeTracker.add(TimeTracker.TrackingEvent.RcvSPResponseFromSPVM, System.nanoTime());
+                // TimeTracker.add(TimeTracker.TrackingEvent.RcvSPResponseFromSPVM, System.nanoTime());
                 VMReadbuffer = null; // clear the reference to the read buffer as it might be owned by tables below
                 return (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
             } else if (msg.type == InterVMMessage.kProcedureCallRespReturnVoltTable) {
-                TimeTracker.add(TimeTracker.TrackingEvent.RcvSPResponseFromSPVM, System.nanoTime());
+                // TimeTracker.add(TimeTracker.TrackingEvent.RcvSPResponseFromSPVM, System.nanoTime());
                 VMReadbuffer = null; // clear the reference to the read buffer as it might be owned by tables below
                 VoltTable[] tables = (VoltTable[])SerializationHelper.readArray(VoltTable.class, msg.data);
                 assert tables.length == 1;
                 return tables[0];
             } else if (msg.type == InterVMMessage.kProcedureCallSQLQueryReq) {
-                TimeTracker.add(TimeTracker.TrackingEvent.RcvSQLRequest, System.nanoTime());
+                // TimeTracker.add(TimeTracker.TrackingEvent.RcvSQLRequest, System.nanoTime());
                 org.nustaq.serialization.FSTObjectInput objectsInput = fstConfLocal.getObjectInput(msg.data.array(), msg.data.limit());
 
                 boolean isFinalSQL = (Boolean)objectsInput.readObject();
@@ -479,7 +479,7 @@ public class ProcedureRunner {
                 if (ignoreResults == false) {
                     // respond to query given, and give the results back
                     // System.out.println("Writing back results to protocol");  
-                    TimeTracker.add(TimeTracker.TrackingEvent.SndSQLResponse, System.nanoTime());
+                    // TimeTracker.add(TimeTracker.TrackingEvent.SndSQLResponse, System.nanoTime());
                     ((Site) m_site).getInterVMMessagingProtocol().writeExecuteQueryRequestResponse(result, true);  
                 }
                 //System.out.printf("Executed %d queries, result has %d tables\n", sqlStmtVarNames.size(), result.length);
@@ -599,7 +599,7 @@ public class ProcedureRunner {
                         // System.out.println("--- Normal procedure call");
 
                         try {
-                            TimeTracker.add(TimeTracker.TrackingEvent.StartHandleSPRequest, System.nanoTime());
+                            // TimeTracker.add(TimeTracker.TrackingEvent.StartHandleSPRequest, System.nanoTime());
                             Object rawResult = m_procMethod.invoke(m_procedure, paramList);
                             if (returnResults) {
                                 results = ParameterConverter.getResultsFromRawResults(m_procedureName, rawResult);
@@ -734,7 +734,7 @@ public class ProcedureRunner {
 
             m_site.completeProcedure();
         }
-        TimeTracker.add(TimeTracker.TrackingEvent.FinishHandleSPRequest, System.nanoTime());
+        // TimeTracker.add(TimeTracker.TrackingEvent.FinishHandleSPRequest, System.nanoTime());
         return retval;
     }
 

@@ -323,12 +323,12 @@ class VoltNetwork implements Runnable, IOStatsIntf
                         while ((task = m_tasks.poll()) != null) {
                             // System.out.println("Running task " + task.getClass().getName());
                             // System.out.printf("Is VoltNetwork3? %b\n", task.getClass().getName().equals("org.voltcore.network.VoltNetwork$3"));
-                            if (task.getClass().getName().equals("java.util.concurrent.FutureTask")) {
-                                TimeTracker.printTimeStats();
-                                TimeTracker.reset();
-                            } else if (task.getClass().getName().equals("org.voltcore.network.VoltNIOWriteStream$1")) {
-                                TimeTracker.add(TimeTracker.TrackingEvent.SndSPResponse, System.nanoTime());
-                            }
+                            // if (task.getClass().getName().equals("java.util.concurrent.FutureTask")) {
+                            //     TimeTracker.printTimeStats();
+                            //     TimeTracker.reset();
+                            // } else if (task.getClass().getName().equals("org.voltcore.network.VoltNIOWriteStream$1")) {
+                            //     TimeTracker.add(TimeTracker.TrackingEvent.SndSPResponse, System.nanoTime());
+                            // }
                             // Runtime.getRuntime().traceMethodCalls(true);
                             task.run();
                             // Runtime.getRuntime().traceMethodCalls(false);
