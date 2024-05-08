@@ -36,6 +36,7 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
     private InputHandler m_inputHandler;
     private final Thread m_thread;
     private final String m_threadName;
+    protected final NetworkDBBPool m_dbbPool = new NetworkDBBPool(512);
     private final AtomicInteger m_numPorts = new AtomicInteger();
     // TODO: This should either go in the C code or the C code should notify of clients connecting/disconnecting
     // Otherwise this could cause error due to reuse of file descriptor
@@ -72,22 +73,23 @@ public class FStackNetwork implements Runnable, IOStatsIntf {
                 throw new IOException("Received ready for read for unknown port " + conn.getFd());
             }
             FStackPort port = m_ports.get(conn.getFd());
-            if (port.getBuffer() == null) {
-                int msgLen = conn.readInt();
-                // System.out.println("Received message of size " + msgLen + " from fd " + conn.getFd());
-                port.createBuffer(msgLen);
-            }
-            ByteBuffer buffer = port.getBuffer();
-            int readLen = conn.read(buffer);
-            if (buffer.remaining() > 0) {
-                // System.out.println("Read " + readLen + " bytes, but still need " + buffer.remaining() + " more");
-                return;
-            } else { // We have read the entire message
-                // System.out.println("Read " + readLen + " bytes. Complete message received");
-                buffer.flip();
-                port.handleData(buffer);
-                port.clearBuffer();
-            }
+            port.handleReadyForRead();
+            // if (port.getBuffer() == null) {
+            //     int msgLen = conn.readInt();
+            //     // System.out.println("Received message of size " + msgLen + " from fd " + conn.getFd());
+            //     port.createBuffer(msgLen);
+            // }
+            // ByteBuffer buffer = port.getBuffer();
+            // int readLen = conn.read(buffer);
+            // if (buffer.remaining() > 0) {
+            //     // System.out.println("Read " + readLen + " bytes, but still need " + buffer.remaining() + " more");
+            //     return;
+            // } else { // We have read the entire message
+            //     // System.out.println("Read " + readLen + " bytes. Complete message received");
+            //     buffer.flip();
+            //     port.handleData(buffer);
+            //     port.clearBuffer();
+            // }
             // // Read an int first
             // int msgLen = conn.readInt();
             // System.out.println("Got message of length " + msgLen + " from fd " + conn.getFd());

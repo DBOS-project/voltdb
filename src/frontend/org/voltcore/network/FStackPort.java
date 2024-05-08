@@ -15,12 +15,19 @@ import org.voltcore.network.NIOReadStream;
 import org.voltcore.network.NIOWriteStreamBase;
 import org.voltcore.network.WriteStream;
 
+import org.voltcore.logging.VoltLogger;
+
 public class FStackPort implements Connection {
+    protected static final VoltLogger networkLog = new VoltLogger("NETWORK");
+
     private final FSocketConn m_conn;
     private final InputHandler m_inputHandler;
     private final FStackNIOWriteStream m_writeStream;
     private final FStackNetwork m_network;
+    protected final NIOReadStream m_readStream = new NIOReadStream();
+    protected final NetworkDBBPool m_dbbPool = new NetworkDBBPool(512);
     private ByteBuffer incompleteBuffer = null;
+    protected long m_messagesRead = 0;
 
     public FStackPort(FSocketConn conn, InputHandler inputHandler, FStackNetwork network) {
         m_conn = conn;
@@ -56,6 +63,28 @@ public class FStackPort implements Connection {
         return m_writeStream;
     }
 
+    public void handleReadyForRead() throws IOException {
+        // System.out.println("Called handleReadyForRead on FStackPort");
+        final int maxRead = m_inputHandler.getMaxRead();
+        final int read = m_readStream.read(m_conn, maxRead, m_dbbPool);
+        if (read > 0) {
+            try {
+                ByteBuffer message;
+                // System.out.println("About to retrieveNextMessage");
+                while ((message = m_inputHandler.retrieveNextMessage(readStream())) != null) {
+                    // System.err.printf("Read a new message %s via %s\n", message.toString(), m_inputHandler.toString());
+                    m_inputHandler.handleMessage(message, this);
+                    m_messagesRead++;
+                }
+            } catch (VoltProtocolHandler.BadMessageLength e) {
+                String err = String.format("Bad message length,%s",
+                                           m_messagesRead != 0 ? "" : "; this may indicate mismatched SSL/TLS setting or non-VoltDB sender");
+                networkLog.error(err, e);
+                throw new IOException(e);
+            }
+        }
+    }
+
     public void drainWriteStream() throws IOException {
         while (!m_writeStream.isEmpty()) {
             ByteBuffer buffer = m_writeStream.dequeue();
@@ -79,7 +108,7 @@ public class FStackPort implements Connection {
     @Override
     public NIOReadStream readStream() {
         // System.out.println("Called readStream on FStackPort");
-        throw new UnsupportedOperationException();
+        return m_readStream;
     }
 
     @Override

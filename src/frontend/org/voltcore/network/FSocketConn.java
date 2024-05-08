@@ -3,10 +3,12 @@ package org.voltcore.network;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.ReadableByteChannel;
 import java.nio.charset.Charset;
 
-public class FSocketConn {
+public class FSocketConn implements ReadableByteChannel {
     private final int fd;
+    private boolean isOpen;
 
     static {
         System.loadLibrary("native_socket_conn");
@@ -14,6 +16,7 @@ public class FSocketConn {
 
     public FSocketConn(int fd) {
         this.fd = fd;
+        isOpen = true;
     }
 
     public int getFd() {
@@ -93,8 +96,13 @@ public class FSocketConn {
 
     private native int write(int fd, ByteBuffer buffer, int length);
 
+    public boolean isOpen() {
+        return isOpen;   
+    }
+
     public void close() throws IOException {
         close(fd);
+        isOpen = false;
     }
 
     private native void close(int fd) throws IOException;
