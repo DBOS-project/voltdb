@@ -958,12 +958,15 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
         //     VMPid = ExecutionEngine.DBOSPVGetVMId(hypervisorFd);
         //     exchangeVMInfo(VMPid, coreIdBound);
         // }
-        System.out.printf("Site %d with VM PID %d pv_accel=%b started to sync with SP VM, time %f\n", m_siteId, VMPid, getInterVMMessagingProtocol().PVAccelerationenabled(), System.nanoTime() / 1000000.0);
+        if (getInterVMMessagingProtocol() != null) {
+            System.out.printf("Site %d with VM PID %d pv_accel=%b started to sync with SP VM, time %f\n", m_siteId, VMPid, getInterVMMessagingProtocol().PVAccelerationenabled(), System.nanoTime() / 1000000.0);
 
-        getInterVMMessagingProtocol().pingpongTest();
-        System.out.printf("Site %d synced with VM\n", m_siteId);
-        getInterVMMessagingProtocol().writeCatalogUpdateRequestMessage(m_context.m_catalogInfo);
-        getInterVMMessagingProtocol().readCatalogUpdateResponseMessage();
+            getInterVMMessagingProtocol().pingpongTest();
+            System.out.printf("Site %d synced with VM\n", m_siteId);
+            getInterVMMessagingProtocol().writeCatalogUpdateRequestMessage(m_context.m_catalogInfo);
+            getInterVMMessagingProtocol().readCatalogUpdateResponseMessage();
+        }
+
         m_startupConfig = null; // release the serializableCatalog.
         // Maintain a minimum ratio of task log (unrestricted) to live (restricted)
         // transactions
@@ -1808,9 +1811,11 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
                 .get("systemsettings").getQuerytimeout());
         m_loadedProcedures.loadProcedures(m_context, isReplay);
         m_ee.loadFunctions(m_context);
-
-        getInterVMMessagingProtocol().writeCatalogUpdateRequestMessage(m_context.m_catalogInfo);
-        getInterVMMessagingProtocol().readCatalogUpdateResponseMessage();
+        
+        if (getInterVMMessagingProtocol() != null) {
+            getInterVMMessagingProtocol().writeCatalogUpdateRequestMessage(m_context.m_catalogInfo);
+            getInterVMMessagingProtocol().readCatalogUpdateResponseMessage();
+        }
         
         Cluster newCluster = m_context.catalog.getClusters().get("cluster");
         if (isMPI) {
