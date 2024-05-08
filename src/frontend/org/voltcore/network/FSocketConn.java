@@ -3,10 +3,11 @@ package org.voltcore.network;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.charset.Charset;
 
-public class FSocketConn implements ReadableByteChannel {
+public class FSocketConn implements ReadableByteChannel, GatheringByteChannel {
     private final int fd;
     private boolean isOpen;
 
@@ -76,7 +77,7 @@ public class FSocketConn implements ReadableByteChannel {
 
     private native int freadInt(int fd) throws IOException;
 
-    public void write(ByteBuffer buffer) throws IOException {
+    public int write(ByteBuffer buffer) throws IOException {
         if (!buffer.isDirect()) {
             ByteBuffer directBuffer = ByteBuffer.allocateDirect(buffer.remaining());
             directBuffer.put(buffer);
@@ -92,6 +93,24 @@ public class FSocketConn implements ReadableByteChannel {
             // System.err.println("Bytebuffer is direct? " + buffer.isDirect());
             throw new IOException("Failed to write to fd " + fd);
         }
+        buffer.position(buffer.position() + written);
+        return written;
+    }
+
+    public long write(ByteBuffer[] buffers) throws IOException {
+        long written = 0;
+        for (ByteBuffer buffer : buffers) {
+            written += write(buffer);
+        }
+        return written;
+    }
+
+    public long write(ByteBuffer[] buffers, int offset, int length) throws IOException {
+        long written = 0;
+        for (int i = offset; i < offset + length; i++) {
+            written += write(buffers[i]);
+        }
+        return written;
     }
 
     private native int write(int fd, ByteBuffer buffer, int length);

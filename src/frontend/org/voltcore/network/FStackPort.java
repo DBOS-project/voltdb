@@ -22,7 +22,7 @@ public class FStackPort implements Connection {
 
     private final FSocketConn m_conn;
     private final InputHandler m_inputHandler;
-    private final FStackNIOWriteStream m_writeStream;
+    private final VoltNIOWriteStream m_writeStream;
     private final FStackNetwork m_network;
     protected final NIOReadStream m_readStream = new NIOReadStream();
     protected final NetworkDBBPool m_dbbPool = new NetworkDBBPool(512);
@@ -32,7 +32,12 @@ public class FStackPort implements Connection {
     public FStackPort(FSocketConn conn, InputHandler inputHandler, FStackNetwork network) {
         m_conn = conn;
         m_inputHandler = inputHandler;
-        m_writeStream = new FStackNIOWriteStream(this);
+        m_writeStream = new VoltNIOWriteStream(
+            this,
+            inputHandler.offBackPressure(),
+            inputHandler.onBackPressure(),
+            inputHandler.writestreamMonitor()
+        );
         m_network = network;
     }
 
@@ -86,10 +91,29 @@ public class FStackPort implements Connection {
     }
 
     public void drainWriteStream() throws IOException {
-        while (!m_writeStream.isEmpty()) {
-            ByteBuffer buffer = m_writeStream.dequeue();
-            m_conn.write(buffer);
+        // System.out.println("Called drainWriteStream on FStackPort");
+        m_writeStream.serializeQueuedWrites(m_dbbPool);
+        // VoltPort does some synchronization here- but not sure if that is exactly required.
+        // My guess is that it might be useful for async clients.
+        if (!m_writeStream.isEmpty()) {
+            m_writeStream.drainTo(m_conn);
         }
+
+        // Write selection is turned on when output data in enqueued,
+        // turn it off when the queue becomes empty.
+        if (m_writeStream.isEmpty()) {
+            disableWriteSelection();
+
+            // if (m_isShuttingDown) {
+            //     m_conn.close();
+            //     //m_handler.stopped(this);
+            //     // unregistered();
+            // }
+        }
+        // while (!m_writeStream.isEmpty()) {
+        //     ByteBuffer buffer = m_writeStream.dequeue();
+        //     m_conn.write(buffer);
+        // }
     }
 
     public ByteBuffer getBuffer() {
@@ -187,6 +211,9 @@ public class FStackPort implements Connection {
     @Override
     public void queueTask(Runnable r) {
         // System.out.println("Called queueTask on FStackPort");
-        throw new UnsupportedOperationException();
+        // throw new UnsupportedOperationException();
+        // We do not have the feature to queue tasks like in original VoltDB
+        // So just run the task without queuing
+        r.run();
     }
 }
