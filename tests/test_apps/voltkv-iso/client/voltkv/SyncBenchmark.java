@@ -41,6 +41,8 @@
  import java.util.concurrent.atomic.AtomicBoolean;
  import java.util.concurrent.atomic.AtomicLong;
  import org.HdrHistogram_voltpatches.AtomicHistogram;
+ import org.HdrHistogram_voltpatches.SynchronizedHistogram;
+
  
  import org.voltdb.CLIConfig;
  import org.voltdb.VoltTable;
@@ -57,7 +59,8 @@
  import java.util.concurrent.locks.LockSupport;
  import java.util.concurrent.atomic.AtomicLong;
  import voltkv.RateLimiter;
- 
+ import org.voltdb.client.ProcedureCallback;
+
  public class SyncBenchmark {
      static RateLimiter rateLimiter;
      // handy, rather than typing this out several times
@@ -86,8 +89,8 @@
      final ClientStatsContext fullStatsContext;
  
      // kv benchmark state
-     final AtomicHistogram latencyHitstogram = new AtomicHistogram(3600000000l, 1);
-     final AtomicHistogram totalLatencyHitstogram = new AtomicHistogram(3600000000l, 1);
+     final SynchronizedHistogram latencyHitstogram = new SynchronizedHistogram(3600000000l, 1);
+     final SynchronizedHistogram totalLatencyHitstogram = new SynchronizedHistogram(3600000000l, 1);
      final AtomicLong ops = new AtomicLong(0);
      final AtomicLong totalOps = new AtomicLong(0);
      final AtomicLong successfulGets = new AtomicLong(0);
@@ -465,7 +468,68 @@
          // 3. Write stats to file if requested
          client.writeSummaryCSV(stats, config.statsfile);
      }
- 
+    /**
+     * Callback to handle the response to a stored procedure call.
+     * Tracks response types.
+     *
+     */
+    class GetCallback implements ProcedureCallback {
+        @Override
+        public void clientCallback(ClientResponse response) throws Exception {
+            // Track the result of the operation (Success, Failure, Payload traffic...)
+            ops.incrementAndGet();
+            totalOps.incrementAndGet();
+            if (response.getStatus() == ClientResponse.SUCCESS) {
+                final VoltTable pairData = response.getResults()[0];
+                // Cache miss (Key does not exist)
+                if (pairData.getRowCount() == 0) {
+                    missedGets.incrementAndGet();
+                }
+                else {
+                    final PayloadProcessor.Pair pair =
+                            processor.retrieveFromStore(pairData.fetchRow(0).getString(0),
+                                                        pairData.fetchRow(0).getVarbinary(1));
+                    successfulGets.incrementAndGet();
+                    networkGetData.addAndGet(pair.getStoreValueLength());
+                    rawGetData.addAndGet(pair.getRawValueLength());
+                }
+            }
+            else {
+                failedGets.incrementAndGet();
+            }
+            latencyHitstogram.recordValue(response.getClientRoundtripNanos());
+            totalLatencyHitstogram.recordValue(response.getClientRoundtripNanos());
+        }
+    }
+
+    class PutCallback implements ProcedureCallback {
+        final long storeValueLength;
+        final long rawValueLength;
+
+        PutCallback(PayloadProcessor.Pair pair) {
+            storeValueLength = pair.getStoreValueLength();
+            rawValueLength = pair.getRawValueLength();
+        }
+
+        @Override
+        public void clientCallback(ClientResponse response) throws Exception {
+            // Track the result of the operation (Success, Failure, Payload traffic...)
+            if (response.getStatus() == ClientResponse.SUCCESS) {
+                successfulPuts.incrementAndGet();
+            }
+            else {
+                failedPuts.incrementAndGet();
+            }
+            networkPutData.addAndGet(storeValueLength);
+            rawPutData.addAndGet(rawValueLength);
+            ops.incrementAndGet();
+            totalOps.incrementAndGet();
+            
+            latencyHitstogram.recordValue(response.getClientRoundtripNanos());
+            totalLatencyHitstogram.recordValue(response.getClientRoundtripNanos());
+        }
+    }
+
      /**
       * While <code>benchmarkComplete</code> is set to false, run as many
       * synchronous procedure calls as possible and record the results.
@@ -506,22 +570,24 @@
                      // Get a key/value pair using inbuilt select procedure, synchronously
                      try {
                          
-                         ClientResponse response = client.execute("VoltKVQuery",
-                                 processor.generateRandomKeyForRetrieval());
-                         ops.incrementAndGet();
-                         totalOps.incrementAndGet();
-                         final VoltTable pairData = response.getResults()[0];
-                         // Cache miss (Key does not exist)
-                         if (pairData.getRowCount() == 0)
-                             missedGets.incrementAndGet();
-                         else {
-                             final PayloadProcessor.Pair pair =
-                                     processor.retrieveFromStore(pairData.fetchRow(0).getString(0),
-                                                                 pairData.fetchRow(0).getVarbinary(1));
-                             successfulGets.incrementAndGet();
-                             networkGetData.addAndGet(pair.getStoreValueLength());
-                             rawGetData.addAndGet(pair.getRawValueLength());
-                         }
+                        //  ClientResponse response = client.execute("VoltKVQuery",
+                        //          processor.generateRandomKeyForRetrieval());
+                        //  ops.incrementAndGet();
+                        //  totalOps.incrementAndGet();
+                        //  final VoltTable pairData = response.getResults()[0];
+                        //  // Cache miss (Key does not exist)
+                        //  if (pairData.getRowCount() == 0)
+                        //      missedGets.incrementAndGet();
+                        //  else {
+                        //      final PayloadProcessor.Pair pair =
+                        //              processor.retrieveFromStore(pairData.fetchRow(0).getString(0),
+                        //                                          pairData.fetchRow(0).getVarbinary(1));
+                        //      successfulGets.incrementAndGet();
+                        //      networkGetData.addAndGet(pair.getStoreValueLength());
+                        //      rawGetData.addAndGet(pair.getRawValueLength());
+                        //  }
+
+                        client.executeAsync(new GetCallback(), "VoltKVQuery", processor.generateRandomKeyForRetrieval());
                      }
                      catch (Exception e) {
                          e.printStackTrace();
@@ -530,23 +596,29 @@
                  }
                  else {
                      // Put a key/value pair using inbuilt upsert procedure, synchronously
-                     final PayloadProcessor.Pair pair = processor.generateForStore();
-                     try {
-                         client.execute("STORE.upsert", pair.Key, pair.getStoreValue());
-                         successfulPuts.incrementAndGet();
-                         ops.incrementAndGet();
-                         totalOps.incrementAndGet();
-                     }
-                     catch (Exception e) {
-                         failedPuts.incrementAndGet();
-                     }
-                     networkPutData.addAndGet(pair.getStoreValueLength());
-                     rawPutData.addAndGet(pair.getRawValueLength());
+                    //  final PayloadProcessor.Pair pair = processor.generateForStore();
+                    //  try {
+                    //      client.execute("STORE.upsert", pair.Key, pair.getStoreValue());
+                    //      successfulPuts.incrementAndGet();
+                    //      ops.incrementAndGet();
+                    //      totalOps.incrementAndGet();
+                    //  }
+                    //  catch (Exception e) {
+                    //      failedPuts.incrementAndGet();
+                    //  }
+                    //  networkPutData.addAndGet(pair.getStoreValueLength());
+                    //  rawPutData.addAndGet(pair.getRawValueLength());
+                    try {
+                        final PayloadProcessor.Pair pair = processor.generateForStore();
+                        client.executeAsync(new PutCallback(pair), "STORE.upsert", pair.Key, pair.getStoreValue());
+                    }catch(Exception e) {
+                        e.printStackTrace();
+                    }
                  }
  
                  long end = System.nanoTime();
-                 latencyHitstogram.recordValue(end - start);
-                 totalLatencyHitstogram.recordValue(end - start);
+                 //latencyHitstogram.recordValue(end - start);
+                 //totalLatencyHitstogram.recordValue(end - start);
              }
          }
      }
@@ -656,4 +728,4 @@
          benchmark.runBenchmark();
      }
  }
- 
+    

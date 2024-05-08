@@ -17,7 +17,7 @@ fi
 QUITAFTERLOAD="${QUITAFTERLOAD:=false}"
 PRELOAD="${PRELOAD:=true}"
 POOLSIZE="${POOLSIZE:=10000000}"
-RATELIMIT="${RATELIMIT:=10000000}"
+RATELIMIT="${RATELIMIT:=1000000}"
 WARMUPDURATION="${WARMUPDURATION:=80}"
 
 echo "QUITAFTERLOAD=$QUITAFTERLOAD"
@@ -31,7 +31,7 @@ source $VOLTDB_BIN/voltenv
 STARTUPLEADERHOST="localhost"
 # list of cluster nodes separated by commas in host:[port] format
 #SERVERS="localhost"
-SERVERS="128.30.31.14"
+SERVERS="128.30.31.200"
 # remove binaries, logs, runtime artifacts, etc... but keep the client jar
 function clean() {
     rm -rf client/voltkv/*.class voltdbroot log
@@ -138,7 +138,7 @@ function sync-benchmark() {
         --usecompression=false \
         --ratelimit=$RATELIMIT \
         --warmup=$WARMUPDURATION \
-        --threads=512
+        --threads=32
 #        --multisingleratio=0.0
 }
 

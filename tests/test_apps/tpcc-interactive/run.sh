@@ -24,9 +24,9 @@ WARMUPDURATION="${WARMUPDURATION:=80}"
 
 # leader host for startup purposes only
 # (once running, all nodes are the same -- no leaders)
-STARTUPLEADERHOST="128.30.31.14"
+STARTUPLEADERHOST="128.30.31.200"
 # list of cluster nodes separated by commas in host:[port] format
-SERVERS="128.30.31.14"
+SERVERS="128.30.31.200"
 
 # remove build artifacts
 function clean() {
