@@ -35,12 +35,12 @@ JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBLibcWriteRet
 }
 
 JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBLibcRead(JNIEnv *env, jclass obj) {
-    record_tracepoint(6);
+    record_tracepoint(8);
     return 0;
 }
 
 JNIEXPORT jint JNICALL Java_org_voltcore_network_TimeTracker2_VoltDBLibcReadReturn(JNIEnv *env, jclass obj) {
-    record_tracepoint(7);
+    record_tracepoint(9);
     return 0;
 }
 
