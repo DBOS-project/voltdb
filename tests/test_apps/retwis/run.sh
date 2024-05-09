@@ -82,7 +82,7 @@ function server() {
 function init() {
     jars
     sqlcmd < ddl.sql
-    run -t "async" -a "init"
+    run -t "async" -a "init" $@
 }
 
 version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}')
