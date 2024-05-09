@@ -977,9 +977,9 @@ public class Site implements Runnable, SiteProcedureConnection, SiteSnapshotConn
             while (m_shouldContinue) {
                 if (m_runningState.isRunning()) {
                     // Normal operation blocks the site thread on the sitetasker queue.
-                    TimeTracker2.VoltDBWorkRecv();
                     if (stagedTasks.isEmpty()) {
                         stagedTasks.offer(m_pendingSiteTasks.take());
+                        TimeTracker2.VoltDBWorkRecv();
                     }
                     SiteTasker task = stagedTasks.poll();
                     // System.out.printf("Got a new task: %s\n", task);
