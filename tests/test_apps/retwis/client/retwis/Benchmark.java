@@ -27,12 +27,14 @@ public class Benchmark {
     private static class BenchArgs {
         public String type;
         public int numClients;
-        public int totalSPCalls;
+        public int totalData;
         public String servers;
+        public int duration;
+        public int warmupDuration;
 
         @Override
         public String toString() {
-            return String.format("Type: %s, NumClients: %d, TotalSPCalls: %d, Servers: %s", type, numClients, totalSPCalls, servers);
+            return String.format("Type: %s, NumClients: %d, TotalData: %d, Servers: %s, Duration: %s", type, numClients, totalData, servers, duration);
         }
     }
     private class RunStats {
@@ -49,7 +51,9 @@ public class Benchmark {
     private Client client;
     private final boolean async;
     private final int numClients;
-    public int totalSPCalls = 1_000_000_00;
+    public int totalData = 1_000_000; // Number of times init is called = total number of rows across tables
+    public int duration = 60; // in seconds
+    public int warmupDuration = 30; // in seconds
     public static final ReentrantLock counterLock = new ReentrantLock();
     public long totExecutions = 0;
     public long totExecutionNanoseconds = 0;
@@ -65,7 +69,9 @@ public class Benchmark {
         // System.out.printf("Connecting to %s\n", servers);
         this.async = args.type.equals("async");
         this.numClients = args.numClients;
-        this.totalSPCalls = args.totalSPCalls;
+        this.totalData = args.totalData;
+        this.duration = args.duration;
+        this.warmupDuration = args.warmupDuration;
         // System.out.printf("Running %d clients\n", this.numClients);
         // System.out.println("Total Exec ms: " + this.totalSPCalls / 1000_000);
 
@@ -97,7 +103,7 @@ public class Benchmark {
 
     public void init_data() {
         System.out.println("Initializing data in db");
-        int iters = 1_000_000;
+        int iters = totalData;
         int unsuccessful = 0;
         // Insert ~30,000 users, ~850,000 posts, ~120,000 follows
         for (int i = 0; i < iters; i++) {
@@ -113,7 +119,7 @@ public class Benchmark {
     }
 
     public void warmup_db(int warmupDuration) {
-        this.simulator.set_next_ids(700_000, 20_000);
+        this.simulator.set_next_ids((totalData * 85)/100, (totalData * 3)/100); // 85% DoPost and 3% DoCreateUser
         System.out.println("Warming up the db");
         long warmupEndTime = System.currentTimeMillis() + (warmupDuration - 5) * 1000; // Buffer of 5 second to cooldown
         long currentTime = System.currentTimeMillis();
@@ -130,23 +136,14 @@ public class Benchmark {
         }
     }
 
-    public static void runAll(Map<String, List<String>> args) {
+    public static void runAll(List<BenchArgs> benchArgs) {
         BenchArgs thisArgs = new BenchArgs();
         List<RunStats> allStats = new ArrayList<>();
-        for (String type: args.get("t")) {
-            thisArgs.type = type;
-            for (String numClients: args.get("c")) {
-                thisArgs.numClients = Integer.parseInt(numClients);
-                for (String totalSPCalls: args.get("n")) {
-                    thisArgs.totalSPCalls = Integer.parseInt(totalSPCalls);
-                    for (String servers: args.get("s")) {
-                        thisArgs.servers = servers;
-                        Benchmark benchmark = new Benchmark(thisArgs);
-                        RunStats stats = benchmark.run();
-                        allStats.add(stats);
-                    }
-                }
-            }
+
+        for (BenchArgs benchArg: benchArgs) {
+            Benchmark benchmark = new Benchmark(benchArg);
+            RunStats stats = benchmark.run();
+            allStats.add(stats);
         }
 
         System.out.println();
@@ -165,18 +162,23 @@ public class Benchmark {
     }
 
     public RunStats run() {
-        this.simulator.set_next_ids(700_000, 20_000);
         // this.setStatDeltaFlag();
+        // Run warmup
+        System.out.println("Warming up for " + warmupDuration + "s");
+        SingleClientRunnable warmup = new SingleClientRunnable(-1, this, true, warmupDuration);
+        warmup.run();
 
+        // Run the actual benchmark
+        System.out.println("Warmup done. Starting benchmark");
         long startTime = System.currentTimeMillis();
         ThreadGroup workerClients = new ThreadGroup("clients");
         for (int i = 1; i < this.numClients; i++) {
-            SingleClientRunnable r = new SingleClientRunnable(i, this);
+            SingleClientRunnable r = new SingleClientRunnable(i, this, false, duration);
             Thread th = new Thread(workerClients, r);
             th.start();
         }
         // Run one in parent thread
-        SingleClientRunnable r = new SingleClientRunnable(0, this);
+        SingleClientRunnable r = new SingleClientRunnable(0, this, false, duration);
         r.run();
 
         while (workerClients.activeCount() > 0) {} // Wait for all threads to join
@@ -298,9 +300,9 @@ public class Benchmark {
                 benchmark.totExecutionNanoseconds += executionTime;
                 benchmark.totExecutions++;
 
-                if (10 * benchmark.totExecutions % benchmark.totalSPCalls == 0) // Print 10 times
-                    // System.out.printf("Iteration %d\n", benchmark.totExecutions);
-                    System.out.printf("=");
+                // if (10 * benchmark.totExecutions % benchmark.totalSPCalls == 0) // Print 10 times
+                //     // System.out.printf("Iteration %d\n", benchmark.totExecutions);
+                //     System.out.printf("=");
 
                 if (executionTime < benchmark.minExecutionNanoseconds) {
                     benchmark.minExecutionNanoseconds = executionTime;
@@ -328,23 +330,39 @@ public class Benchmark {
         private int id;
         private Benchmark benchmark;
         private RetwisSimulation sim;
-        SingleClientRunnable(int id, Benchmark benchmark) {
+        private boolean warmup;
+        private int duration;
+
+        SingleClientRunnable(int id, Benchmark benchmark, boolean warmup, int duration) {
             this.id = id;
             this.benchmark = benchmark;
             Client client = Benchmark.getClient(benchmark.servers);
             this.sim = new RetwisSimulation(client, benchmark.async);
-            this.sim.set_next_ids(51200, 8192);
+            this.sim.set_next_ids((benchmark.totalData * 85)/100, (benchmark.totalData * 3)/100); // 85% DoPost and 3% DoCreateUser
+            this.warmup = warmup;
+            this.duration = duration;
         }
 
         public void run() {
             // System.out.println("Running client " + this.id);
-            for (int i = 0; i < this.benchmark.totalSPCalls / this.benchmark.numClients; i++) {
+            long startTime = System.currentTimeMillis();
+            long currentTime = startTime;
+
+            long endTime = startTime + duration * 1000;
+            long statusPrintTime = currentTime + 4 * 1000; // Print status every 4 seconds
+            while (currentTime < endTime) {
                 try {
+                    if ((id == 0) && (currentTime >= statusPrintTime)) {
+                        System.out.printf("=");
+                        statusPrintTime = currentTime + 4 * 1000;
+                    }
+                    // System.out.println("Running client " + this.id);
                     //
-                    this.sim.doGetPosts(new RetwisCallback(this.benchmark, false));
+                    this.sim.doGetPosts(new RetwisCallback(this.benchmark, warmup));
                     // this.sim.doOne(new RetwisCallback(false));
                 }
                 catch (IOException e) {}
+                currentTime = System.currentTimeMillis();
             }
         }
     }
@@ -353,10 +371,11 @@ public class Benchmark {
         final Map<String, List<String>> args = new HashMap<>();
         args.put("t", Arrays.asList("async")); // Type of operations
         args.put("c", Arrays.asList("1")); // Number of clients
-        args.put("n", Arrays.asList("1000000")); // Number of transactions
+        args.put("n", Arrays.asList("1000000")); // Number of times doing Inserts
         args.put("s", Arrays.asList("localhost")); // Host IP
         args.put("a", Arrays.asList("run")); // Action: one of init, warmup, run
-        args.put("d", Arrays.asList("20")); // Run duration in case of warmup
+        args.put("d", Arrays.asList("60")); // Run duration for test
+        args.put("w", Arrays.asList("10")); // Run duration in case of warmup
         return args;
     }
 
@@ -392,14 +411,18 @@ public class Benchmark {
         List<BenchArgs> benchArgs = new ArrayList<>();
         for (String type: args.get("t")) {
             for (String numClients: args.get("c")) {
-                for (String totalSPCalls: args.get("n")) {
-                    for (String servers: args.get("s")) {
-                        BenchArgs thisArgs = new BenchArgs();
-                        thisArgs.type = type;
-                        thisArgs.numClients = Integer.parseInt(numClients);
-                        thisArgs.totalSPCalls = Integer.parseInt(totalSPCalls);
-                        thisArgs.servers = servers;
-                        benchArgs.add(thisArgs);
+                for (String servers: args.get("s")) {
+                    for (String duration: args.get("d")) {
+                        for (String warmupDuration: args.get("w")) {
+                            BenchArgs thisArgs = new BenchArgs();
+                            thisArgs.type = type;
+                            thisArgs.numClients = Integer.parseInt(numClients);
+                            thisArgs.totalData = Integer.parseInt(args.get("n").get(0));
+                            thisArgs.servers = servers;
+                            thisArgs.duration = Integer.parseInt(duration);
+                            thisArgs.warmupDuration = Integer.parseInt(warmupDuration);
+                            benchArgs.add(thisArgs);
+                        }
                     }
                 }
             }
@@ -412,20 +435,21 @@ public class Benchmark {
      *
      * @param args Command line arguments.
      * @throws Exception if anything goes wrong.
-     * @see {@link VoterConfig}
      */
     public static void main(String[] args) throws Exception {
         Map<String, List<String>> parsedArgs = parseArgs(args);
         System.out.println("Parsed Args:" + parsedArgs.entrySet());
         List<BenchArgs> benchArgs = getBenchArgs(parsedArgs);
-        Benchmark benchmark = new Benchmark(benchArgs.get(0));
+
         String action = parsedArgs.get("a").get(0);
-        if (action.equals("init"))
+        if (action.equals("init")) {
+            Benchmark benchmark = new Benchmark(benchArgs.get(0));
             benchmark.init_data();
-        else if (action.equals("warmup"))
-            benchmark.warmup_db(Integer.parseInt(parsedArgs.get("d").get(0)));
-        else
+        } else if (action.equals("warmup")) {
+            Benchmark benchmark = new Benchmark(benchArgs.get(0));
+            benchmark.warmup_db(benchArgs.get(0).warmupDuration);
+        } else
             // benchmark.run();
-            Benchmark.runAll(parsedArgs);
+            Benchmark.runAll(benchArgs);
     }
 }
