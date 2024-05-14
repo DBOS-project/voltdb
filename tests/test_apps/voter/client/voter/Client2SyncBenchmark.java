@@ -38,7 +38,10 @@ import java.util.Timer;
  import java.util.concurrent.atomic.AtomicInteger;
  import java.util.concurrent.atomic.AtomicLong;
  import java.util.concurrent.TimeUnit;
- 
+ import org.HdrHistogram_voltpatches.AtomicHistogram;
+ import org.HdrHistogram_voltpatches.SynchronizedHistogram;
+ import voter.RateLimiter;
+
  import org.voltdb.CLIConfig;
  import org.voltdb.VoltTable;
  import org.voltdb.CLIConfig.Option;
@@ -51,9 +54,10 @@ import java.util.Timer;
  import org.voltdb.client.ClientStatsUtil;
  import org.voltdb.client.exampleutils.ClientConnection;
  import org.voltdb.client.exampleutils.ClientConnectionPool;
- 
+ import org.voltdb.client.ProcedureCallback;
+
  public class Client2SyncBenchmark {
- 
+    static RateLimiter rateLimiter;
      // Initialize some common constants and variables
      static final String CONTESTANT_NAMES_CSV =
              "Edwina Burnam,Tabatha Gehling,Kelly Clauss,Jessie Alloway," +
@@ -87,6 +91,8 @@ import java.util.Timer;
      final ClientStatsContext periodicStatsContext;
      final ClientStatsContext fullStatsContext;
  
+     final SynchronizedHistogram latencyHistogram = new SynchronizedHistogram(3600000000l, 1);
+
      // voter benchmark state
      AtomicLong totalVotes = new AtomicLong(0);
      AtomicLong acceptedVotes = new AtomicLong(0);
@@ -126,7 +132,10 @@ import java.util.Timer;
  
          @Option(desc = "SSL Configuration file")
          String sslfile = "";
- 
+        
+         @Option(desc = "Number of requests per second.")
+         long ratelimit = Long.MAX_VALUE;
+
          @Override
          public void validate() {
              if (duration <= 0) exitWithMessageAndUsage("duration must be > 0");
@@ -147,7 +156,7 @@ import java.util.Timer;
       */
      public Client2SyncBenchmark(VoterConfig config) {
          this.config = config;
- 
+         this.rateLimiter = new RateLimiter(config.ratelimit);
          Client2Config clientConfig = new Client2Config()
              .connectionUpHandler((h,p) -> System.out.printf("[up: %s %d]%n", h, p))
              .connectionDownHandler((h,p) -> System.out.printf("[down: %s %d]%n", h, p))
@@ -259,13 +268,19 @@ import java.util.Timer;
                           " - %,9d Rejected (Invalid Contestant)\n" +
                           " - %,9d Rejected (Maximum Vote Count Reached)\n" +
                           " - %,9d Failed (Transaction Error)\n\n";
-         System.out.printf(display, totalVotes.get(),
+        System.out.printf(display, totalVotes.get(),
                  acceptedVotes.get(), badContestantVotes.get(),
                  badVoteCountVotes.get(), failedVotes.get());
- 
+        System.out.printf("Transactions per second: %.2f\n", (float)totalVotes.get() / config.duration);
+
+        System.out.printf("Overall - Latency Histogram min %f , max %f , mean %f , stddev %f , p50 %f , p70 %f , p90 %f , p99 %f , p999 %f\n",
+            latencyHistogram.getMinValue() / 1000000.0, latencyHistogram.getMaxValue()/ 1000000.0, latencyHistogram.getMean()/ 1000000.0, latencyHistogram.getStdDeviation()/ 1000000.0, 
+            latencyHistogram.getValueAtPercentile(50)/ 1000000.0, latencyHistogram.getValueAtPercentile(70)/ 1000000.0, latencyHistogram.getValueAtPercentile(90)/ 1000000.0,
+            latencyHistogram.getValueAtPercentile(99)/ 1000000.0, latencyHistogram.getValueAtPercentile(99.9)/ 1000000.0);
+
+
          // 2. Voting results
          VoltTable result = client.callProcedureSync("Results").getResults()[0];
- 
          System.out.println("Contestant Name\t\tVotes Received");
          while(result.advanceRow()) {
              System.out.printf("%s\t\t%,14d\n", result.getString(0), result.getLong(2));
@@ -305,6 +320,40 @@ import java.util.Timer;
              ClientStatsUtil.writeSummaryCSV(stats, config.statsfile);
          }
      }
+
+     /**
+     * Callback to handle the response to a stored procedure call.
+     * Tracks response types.
+     *
+     */
+    class VoteCallback implements ProcedureCallback {
+        @Override
+        public void clientCallback(ClientResponse response) throws Exception {
+
+            try {
+                VoltTable[] results = response.getResults();
+                long resultCode = results[0].asScalarLong();
+                totalVotes.incrementAndGet();
+                if (resultCode == ERR_INVALID_CONTESTANT) {
+                    badContestantVotes.incrementAndGet();
+                }
+                else if (resultCode == ERR_VOTER_OVER_VOTE_LIMIT) {
+                    badVoteCountVotes.incrementAndGet();
+                }
+                else {
+                    assert(resultCode == VOTE_SUCCESSFUL);
+                    acceptedVotes.incrementAndGet();
+                }
+                txns_executed_so_far.incrementAndGet();
+
+                latencyHistogram.recordValue(response.getClientRoundtripNanos());
+            } catch(Exception e) {
+                e.printStackTrace();
+                System.exit(0);
+            }
+        }
+    }
+
      AtomicInteger id = new AtomicInteger(1);
      /**
       * While <code>benchmarkComplete</code> is set to false, run as many
@@ -331,46 +380,53 @@ import java.util.Timer;
                  e.printStackTrace();
              }
              statsContexts[id] = clientConn.createClientStatsContext();
-
+             int warmup_count = 100000;
              while (warmupComplete.get() == false) {
-                 // Get the next phone call
-                 PhoneCallGenerator.PhoneCall call = switchboard.receive();
- 
-                 // synchronously call the "Vote" procedure
-                 try {
-                     clientConn.execute("Vote", call.phoneNumber,
-                             call.contestantNumber, config.maxvotes);
-                     txns_executed_so_far.incrementAndGet();
-                 }
-                 catch (Exception e) {}
+                if (warmup_count-- < 0) {
+                    continue;
+                }
+                // Get the next phone call
+                PhoneCallGenerator.PhoneCall call = switchboard.receive();
+
+                
+                // synchronously call the "Vote" procedure
+                try {
+                    clientConn.execute("Vote", call.phoneNumber,
+                            call.contestantNumber, config.maxvotes);
+                    txns_executed_so_far.incrementAndGet();
+                }
+                catch (Exception e) {}
              }
  
              while (benchmarkComplete.get() == false) {
+                 rateLimiter.acquire();
                  // Get the next phone call
                  PhoneCallGenerator.PhoneCall call = switchboard.receive();
  
-                 // synchronously call the "Vote" procedure
+                 // asynchronously call the "Vote" procedure
                  try {
-                     ClientResponse response = clientConn.execute("Vote", call.phoneNumber,
+                    clientConn.executeAsync(new VoteCallback(), "Vote", call.phoneNumber,
                              call.contestantNumber, config.maxvotes);
+                    //  ClientResponse response = clientConn.execute("Vote", call.phoneNumber,
+                    //          call.contestantNumber, config.maxvotes);
                      // ClientResponse response = client.callProcedureSync("Vote",
                      //                                                    call.phoneNumber,
                      //                                                    call.contestantNumber,
                      //                                                    config.maxvotes);
  
-                     long resultCode = response.getResults()[0].asScalarLong();
-                     totalVotes.incrementAndGet();
-                     if (resultCode == ERR_INVALID_CONTESTANT) {
-                         badContestantVotes.incrementAndGet();
-                     }
-                     else if (resultCode == ERR_VOTER_OVER_VOTE_LIMIT) {
-                         badVoteCountVotes.incrementAndGet();
-                     }
-                     else {
-                         assert(resultCode == VOTE_SUCCESSFUL);
-                         acceptedVotes.incrementAndGet();
-                     }
-                     txns_executed_so_far.incrementAndGet();
+                    //  long resultCode = response.getResults()[0].asScalarLong();
+                    //  totalVotes.incrementAndGet();
+                    //  if (resultCode == ERR_INVALID_CONTESTANT) {
+                    //      badContestantVotes.incrementAndGet();
+                    //  }
+                    //  else if (resultCode == ERR_VOTER_OVER_VOTE_LIMIT) {
+                    //      badVoteCountVotes.incrementAndGet();
+                    //  }
+                    //  else {
+                    //      assert(resultCode == VOTE_SUCCESSFUL);
+                    //      acceptedVotes.incrementAndGet();
+                    //  }
+                    //  txns_executed_so_far.incrementAndGet();
                  }
                  catch (Exception e) {
                      failedVotes.incrementAndGet();
@@ -399,6 +455,7 @@ import java.util.Timer;
         System.out.println("\nPopulating Static Tables\n");
         client.callProcedureSync("Initialize", config.contestants, CONTESTANT_NAMES_CSV);
 
+        System.out.println(" Ratelimit " + config.ratelimit);
         System.out.print(HORIZONTAL_RULE);
         System.out.println(" Starting Benchmark");
         System.out.println(HORIZONTAL_RULE);

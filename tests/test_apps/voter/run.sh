@@ -18,6 +18,9 @@ else
     exit -1
 fi
 
+RATELIMIT="${RATELIMIT:=1000000}"
+WARMUPDURATION="${WARMUPDURATION:=80}"
+
 # call script to set up paths, including
 # java classpaths and binary paths
 source $VOLTDB_BIN/voltenv
@@ -27,7 +30,7 @@ source $VOLTDB_BIN/voltenv
 STARTUPLEADERHOST="128.30.31.14"
 
 # list of cluster nodes separated by commas in host:[port] format
-SERVERS="128.30.31.14"
+SERVERS="10.128.0.13"
 
 # remove binaries, logs, runtime artifacts, etc... but keep the jars
 function clean() {
@@ -154,12 +157,13 @@ function client2-sync-benchmark() {
     java $add_open \
 	-classpath voter-client.jar:$CLIENTCLASSPATH voter.Client2SyncBenchmark \
         --displayinterval=5 \
-        --warmup=5 \
+        --warmup=$WARMUPDURATION \
+        --ratelimit=$RATELIMIT \
         --duration=120 \
         --servers=$SERVERS \
         --contestants=6 \
         --maxvotes=2 \
-        --threads=40
+        --threads=8
 }
 
 # trivial client code for illustration purposes

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-PATH=$PATH://home/zxjcarrot/Workspace/networking-xj/voltdb/bin/
+PATH=$PATH://home/zxjcarrot/networking-xj/voltdb/bin/
 
 # find voltdb binaries
 if [ -e ../../bin/voltdb ]; then
@@ -31,7 +31,7 @@ source $VOLTDB_BIN/voltenv
 STARTUPLEADERHOST="localhost"
 # list of cluster nodes separated by commas in host:[port] format
 #SERVERS="localhost"
-SERVERS="128.30.31.200"
+SERVERS="10.128.0.13"
 # remove binaries, logs, runtime artifacts, etc... but keep the client jar
 function clean() {
     rm -rf client/voltkv/*.class voltdbroot log

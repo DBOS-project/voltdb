@@ -354,6 +354,69 @@ import java.util.Timer;
         }
     }
 
+    class VotePart1Callback implements ProcedureCallback {
+        public PhoneCallGenerator.PhoneCall call;
+        public ClientConnection clientConn;
+        public long startTimestamp;
+        public VotePart1Callback(ClientConnection clientConn, PhoneCallGenerator.PhoneCall call, long startTimestamp) {
+            this.clientConn = clientConn;
+            this.call = call;
+            this.startTimestamp = startTimestamp;
+        }
+
+        @Override
+        public void clientCallback(ClientResponse response) throws Exception {
+
+            try {
+                VoltTable[] validation = response.getResults();
+                txns_executed_so_far.incrementAndGet();
+                totalVotes.incrementAndGet();
+                if (validation[0].getRowCount() == 0) {
+                    badContestantVotes.incrementAndGet();
+                    return;
+                }
+
+                if ((validation[1].getRowCount() == 1) &&
+                        (validation[1].asScalarLong() >= config.maxvotes)) {
+                    badVoteCountVotes.incrementAndGet();
+                    return;
+                }
+                // Some sample client libraries use the legacy random phone generation that mostly
+                // created invalid phone numbers. Until refactoring, re-assign all such votes to
+                // the "XX" fake state (those votes will not appear on the Live Statistics dashboard,
+                // but are tracked as legitimate instead of invalid, as old clients would mostly get
+                // it wrong and see all their transactions rejected).
+                final String state = (validation[2].getRowCount() > 0) ? validation[2].fetchRow(0).getString(0) : "XX";
+                clientConn.executeAsync(new VotePart2Callback(this), "VotePart2",  call.phoneNumber,
+                             call.contestantNumber, config.maxvotes, state);
+                acceptedVotes.incrementAndGet();
+            } catch(Exception e) {
+                e.printStackTrace();
+                System.exit(0);
+            }
+        }
+    }
+
+
+    class VotePart2Callback implements ProcedureCallback {
+        public VotePart1Callback callback1;
+        public VotePart2Callback(VotePart1Callback callback1) {
+            this.callback1 = callback1;
+        }
+
+        @Override
+        public void clientCallback(ClientResponse response) throws Exception {
+            try {
+                long resultCode = response.getResults()[0].asScalarLong();
+                assert(resultCode == VOTE_SUCCESSFUL);
+                latencyHistogram.recordValue(System.nanoTime() - callback1.startTimestamp);
+            } catch(Exception e) {
+                e.printStackTrace();
+                System.exit(0);
+            }
+        }
+    }
+
      AtomicInteger id = new AtomicInteger(1);
      /**
       * While <code>benchmarkComplete</code> is set to false, run as many
@@ -405,28 +468,8 @@ import java.util.Timer;
  
                  // asynchronously call the "Vote" procedure
                  try {
-                    clientConn.executeAsync(new VoteCallback(), "Vote", call.phoneNumber,
+                    clientConn.executeAsync(new VotePart1Callback(clientConn, call, System.nanoTime()), "VotePart1", call.phoneNumber,
                              call.contestantNumber, config.maxvotes);
-                    //  ClientResponse response = clientConn.execute("Vote", call.phoneNumber,
-                    //          call.contestantNumber, config.maxvotes);
-                     // ClientResponse response = client.callProcedureSync("Vote",
-                     //                                                    call.phoneNumber,
-                     //                                                    call.contestantNumber,
-                     //                                                    config.maxvotes);
- 
-                    //  long resultCode = response.getResults()[0].asScalarLong();
-                    //  totalVotes.incrementAndGet();
-                    //  if (resultCode == ERR_INVALID_CONTESTANT) {
-                    //      badContestantVotes.incrementAndGet();
-                    //  }
-                    //  else if (resultCode == ERR_VOTER_OVER_VOTE_LIMIT) {
-                    //      badVoteCountVotes.incrementAndGet();
-                    //  }
-                    //  else {
-                    //      assert(resultCode == VOTE_SUCCESSFUL);
-                    //      acceptedVotes.incrementAndGet();
-                    //  }
-                    //  txns_executed_so_far.incrementAndGet();
                  }
                  catch (Exception e) {
                      failedVotes.incrementAndGet();
@@ -454,8 +497,8 @@ import java.util.Timer;
         // initialize using synchronous call
         System.out.println("\nPopulating Static Tables\n");
         client.callProcedureSync("Initialize", config.contestants, CONTESTANT_NAMES_CSV);
-        System.out.println(" Ratelimit " + config.ratelimit);
 
+        System.out.println(" Ratelimit " + config.ratelimit);
         System.out.print(HORIZONTAL_RULE);
         System.out.println(" Starting Benchmark");
         System.out.println(HORIZONTAL_RULE);
