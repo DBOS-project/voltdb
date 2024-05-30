@@ -331,11 +331,11 @@ public class neworder {
             // Add the info to be returned
             item_data.addRow(i_name, s_quantity, brand_generic, i_price, ol_amount);
 
-            response  = client.execute("neworderPart4", w_id, d_id, c_id, d_next_o_id, Arrays.copyOfRange(s_quantities, i, i + 1) , Arrays.copyOfRange(s_ytds, i, i + 1) , Arrays.copyOfRange(s_order_cnts, i, i + 1) , Arrays.copyOfRange(s_remote_cnts, i, i + 1) , Arrays.copyOfRange(ol_numbers, i, i + 1) , Arrays.copyOfRange(ol_i_ids, i, i + 1) , Arrays.copyOfRange(ol_quantities, i, i + 1) , Arrays.copyOfRange(ol_supply_w_ids, i, i + 1) , Arrays.copyOfRange(ol_amounts, i, i + 1) , Arrays.copyOfRange(s_dist_xxs, i, i + 1) , timestamp);
+            //response  = client.execute("neworderPart4", w_id, d_id, c_id, d_next_o_id, Arrays.copyOfRange(s_quantities, i, i + 1) , Arrays.copyOfRange(s_ytds, i, i + 1) , Arrays.copyOfRange(s_order_cnts, i, i + 1) , Arrays.copyOfRange(s_remote_cnts, i, i + 1) , Arrays.copyOfRange(ol_numbers, i, i + 1) , Arrays.copyOfRange(ol_i_ids, i, i + 1) , Arrays.copyOfRange(ol_quantities, i, i + 1) , Arrays.copyOfRange(ol_supply_w_ids, i, i + 1) , Arrays.copyOfRange(ol_amounts, i, i + 1) , Arrays.copyOfRange(s_dist_xxs, i, i + 1) , timestamp);
         }
         //voltExecuteSQL();
         //response = executeSQLRemote(client, "neworderTemplate", w_id, SQLStmts, params);
-        //response  = client.execute("neworderPart4", w_id, d_id, c_id, d_next_o_id, s_quantities, s_ytds, s_order_cnts, s_remote_cnts, ol_numbers, ol_i_ids, ol_quantities, ol_supply_w_ids, ol_amounts, s_dist_xxs, timestamp);
+        response  = client.execute("neworderPart4", w_id, d_id, c_id, d_next_o_id, s_quantities, s_ytds, s_order_cnts, s_remote_cnts, ol_numbers, ol_i_ids, ol_quantities, ol_supply_w_ids, ol_amounts, s_dist_xxs, timestamp);
         // Adjust the total for the discount
         total *= (1 - c_discount) * (1 + w_tax + d_tax);
 

@@ -30,7 +30,7 @@ source $VOLTDB_BIN/voltenv
 STARTUPLEADERHOST="128.30.31.14"
 
 # list of cluster nodes separated by commas in host:[port] format
-SERVERS="10.128.0.13"
+SERVERS="10.128.0.91"
 
 # remove binaries, logs, runtime artifacts, etc... but keep the jars
 function clean() {

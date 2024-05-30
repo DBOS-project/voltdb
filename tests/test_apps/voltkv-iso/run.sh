@@ -31,7 +31,7 @@ source $VOLTDB_BIN/voltenv
 STARTUPLEADERHOST="localhost"
 # list of cluster nodes separated by commas in host:[port] format
 #SERVERS="localhost"
-SERVERS="10.128.0.13"
+SERVERS="10.128.0.91"
 # remove binaries, logs, runtime artifacts, etc... but keep the client jar
 function clean() {
     rm -rf client/voltkv/*.class voltdbroot log

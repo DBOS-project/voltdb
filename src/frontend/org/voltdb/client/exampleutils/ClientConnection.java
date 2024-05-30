@@ -23,7 +23,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.concurrent.Future;
-
+import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Provides a high-level wrapper around the core {@link Client} class to provide performance tracking, connection pooling and Future-based asynchronous execution support.
  * ClientConnections should be obtained through the {@link ClientConnectionPool} get methods and cannot be instantiated directly.
@@ -35,7 +35,7 @@ public class ClientConnection implements Closeable
 {
     private final PerfCounterMap Statistics;
     private final Client Client;
-
+    private static AtomicInteger numRoundTrips = new AtomicInteger(0);
     /**
      * The base hash/key for this connection, that uniquely identifies its parameters, as defined by the pool.
      */
@@ -137,6 +137,10 @@ public class ClientConnection implements Closeable
         return this.Client.createStatsContext();
     }
 
+    public int getNumRoundTrips() {
+        return this.numRoundTrips.get();
+    }
+
     /**
      * Executes a procedure synchronously and returns the result to the caller.  The method internally tracks execution performance.
      *
@@ -146,6 +150,7 @@ public class ClientConnection implements Closeable
      */
     public ClientResponse execute(String procedure, Object... parameters) throws Exception
     {
+        this.numRoundTrips.incrementAndGet();
         long start = System.currentTimeMillis();
         try
         {
@@ -210,6 +215,7 @@ public class ClientConnection implements Closeable
      */
     public boolean executeAsync(ProcedureCallback callback, String procedure, Object... parameters) throws Exception
     {
+        numRoundTrips.incrementAndGet();
         return this.Client.callProcedure(new TrackingCallback(this, procedure, callback), procedure, parameters);
     }
 
@@ -222,6 +228,7 @@ public class ClientConnection implements Closeable
      */
     public Future<ClientResponse> executeAsync(String procedure, Object... parameters) throws Exception
     {
+        numRoundTrips.incrementAndGet();
         final ExecutionFuture future = new ExecutionFuture(DefaultAsyncTimeout);
         this.Client.callProcedure(
                                    new TrackingCallback( this

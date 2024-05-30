@@ -441,18 +441,18 @@
          // System.out.printf("99.5th percentile latency:     %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.995));
          // System.out.printf("99.9th percentile latency:     %,9.2f ms\n", stats.kPercentileLatencyAsDouble(.999));
  
-         System.out.printf("Average latency:               %,9.2f ms\n", latencyHitstogram.getMean() / 1000000.0);
-         System.out.printf("10th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(10) / 1000000.0);
-         System.out.printf("25th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(25) / 1000000.0);
-         System.out.printf("50th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(50) / 1000000.0);
-         System.out.printf("75th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(75) / 1000000.0);
-         System.out.printf("90th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(90) / 1000000.0);
-         System.out.printf("95th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(95) / 1000000.0);
-         System.out.printf("99th percentile latency:       %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(99) / 1000000.0);
-         System.out.printf("99.5th percentile latency:     %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(99.5) / 1000000.0);
-         System.out.printf("99.9th percentile latency:     %,9.2f ms\n", latencyHitstogram.getValueAtPercentile(99.9) / 1000000.0);
-         System.out.printf("Min latency:     %,9.2f ms\n", latencyHitstogram.getMinValue() / 1000000.0);
-         System.out.printf("Max latency:     %,9.2f ms\n", latencyHitstogram.getMaxValue() / 1000000.0);
+         System.out.printf("Average latency:               %9.2f ms\n", latencyHitstogram.getMean() / 1000000.0);
+         System.out.printf("10th percentile latency:       %9.2f ms\n", latencyHitstogram.getValueAtPercentile(10) / 1000000.0);
+         System.out.printf("25th percentile latency:       %9.2f ms\n", latencyHitstogram.getValueAtPercentile(25) / 1000000.0);
+         System.out.printf("50th percentile latency:       %9.2f ms\n", latencyHitstogram.getValueAtPercentile(50) / 1000000.0);
+         System.out.printf("75th percentile latency:       %9.2f ms\n", latencyHitstogram.getValueAtPercentile(75) / 1000000.0);
+         System.out.printf("90th percentile latency:       %9.2f ms\n", latencyHitstogram.getValueAtPercentile(90) / 1000000.0);
+         System.out.printf("95th percentile latency:       %9.2f ms\n", latencyHitstogram.getValueAtPercentile(95) / 1000000.0);
+         System.out.printf("99th percentile latency:       %9.2f ms\n", latencyHitstogram.getValueAtPercentile(99) / 1000000.0);
+         System.out.printf("99.5th percentile latency:     %9.2f ms\n", latencyHitstogram.getValueAtPercentile(99.5) / 1000000.0);
+         System.out.printf("99.9th percentile latency:     %9.2f ms\n", latencyHitstogram.getValueAtPercentile(99.9) / 1000000.0);
+         System.out.printf("Min latency:     %9.2f ms\n", latencyHitstogram.getMinValue() / 1000000.0);
+         System.out.printf("Max latency:     %9.2f ms\n", latencyHitstogram.getMaxValue() / 1000000.0);
 
          System.out.print("\n" + HORIZONTAL_RULE);
          System.out.println(" System Server Statistics");

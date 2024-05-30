@@ -261,6 +261,7 @@ public class MyTPCC
         System.out.printf("Time: %d ms\n", elapsedTimeMillis);
         System.out.printf("Total transactions: %d\n", numSPCalls.get());
         System.out.printf("Transactions per second: %.2f\n", (float)numSPCalls.get() / elapsedTimeSec);
+        System.out.printf("# Round trips per transaction: %.2f\n", m_clientCon.getNumRoundTrips() / (float)numSPCalls.get());
         for (int i = 0; i < procNames.length; i++)
         {
             System.out.printf("%23s: %10d total %12.2f txn/s %12.2f txn/m\n",
