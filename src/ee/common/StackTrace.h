@@ -19,6 +19,8 @@
 
 #include <vector>
 #include <cstdio>
+#include <cstdlib>
+#include <cstdint>
 #include <string>
 #include <iostream>
 #include <sstream>

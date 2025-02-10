@@ -241,6 +241,9 @@ public class VoltPort implements Connection
             AfterRead.run();
         }
         if (read == -1) {
+            System.err.println("fillReadStream reached EOF");
+            networkLog.info(
+                        "fillReadStream reached EOF");
             handleReadStreamEOF();
         }
         return read;

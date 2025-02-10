@@ -360,7 +360,7 @@ FOREACH (obj voltdbobjs voltdbjniobjs voltdbipcobjs voltdbshmobjs voltdbshmvmobj
      ${CMAKE_SOURCE_DIR}/third_party/cpp
      ${${PROJECT_NAME}_SOURCE_DIR}
      ${VOLTDB_3PTY_INSTALL_PREFIX}/include
-     /home/zxjcarrot/Workspace/networking-xj/papi/src/install/include)
+     /home/zxjcarrot/networking-xj/papi/src/install/include)
 ENDFOREACH()
 TARGET_INCLUDE_DIRECTORIES(third_party_objs
   PUBLIC

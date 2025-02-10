@@ -107,7 +107,8 @@ public class TCPChannel implements Channel {
             // while (true) {
                 try {
                     clientSocketChanel = serverSocketChannel.accept();
-                    channelReader = new BufferedSocketChannelReader(clientSocketChanel, 4096);
+                    clientSocketChanel.socket().setTcpNoDelay(true);
+                    channelReader = new BufferedSocketChannelReader(clientSocketChanel, 4096 * 4);
                 } catch (IOException e) {
                     System.out.printf("----- Error with serverSocketChannel accepting conn -----\n");
                     e.printStackTrace();
@@ -123,6 +124,7 @@ public class TCPChannel implements Channel {
             try {
                 this.clientSocketChanel = SocketChannel.open();
                 this.clientSocketChanel.connect(new InetSocketAddress(hostname, port));
+                this.clientSocketChanel.socket().setTcpNoDelay(true);
                 channelReader = new BufferedSocketChannelReader(clientSocketChanel, 4096);
                 break;
             } catch (Exception e) {

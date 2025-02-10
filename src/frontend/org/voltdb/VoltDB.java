@@ -632,11 +632,11 @@ public class VoltDB {
                         m_isolation_ringbuf_output_file = val;
                         break;
                     case "vmisolationtcpport":
-                        System.out.println("setting VM Isolation TCP port");
+                        System.out.println("setting VM Isolation TCP port " + val);
                         m_isolation_TCP_port = val;
                         break;
                     case "vmisolationtcphost":
-                        System.out.println("setting VM Isolation TCP host");
+                        System.out.println("setting VM Isolation TCP host " + val);
                         m_isolation_TCP_host = val;
                         break;
                     case "vmid":

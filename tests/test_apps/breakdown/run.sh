@@ -93,7 +93,7 @@ function test() {
 
 function benchmark() {
     warmup
-    /home/zxjcarrot/Workspace/networking/perf-map-agent/bin/perf-java-report-stack 
+    /home/zxjcarrot/Workspace/networking-xj/perf-map-agent/bin/perf-java-report-stack 
 }
 
 function all() {

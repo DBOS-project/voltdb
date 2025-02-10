@@ -10,13 +10,13 @@ if [ -z "$PERF_PATH" ]; then
 fi
 
 if [ -z "$APP_PATH" ]; then
-    APP_PATH="/home/zxjcarrot/Workspace/networking/retwis/out/perf"
+    APP_PATH="/home/zxjcarrot/Workspace/networking-xj/retwis/out/perf"
 fi
 
-PERF_MAP_DIR=/home/zxjcarrot/Workspace/networking/perf-map-agent/
+PERF_MAP_DIR=/home/zxjcarrot/Workspace/networking-xj/perf-map-agent/
 
 # $PERF_MAP_DIR/bin/create-java-perf-map.sh $1
-# /home/zxjcarrot/Workspace/networking/perf-map-agent/bin/perf-java-flames ${1} 2>&1 > test.out
+# /home/zxjcarrot/Workspace/networking-xj/perf-map-agent/bin/perf-java-flames ${1} 2>&1 > test.out
 
 function print_time() {
     timestamp=$(date +"%H:%M:%S")
@@ -41,7 +41,7 @@ function stop() {
         # Kill all running perf processes
         sudo -A pkill -x perf
         sleep 0.5
-        /home/zxjcarrot/Workspace/networking/perf-map-agent/bin/create-java-perf-map.sh $volt_pid
+        /home/zxjcarrot/Workspace/networking-xj/perf-map-agent/bin/create-java-perf-map.sh $volt_pid
         PERF_FILE=$APP_PATH/perf-$volt_pid.data
         SCRIPT_OUT_FILE=$APP_PATH/$volt_pid.perf
         print_time "Performing perf script to $volt_pid's perf output"

@@ -124,7 +124,7 @@ function stop_perf() {
 }
 
 function start_sp() {
-    cd /home/zxjcarrot/Workspace/networking/voltdb/
+    cd /home/zxjcarrot/Workspace/networking-xj/voltdb/
     # sleep 1
     # Spin up MP Site SP process
     nohup voltdb start --procedureprocess --vmid=0 --vmisolation=TCP --vmpvaccel --vmisolationtcpport=3030 --vmisolationtcphost=localhost  > log_sp.txt 2>&1 &

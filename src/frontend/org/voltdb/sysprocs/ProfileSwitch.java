@@ -42,7 +42,7 @@ public class ProfileSwitch  extends VoltNTSystemProcedure {
         } else if (option == 2) {
             ExecutionEngine.VoltDBEnableTracing(false);
             System.out.println("dump traces");
-            ExecutionEngine.VoltDBDumpTraces("/home/zxjcarrot/Workspace/networking-xj/voltdb-trace".getBytes());
+            ExecutionEngine.VoltDBDumpTraces("/home/zxjcarrot/networking-xj/voltdb-trace".getBytes());
         } else {
             VoltDB.crashLocalVoltDB("Invalid option for ProfileSwitch: " + option, true);
         }

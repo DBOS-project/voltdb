@@ -1253,7 +1253,7 @@ class INIConfigManager(object):
     """
 
     def load(self, path):
-        parser = configparser.SafeConfigParser()
+        parser = configparser.ConfigParser()
         parser.read(path)
         d = dict()
         for section in parser.sections():
@@ -1262,7 +1262,7 @@ class INIConfigManager(object):
         return d
 
     def save(self, path, d):
-        parser = configparser.SafeConfigParser()
+        parser = configparser.ConfigParser()
         keys = list(d.keys())
         keys.sort()
         cur_section = None
