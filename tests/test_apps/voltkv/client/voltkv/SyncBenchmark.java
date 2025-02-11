@@ -474,6 +474,10 @@
      *
      */
     class GetCallback implements ProcedureCallback {
+        CountDownLatch latch;
+        GetCallback(CountDownLatch latch) {
+            this.latch = latch;
+        }
         @Override
         public void clientCallback(ClientResponse response) throws Exception {
             // Track the result of the operation (Success, Failure, Payload traffic...)
@@ -499,14 +503,18 @@
             }
             latencyHitstogram.recordValue(response.getClientRoundtripNanos());
             totalLatencyHitstogram.recordValue(response.getClientRoundtripNanos());
+            if (latch != null) {
+                latch.countDown();
+            }
         }
     }
 
     class PutCallback implements ProcedureCallback {
         final long storeValueLength;
         final long rawValueLength;
-
-        PutCallback(PayloadProcessor.Pair pair) {
+        final CountDownLatch latch;
+        PutCallback(PayloadProcessor.Pair pair, CountDownLatch latch) {
+            this.latch = latch;
             storeValueLength = pair.getStoreValueLength();
             rawValueLength = pair.getRawValueLength();
         }
@@ -527,6 +535,9 @@
             
             latencyHitstogram.recordValue(response.getClientRoundtripNanos());
             totalLatencyHitstogram.recordValue(response.getClientRoundtripNanos());
+            if (latch != null) {
+                latch.countDown();
+            }
         }
     }
 
@@ -542,7 +553,13 @@
          }
          @Override
          public void run() {
-             ClientConnection client = getClient(config.servers, id);
+            int kBatchSize = 32;
+            ClientConnection clients[] = new ClientConnection[kBatchSize];
+            for (int i = 0; i < kBatchSize; ++i) {
+                clients[i] = getClient(config.servers, id * kBatchSize);
+            }
+             //ClientConnection client = getClient(config.servers, id * 100);
+            ClientConnection client = clients[0];
              while (warmupComplete.get() == false) {
                  // Decide whether to perform a GET or PUT operation
                  if (rand.nextDouble() < config.getputratio) {
@@ -566,57 +583,66 @@
                  // Decide whether to perform a GET or PUT operation
                  rateLimiter.acquire();
                  long start = System.nanoTime();
-                 if (rand.nextDouble() < config.getputratio) {
-                     // Get a key/value pair using inbuilt select procedure, synchronously
-                     try {
-                         
-                        //  ClientResponse response = client.execute("VoltKVQuery",
-                        //          processor.generateRandomKeyForRetrieval());
-                        //  ops.incrementAndGet();
-                        //  totalOps.incrementAndGet();
-                        //  final VoltTable pairData = response.getResults()[0];
-                        //  // Cache miss (Key does not exist)
-                        //  if (pairData.getRowCount() == 0)
-                        //      missedGets.incrementAndGet();
-                        //  else {
-                        //      final PayloadProcessor.Pair pair =
-                        //              processor.retrieveFromStore(pairData.fetchRow(0).getString(0),
-                        //                                          pairData.fetchRow(0).getVarbinary(1));
-                        //      successfulGets.incrementAndGet();
-                        //      networkGetData.addAndGet(pair.getStoreValueLength());
-                        //      rawGetData.addAndGet(pair.getRawValueLength());
-                        //  }
-
-                        client.executeAsync(new GetCallback(), "VoltKVQuery", processor.generateRandomKeyForRetrieval());
-                     }
-                     catch (Exception e) {
-                         e.printStackTrace();
-                         failedGets.incrementAndGet();
-                     }
-                 }
-                 else {
-                     // Put a key/value pair using inbuilt upsert procedure, synchronously
-                    //  final PayloadProcessor.Pair pair = processor.generateForStore();
-                    //  try {
-                    //      client.execute("STORE.upsert", pair.Key, pair.getStoreValue());
-                    //      successfulPuts.incrementAndGet();
-                    //      ops.incrementAndGet();
-                    //      totalOps.incrementAndGet();
-                    //  }
-                    //  catch (Exception e) {
-                    //      failedPuts.incrementAndGet();
-                    //  }
-                    //  networkPutData.addAndGet(pair.getStoreValueLength());
-                    //  rawPutData.addAndGet(pair.getRawValueLength());
-                    try {
-                        final PayloadProcessor.Pair pair = processor.generateForStore();
-                        client.executeAsync(new PutCallback(pair), "STORE.upsert", pair.Key, pair.getStoreValue());
-                    }catch(Exception e) {
-                        e.printStackTrace();
+                 CountDownLatch latch = new CountDownLatch(kBatchSize);
+                 for (int i = 0; i < kBatchSize; ++i) {
+                    if (rand.nextDouble() < config.getputratio) {
+                        // Get a key/value pair using inbuilt select procedure, synchronously
+                        try {
+                           //  ClientResponse response = client.execute("VoltKVQuery",
+                           //          processor.generateRandomKeyForRetrieval());
+                           //  ops.incrementAndGet();
+                           //  totalOps.incrementAndGet();
+                           //  final VoltTable pairData = response.getResults()[0];
+                           //  // Cache miss (Key does not exist)
+                           //  if (pairData.getRowCount() == 0)
+                           //      missedGets.incrementAndGet();
+                           //  else {
+                           //      final PayloadProcessor.Pair pair =
+                           //              processor.retrieveFromStore(pairData.fetchRow(0).getString(0),
+                           //                                          pairData.fetchRow(0).getVarbinary(1));
+                           //      successfulGets.incrementAndGet();
+                           //      networkGetData.addAndGet(pair.getStoreValueLength());
+                           //      rawGetData.addAndGet(pair.getRawValueLength());
+                           //  }
+   
+                           clients[i].executeAsync(new GetCallback(latch), "VoltKVQuery", processor.generateRandomKeyForRetrieval());
+                        }
+                        catch (Exception e) {
+                            e.printStackTrace();
+                            failedGets.incrementAndGet();
+                        }
+                    }
+                    else {
+   //                     Put a key/value pair using inbuilt upsert procedure, synchronously
+                       //  final PayloadProcessor.Pair pair = processor.generateForStore();
+                       //  try {
+                       //      client.execute("STORE.upsert", pair.Key, pair.getStoreValue());
+                       //      successfulPuts.incrementAndGet();
+                       //      ops.incrementAndGet();
+                       //      totalOps.incrementAndGet();
+                       //  }
+                       //  catch (Exception e) {
+                       //      failedPuts.incrementAndGet();
+                       //  }
+                       //  networkPutData.addAndGet(pair.getStoreValueLength());
+                       //  rawPutData.addAndGet(pair.getRawValueLength());
+                       try {
+                           final PayloadProcessor.Pair pair = processor.generateForStore();
+                           clients[i].executeAsync(new PutCallback(pair, latch), "STORE.upsert", pair.Key, pair.getStoreValue());
+                       }catch(Exception e) {
+                           e.printStackTrace();
+                       }
                     }
                  }
+                 
  
                  long end = System.nanoTime();
+
+                 try {
+                 latch.await();
+                 } catch (Exception e) {
+                    e.printStackTrace();
+                 }
                  //latencyHitstogram.recordValue(end - start);
                  //totalLatencyHitstogram.recordValue(end - start);
              }
@@ -642,6 +668,7 @@
          System.out.println();
          if (config.preload) {
              System.out.println("Preloading data store...");
+	     long startTime = System.nanoTime();
              for(int i=0; i < config.poolsize; i++) {
                  client.callProcedure(new NullCallback(),
                                       "STORE.upsert",
@@ -649,7 +676,9 @@
                                       processor.generateForStore().getStoreValue());
              }
              client.drain();
-             System.out.println("Preloading complete.\n");
+	     long endTime = System.nanoTime();
+	    
+             System.out.println("Preloading complete. Took " +  (endTime-startTime)/(double)(1e9) + " Throughput " + ((double)config.poolsize / (endTime-startTime)/(double)(1e9)) + " tuples per second");
              if (config.quitafterload) {
                  System.out.println("Exitting after preload\n");
                  System.exit(0);

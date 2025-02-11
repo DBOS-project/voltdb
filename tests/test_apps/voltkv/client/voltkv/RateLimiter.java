@@ -32,7 +32,8 @@ public class RateLimiter {
     public void acquire() {
         while (tryAcquire() == false) {
             try {
-                LockSupport.parkNanos(500_000); // 500 microseconds
+                Thread.sleep(10);
+                //LockSupport.parkNanos(500_000); // 500 microseconds
             } catch (Exception e) {
                 
             }
