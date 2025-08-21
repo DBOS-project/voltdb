@@ -203,18 +203,18 @@ FOREACH (CLASS ${VOLTDB_GENERATED_TEST_GENERATORS})
   LIST(APPEND VOLTDB_TEST_CLASS_LIST --test-class=${CLASS})
 ENDFOREACH()
 #
-# Generate the tests.
+# Set the test programs manually since we generate them before CMake configuration
 #
-EXECUTE_PROCESS(
-    COMMAND ${CMAKE_SOURCE_DIR}/tools/generate-ee-unit-tests.sh --voltdbroot=${CMAKE_SOURCE_DIR} ${VOLTDB_TEST_BUILD_TYPE} ${VOLTDB_TEST_CLASS_LIST}
+SET(VOLTDB_GENERATED_TEST_PROGRAMS
+  generated/executors/TestGeneratedPlans
+  generated/executors/TestInsertPolygons
+  generated/executors/TestWindowedCount
+  generated/executors/TestWindowedMin
+  generated/executors/TestWindowedMax
+  generated/executors/TestWindowedSum
+  generated/executors/TestWindowedRank
+  generated/executors/TestGeneratedString
 )
-#
-# The previous command left the test names in
-# This file.  Each line is a single file name.  We
-# need to do some CMake magic to convert this to a
-# CMake list.
-#
-FILE(READ ${CMAKE_SOURCE_DIR}/tests/ee/ee_auto_generated_unit_tests/generated_tests.txt VOLTDB_GENERATED_TEST_PROGRAMS)
 
 STRING(STRIP "${VOLTDB_GENERATED_TEST_PROGRAMS}" VOLTDB_GENERATED_TEST_PROGRAMS)
 # MESSAGE( "VOLTDB_GENERATED_TEST_PROGRAMS is ${VOLTDB_GENERATED_TEST_PROGRAMS}" )
@@ -273,7 +273,7 @@ ENDFOREACH()
 # just one file now, but it could be more.
 VOLTDB_ADD_LIBRARY(voltdb_test_harness
   OBJECT
-  ${CMAKE_SOURCE_DIR}/tests/ee/harness
+  ${CMAKE_SOURCE_DIR}/tests/ee/harness.cpp
   )
 
 # MESSAGE("VoltDB_Tests: PROJECT_NAME Is ${PROJECT_NAME}")
