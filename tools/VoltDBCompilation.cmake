@@ -146,6 +146,11 @@ IF (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
           IF (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS "9" AND (VOLTDB_BUILD_TYPE STREQUAL "DEBUG" OR VOLTDB_BUILD_TYPE STREQUAL "MEMCHECK"))
              VOLTDB_ADD_COMPILE_OPTIONS(-Wno-deprecated-copy)
           ENDIF()
+          
+          # For GCC 13 and later, ignore deprecated iterator warnings and changes-meaning warnings
+          IF (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS "13")
+             VOLTDB_ADD_COMPILE_OPTIONS(-Wno-deprecated-declarations -Wno-changes-meaning)
+          ENDIF()
         ENDIF()
       ENDIF()
     ENDIF()
