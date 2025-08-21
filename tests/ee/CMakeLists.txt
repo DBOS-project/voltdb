@@ -343,3 +343,27 @@ ENDFOREACH()
 FOREACH (TEST_NAME ${VOLTDB_TEST_ALLTESTS})
   DEFINE_TEST(${TEST_NAME})
 ENDFOREACH()
+
+########################################################################
+#
+# Add custom targets for running specific test types
+#
+########################################################################
+
+# Target for running all windowed tests
+ADD_CUSTOM_TARGET(run-windowed-tests
+  COMMAND /usr/bin/env CTEST_OUTPUT_ON_FAILURE=true ${CMAKE_CTEST_COMMAND} -R "TestWindowed.*" -j ${VOLTDB_CORE_COUNT}
+  COMMENT "Running all windowed tests")
+ADD_DEPENDENCIES(run-windowed-tests build-all-tests)
+
+# Target for running all generated tests
+ADD_CUSTOM_TARGET(run-generated-executor-tests
+  COMMAND /usr/bin/env CTEST_OUTPUT_ON_FAILURE=true ${CMAKE_CTEST_COMMAND} -R "TestGenerated.*" -j ${VOLTDB_CORE_COUNT}
+  COMMENT "Running all generated executor tests")
+ADD_DEPENDENCIES(run-generated-executor-tests build-all-tests)
+
+# Target for running polygon tests
+ADD_CUSTOM_TARGET(run-polygon-tests
+  COMMAND /usr/bin/env CTEST_OUTPUT_ON_FAILURE=true ${CMAKE_CTEST_COMMAND} -R "TestInsertPolygons" -j ${VOLTDB_CORE_COUNT}
+  COMMENT "Running polygon tests")
+ADD_DEPENDENCIES(run-polygon-tests build-all-tests)
