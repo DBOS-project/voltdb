@@ -69,7 +69,7 @@ TEST_F(ReadWriteErrors, readWriteErrors) {
     // point to the middle of it.
     // Maybe this will fool valgrind.
     garbage = new char[128];
-    delete garbage;
+    delete[] garbage;
     char j = garbage[64];
     memset(&garbage[64], 0, 1);
     memset(&j, 0, sizeof(j));
