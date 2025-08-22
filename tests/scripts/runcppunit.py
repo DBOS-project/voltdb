@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # This file is part of VoltDB.
 # Copyright (C) 2008-2022 Volt Active Data Inc.
@@ -151,9 +151,9 @@ def runtests(tests, output_dir):
                 writeJUnitXml(out, test_name, end - start, stdout, stderr, results)
                 out.close()
 
-        print "\n%d/%d failed" % (len(failures), len(tests))
+        print("\n%d/%d failed" % (len(failures), len(tests)))
         for failure in failures:
-            print failure
+            print(failure)
         return len(failures)
     finally:
         if stupidunit_out is not None and os.path.exists(stupidunit_out):

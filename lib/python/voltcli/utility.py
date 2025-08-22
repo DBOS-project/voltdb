@@ -1253,7 +1253,7 @@ class INIConfigManager(object):
     """
 
     def load(self, path):
-        parser = configparser.SafeConfigParser()
+        parser = configparser.ConfigParser()
         parser.read(path)
         d = dict()
         for section in parser.sections():

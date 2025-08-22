@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # This file is part of VoltDB.
 # Copyright (C) 2008-2022 Volt Active Data Inc.
@@ -26,7 +26,7 @@ from subprocess import Popen, PIPE
 import os
 import sys
 import argparse
-print sys.path[0]
+print(sys.path[0])
 
 script = """
 # setup commands:
@@ -73,10 +73,11 @@ else:
 
 print(cmd)
 
-p = Popen(cmd, shell=False, stdin=PIPE, close_fds=True)
+p = Popen(cmd, shell=False, stdin=PIPE, stdout=open('index_scripted_test.log', 'w'), stderr=PIPE, close_fds=True)
 
 def write(x):
-    p.stdin.write(x)
+    p.stdin.write(x.encode('utf-8'))
 write(script)
+p.stdin.close()
 retcode = p.wait()
 sys.exit(retcode)

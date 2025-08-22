@@ -116,26 +116,26 @@ ENDIF()
 #
 ########################################################################
 SET (VOLTDB_SRC
-  catalog/catalog.cpp
-  catalog/catalogtype.cpp
-  catalog/cluster.cpp
-  catalog/column.cpp
-  catalog/columnref.cpp
-  catalog/constraint.cpp
-  catalog/constraintref.cpp
-  catalog/database.cpp
-  catalog/function.cpp
-  catalog/functionparameter.cpp
-  catalog/index.cpp
-  catalog/indexref.cpp
-  catalog/materializedviewhandlerinfo.cpp
-  catalog/materializedviewinfo.cpp
-  catalog/planfragment.cpp
-  catalog/statement.cpp
-  catalog/table.cpp
-  catalog/tableref.cpp
-  catalog/topic.cpp
-  catalog/property.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/catalog.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/catalogtype.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/cluster.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/column.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/columnref.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/constraint.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/constraintref.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/database.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/function.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/functionparameter.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/index.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/indexref.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/materializedviewhandlerinfo.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/materializedviewinfo.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/planfragment.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/statement.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/table.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/tableref.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/topic.cpp
+  ${CMAKE_SOURCE_DIR}/src/catgen/out/cppsrc/property.cpp
   common/ExecuteWithMpMemory.cpp
   common/FatalException.cpp
   common/HiddenColumn.cpp
@@ -331,9 +331,9 @@ SET (VOLTDB_JNI_SRC
 SET (VOLTDB_IPC_SRC
   voltdbipc.cpp
 )
-SET (VOLTDB_SHM_SRC
-  voltdbshm.cpp
-)
+#SET (VOLTDB_SHM_SRC
+#  voltdbshm.cpp
+#)
 
 #
 # These are sets of object files, something like static libraries.
@@ -341,15 +341,15 @@ SET (VOLTDB_SHM_SRC
 VOLTDB_ADD_LIBRARY(voltdbobjs OBJECT ${VOLTDB_SRC})
 VOLTDB_ADD_LIBRARY(voltdbjniobjs OBJECT ${VOLTDB_JNI_SRC})
 VOLTDB_ADD_LIBRARY(voltdbipcobjs OBJECT ${VOLTDB_IPC_SRC})
-VOLTDB_ADD_LIBRARY(voltdbshmobjs OBJECT ${VOLTDB_SHM_SRC})
+#VOLTDB_ADD_LIBRARY(voltdbshmobjs OBJECT ${VOLTDB_SHM_SRC})
 VOLTDB_ADD_LIBRARY(third_party_objs OBJECT ${VOLTDB_THIRD_PARTY_SRC})
 
 ADD_DEPENDENCIES(voltdbobjs s2geo crypto pcre2)
 ADD_DEPENDENCIES(voltdbjniobjs s2geo crypto pcre2)
 ADD_DEPENDENCIES(voltdbipcobjs s2geo crypto pcre2)
-ADD_DEPENDENCIES(voltdbshmobjs s2geo crypto pcre2)
+#ADD_DEPENDENCIES(voltdbshmobjs s2geo crypto pcre2 aeron aeron_client)
 
-FOREACH (obj voltdbobjs voltdbjniobjs voltdbipcobjs voltdbshmobjs)
+FOREACH (obj voltdbobjs voltdbjniobjs voltdbipcobjs)
    TARGET_INCLUDE_DIRECTORIES(${obj}
      PUBLIC
      ${CMAKE_SOURCE_DIR}/third_party/cpp
@@ -401,18 +401,18 @@ TARGET_LINK_LIBRARIES(${VOLTDB_IPCRUN_NAME}
   -lpcre2-8 -ls2geo -lcrypto
   -ldl)
 
-SET (VOLTDB_SHMRUN_NAME voltdbshm)
-VOLTDB_ADD_EXECUTABLE(${VOLTDB_SHMRUN_NAME}
-  $<TARGET_OBJECTS:voltdbobjs>
-  $<TARGET_OBJECTS:third_party_objs>
-  $<TARGET_OBJECTS:voltdbshmobjs>
-)
-  
-TARGET_LINK_LIBRARIES(${VOLTDB_SHMRUN_NAME}
-  ${VOLTDB_LINK_FLAGS}
-  -L${VOLTDB_3PTY_INSTALL_PREFIX}/lib
-  -lpcre2-8 -ls2geo -lcrypto -laeron -laeron_client
-  -ldl)
+#SET (VOLTDB_SHMRUN_NAME voltdbshm)
+#VOLTDB_ADD_EXECUTABLE(${VOLTDB_SHMRUN_NAME}
+#  $<TARGET_OBJECTS:voltdbobjs>
+#  $<TARGET_OBJECTS:third_party_objs>
+#  $<TARGET_OBJECTS:voltdbshmobjs>
+#)
+#  
+#TARGET_LINK_LIBRARIES(${VOLTDB_SHMRUN_NAME}
+#  ${VOLTDB_LINK_FLAGS}
+#  -L${VOLTDB_3PTY_INSTALL_PREFIX}/lib
+#  -lpcre2-8 -ls2geo -lcrypto -laeron -laeron_client
+#  -ldl)
 
 ########################################################################
 #

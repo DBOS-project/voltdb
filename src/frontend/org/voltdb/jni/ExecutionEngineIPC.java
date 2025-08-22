@@ -187,7 +187,6 @@ public class ExecutionEngineIPC extends ExecutionEngine {
     static Aeron.Context aeronCtx = null; 
     static Aeron aeron = null;
     static MediaDriver mediaDriver = null;
-    static final String aeronDirectory = "/dev/shm/voltdb_frontend_aeron";
     static final String aeronChannel = "aeron:ipc";
     static final String frontendChannelName = "VoltDBFrontend";
     static final String backendChannelName = "VoltDBBackend";
@@ -206,14 +205,14 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         .threadingMode(ThreadingMode.DEDICATED)
         .conductorIdleStrategy(BusySpinIdleStrategy.INSTANCE)
         .receiverIdleStrategy(NoOpIdleStrategy.INSTANCE)
-        .senderIdleStrategy(NoOpIdleStrategy.INSTANCE).aeronDirectoryName(aeronDirectory);
+        .senderIdleStrategy(NoOpIdleStrategy.INSTANCE);
         mediaDriver = MediaDriver.launchEmbedded(mediaDriverCtx);
-        System.out.println("Media Driver lunched in " + aeronDirectory);
+        System.out.println("Media Driver lunched in " + mediaDriver.aeronDirectoryName());
         aeronCtx = new Aeron.Context()
         .aeronDirectoryName(mediaDriver.aeronDirectoryName());
         aeron = Aeron.connect(aeronCtx);
 
-        System.out.println("Aeron connected to " + aeronDirectory);
+        System.out.println("Aeron connected to " + mediaDriver.aeronDirectoryName());
     }
     public static void fill(ByteBuffer buf, byte b) {
         final int offset = buf.arrayOffset();
@@ -274,10 +273,9 @@ public class ExecutionEngineIPC extends ExecutionEngine {
 
         public AeronConnnection() {
             streamId = streamIdCounter.incrementAndGet() - 1;
-            //outgoingRingBufferFile = "/dev/shm/volt_frontend_out";
-            outgoingRingBufferFile = "/sys/bus/pci/devices/0000:00:05.0/resource2";
+            outgoingRingBufferFile = "/dev/shm/volt_frontend_out_" + streamId;
             subStreamId = maxStreamIdForFrontend + streamId;
-            incomingRingBufferFile = "/sys/bus/pci/devices/0000:00:04.0/resource2";
+            incomingRingBufferFile = "/dev/shm/volt_frontend_in_" + streamId;
 
             readBuffer = readBufferOrigin.b();
             readBuffer.clear();
@@ -285,18 +283,18 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             //subscriptionPoller = new Poller(sub, readBuffer);
 
             File f1 = new File(outgoingRingBufferFile);
-            //org.agrona.IoUtil.delete(f1, true);
-            outgoingRingBuffer = new RingByteBuffer(org.agrona.IoUtil.mapExistingFile(f1, outgoingRingBufferFile + streamId, streamId * kRingBufferCapacity, kRingBufferCapacity), kRingBufferCapacity);
+            org.agrona.IoUtil.delete(f1, true);
+            outgoingRingBuffer = new RingByteBuffer(org.agrona.IoUtil.mapNewFile(f1, kRingBufferCapacity), kRingBufferCapacity);
             outgoingRingBuffer.setReadPos(0);
             outgoingRingBuffer.setWritePos(0);
             
             File f2 = new File(incomingRingBufferFile);
-            //org.agrona.IoUtil.delete(f2, true);
-            incomingRingBuffer = new RingByteBuffer(org.agrona.IoUtil.mapExistingFile(f2,  incomingRingBufferFile + streamId, streamId * kRingBufferCapacity, kRingBufferCapacity), kRingBufferCapacity);
+            org.agrona.IoUtil.delete(f2, true);
+            incomingRingBuffer = new RingByteBuffer(org.agrona.IoUtil.mapNewFile(f2, kRingBufferCapacity), kRingBufferCapacity);
             incomingRingBuffer.setReadPos(0);
             incomingRingBuffer.setWritePos(0);
 
-            System.out.printf("Opened mapped files %s/%s\n", outgoingRingBufferFile + ":" + streamId, incomingRingBufferFile + ":" + streamId);
+            System.out.printf("Opened mapped files %s and %s\n", outgoingRingBufferFile, incomingRingBufferFile);
         }
 
         class Poller implements io.aeron.logbuffer.FragmentHandler {
@@ -378,7 +376,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
         private AeronConnnection m_aeron_conn = null;
         Connection(BackendTarget target, int port) {
             m_aeron_conn = new AeronConnnection();
-            m_aeron_conn.pingpongTest();
+            //m_aeron_conn.pingpongTest();
             boolean connected = false;
             int retries = 0;
             // while (!connected) {
@@ -410,7 +408,7 @@ public class ExecutionEngineIPC extends ExecutionEngine {
             //         System.out.println("Ready to connect to voltdbipc process on port " + port);
             //         System.out.println("Press Enter after you have started the EE process to initiate the connection to the EE");
             //         try {
-            //             System.in.read();
+            //             // System.in.read();
             //         } catch (final IOException e1) {
             //             e1.printStackTrace();
             //         }

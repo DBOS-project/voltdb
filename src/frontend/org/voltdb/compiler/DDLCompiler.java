@@ -637,14 +637,7 @@ public class DDLCompiler {
         return null;
     }
 
-    /**
-     * Checks whether or not the start of the given identifier is java (and
-     * thus DDL) compliant. An identifier may start with: _ [a-zA-Z] $
-     * @param identifier the identifier to check
-     * @param statement the statement where the identifier is
-     * @return the given identifier unmodified
-     * @throws VoltCompilerException when it is not compliant
-     */
+
     private String checkIdentifierStart(
             final String identifier, final String statement
             ) throws VoltCompilerException {

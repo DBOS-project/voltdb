@@ -403,6 +403,7 @@ int main(int argc, char **argv)
     bool done = false;
     while (!done) {
         input->getline(buf, kMaxInputLineSize);
+        cout << "Read line: " << buf << endl;
         if (buf[0] == '#') continue;
 
         char *command = strtok(buf, " ");
