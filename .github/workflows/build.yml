@@ -1,0 +1,53 @@
+name: VoltDB CI Build
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up JDK 8
+      uses: actions/setup-java@v3
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ant cmake python3 build-essential
+
+    - name: Build Java frontend
+      run: |
+        ant
+
+    - name: Build C++ engine (Release)
+      run: |
+        python3 tools/build_cmake.py --build-type=release
+
+    - name: Prepare artifact
+      run: |
+        mkdir -p ../artifact/voltdb_release
+        # Copy binaries and libraries
+        cp -r bin examples lib tools ../artifact/voltdb_release/
+        mkdir -p ../artifact/voltdb_release/voltdb
+        cp -r voltdb/* ../artifact/voltdb_release/voltdb/
+        # Copy compiled C++ artifacts
+        cp obj/release/ee/libvoltdb-11.4.0.beta1.so ../artifact/voltdb_release/voltdb/
+        cp obj/release/ee/voltdbipc ../artifact/voltdb_release/voltdb/
+        # Copy version file
+        cp version.txt ../artifact/voltdb_release/
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: voltdb-release-build
+        path: ../artifact/voltdb_release
