@@ -33,13 +33,16 @@ server_list_help = ('{hostname-or-ip[,...]}, '
         VOLT.BooleanOption('-r', '--replica', 'replica', None),
         VOLT.BooleanOption('-A', '--add', 'enableadd', 'allows the server to elastically expand the cluster if the cluster is already complete', default = False),
         VOLT.IntegerOption('-m', '--missing', 'missing', 'specifies how many nodes are missing at K-safe cluster startup'),
-        VOLT.PathOption('-l', '--license', 'license', 'specify a license file to replace the existing staged copy of the license')
+        VOLT.PathOption('-l', '--license', 'license', 'specify a license file to replace the existing staged copy of the license'),
+        VOLT.StringOption(None, '--backend', 'backend', 'specify the backend execution engine (jni or ipc)', default = 'ipc')
     ),
     log4j_default = 'log4j.xml',
     description = 'Starts a database, which has been initialized.'
 )
 
 def start(runner):
+    if runner.opts.backend:
+        runner.args.extend([runner.opts.backend])
     if runner.opts.replica:
         runner.abort_with_help('The --replica option is no longer allowed.')
     if runner.opts.directory_spec:
