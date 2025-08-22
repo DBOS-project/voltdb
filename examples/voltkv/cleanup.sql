@@ -1,0 +1,3 @@
+DROP TABLE store;
+DROP TABLE storeR;
+DROP PROCEDURE selectR;

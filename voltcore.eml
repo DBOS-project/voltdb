@@ -135,6 +135,11 @@
 		<relative-module-src project-related="jar://$PROJECT_DIR$/../../lib/calcite-core-1.17.0-sources.jar!/"/>
 		<relative-module-cls project-related="jar://$PROJECT_DIR$/../../lib/calcite-core-1.17.0.jar!/"/>
 	</lib>
+	<lib name="aeron-all-1.39.0.jar" scope="COMPILE">
+		<srcroot url="jar://$MODULE_DIR$/lib/aeron-all-1.39.0-sources.jar!/"/>
+		<relative-module-src project-related="jar://$PROJECT_DIR$/../../lib/aeron-all-1.39.0-sources.jar!/"/>
+		<relative-module-cls project-related="jar://$PROJECT_DIR$/../../lib/aeron-all-1.39.0.jar!/"/>
+	</lib>
 	<lib name="calcite-server-1.17.0.jar" scope="COMPILE">
 		<srcroot url="jar://$MODULE_DIR$/lib/calcite-server-1.17.0-sources.jar!/"/>
 		<relative-module-src project-related="jar://$PROJECT_DIR$/../../lib/calcite-server-1.17.0-sources.jar!/"/>
